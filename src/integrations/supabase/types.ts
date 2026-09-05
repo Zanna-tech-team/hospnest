@@ -682,6 +682,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "invoices_encounter_id_fkey"
+            columns: ["encounter_id"]
+            isOneToOne: true
+            referencedRelation: "encounters_masked"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "invoices_hospital_id_fkey"
             columns: ["hospital_id"]
             isOneToOne: false
@@ -758,6 +765,13 @@ export type Database = {
             columns: ["encounter_id"]
             isOneToOne: false
             referencedRelation: "encounters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lab_orders_encounter_id_fkey"
+            columns: ["encounter_id"]
+            isOneToOne: false
+            referencedRelation: "encounters_masked"
             referencedColumns: ["id"]
           },
           {
@@ -1095,6 +1109,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "prescriptions_encounter_id_fkey"
+            columns: ["encounter_id"]
+            isOneToOne: false
+            referencedRelation: "encounters_masked"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "prescriptions_hospital_id_fkey"
             columns: ["hospital_id"]
             isOneToOne: false
@@ -1346,6 +1367,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "triage_vitals_encounter_id_fkey"
+            columns: ["encounter_id"]
+            isOneToOne: true
+            referencedRelation: "encounters_masked"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "triage_vitals_hospital_id_fkey"
             columns: ["hospital_id"]
             isOneToOne: false
@@ -1447,10 +1475,166 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      encounters_masked: {
+        Row: {
+          appointment_id: string | null
+          bed_id: string | null
+          break_glass_reason: string | null
+          chief_complaint: string | null
+          clinical_notes: string | null
+          closed_at: string | null
+          created_at: string | null
+          department_id: string | null
+          diagnosis: string | null
+          encounter_status:
+            | Database["public"]["Enums"]["encounter_status"]
+            | null
+          hospital_id: string | null
+          icd10_codes: string[] | null
+          id: string | null
+          is_break_glass: boolean | null
+          nurse_id: string | null
+          patient_id: string | null
+          practitioner_id: string | null
+          psychiatric_notes: string | null
+          ward_id: string | null
+        }
+        Insert: {
+          appointment_id?: string | null
+          bed_id?: string | null
+          break_glass_reason?: string | null
+          chief_complaint?: string | null
+          clinical_notes?: never
+          closed_at?: string | null
+          created_at?: string | null
+          department_id?: string | null
+          diagnosis?: never
+          encounter_status?:
+            | Database["public"]["Enums"]["encounter_status"]
+            | null
+          hospital_id?: string | null
+          icd10_codes?: never
+          id?: string | null
+          is_break_glass?: boolean | null
+          nurse_id?: string | null
+          patient_id?: string | null
+          practitioner_id?: string | null
+          psychiatric_notes?: never
+          ward_id?: string | null
+        }
+        Update: {
+          appointment_id?: string | null
+          bed_id?: string | null
+          break_glass_reason?: string | null
+          chief_complaint?: string | null
+          clinical_notes?: never
+          closed_at?: string | null
+          created_at?: string | null
+          department_id?: string | null
+          diagnosis?: never
+          encounter_status?:
+            | Database["public"]["Enums"]["encounter_status"]
+            | null
+          hospital_id?: string | null
+          icd10_codes?: never
+          id?: string | null
+          is_break_glass?: boolean | null
+          nurse_id?: string | null
+          patient_id?: string | null
+          practitioner_id?: string | null
+          psychiatric_notes?: never
+          ward_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "encounters_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "encounters_bed_id_fkey"
+            columns: ["bed_id"]
+            isOneToOne: false
+            referencedRelation: "beds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "encounters_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "encounters_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "encounters_nurse_id_fkey"
+            columns: ["nurse_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "encounters_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "encounters_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "encounters_ward_id_fkey"
+            columns: ["ward_id"]
+            isOneToOne: false
+            referencedRelation: "wards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
-      [_ in never]: never
+      can_access_encounter: {
+        Args: { _encounter_id: string }
+        Returns: boolean
+      }
+      can_access_patient: { Args: { _patient_id: string }; Returns: boolean }
+      current_patient_id: { Args: never; Returns: string }
+      current_staff_id: { Args: { _hospital_id: string }; Returns: string }
+      has_patient_consent: {
+        Args: { _hospital_id: string; _patient_id: string }
+        Returns: boolean
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["user_role_type"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_clinical_at: { Args: { _hospital_id: string }; Returns: boolean }
+      is_hospital_admin: { Args: { _hospital_id: string }; Returns: boolean }
+      is_member_of_hospital: {
+        Args: { _hospital_id: string }
+        Returns: boolean
+      }
+      is_on_active_shift: {
+        Args: { _department_id: string; _hospital_id: string; _ward_id: string }
+        Returns: boolean
+      }
+      is_super_admin: { Args: never; Returns: boolean }
     }
     Enums: {
       appointment_status:
