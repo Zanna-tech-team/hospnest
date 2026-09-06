@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedFrontDeskRouteImport } from './routes/_authenticated/front-desk'
+import { Route as AuthenticatedHospitalSetupRouteImport } from './routes/_authenticated/hospital-setup'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -33,16 +34,24 @@ const AuthenticatedFrontDeskRoute = AuthenticatedFrontDeskRouteImport.update({
   path: '/front-desk',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedHospitalSetupRoute =
+  AuthenticatedHospitalSetupRouteImport.update({
+    id: '/hospital-setup',
+    path: '/hospital-setup',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/front-desk': typeof AuthenticatedFrontDeskRoute
+  '/hospital-setup': typeof AuthenticatedHospitalSetupRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/front-desk': typeof AuthenticatedFrontDeskRoute
+  '/hospital-setup': typeof AuthenticatedHospitalSetupRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -50,18 +59,20 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/front-desk': typeof AuthenticatedFrontDeskRoute
+  '/_authenticated/hospital-setup': typeof AuthenticatedHospitalSetupRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/front-desk'
+  fullPaths: '/' | '/auth' | '/front-desk' | '/hospital-setup'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/front-desk'
+  to: '/' | '/auth' | '/front-desk' | '/hospital-setup'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/front-desk'
+    | '/_authenticated/hospital-setup'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -100,15 +111,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFrontDeskRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/hospital-setup': {
+      id: '/_authenticated/hospital-setup'
+      path: '/hospital-setup'
+      fullPath: '/hospital-setup'
+      preLoaderRoute: typeof AuthenticatedHospitalSetupRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedFrontDeskRoute: typeof AuthenticatedFrontDeskRoute
+  AuthenticatedHospitalSetupRoute: typeof AuthenticatedHospitalSetupRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedFrontDeskRoute: AuthenticatedFrontDeskRoute,
+  AuthenticatedHospitalSetupRoute: AuthenticatedHospitalSetupRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
