@@ -53,7 +53,7 @@ export function Nav() {
 
         <div className="hidden items-center gap-3 md:flex">
           <a
-            href="#cta"
+            href="/auth"
             className="rounded-full px-4 py-2 text-sm font-semibold text-navy transition-colors hover:text-primary"
           >
             Sign in
@@ -90,6 +90,15 @@ export function Nav() {
                 </a>
               </li>
             ))}
+            <li>
+              <a
+                href="/auth"
+                onClick={() => setOpen(false)}
+                className="text-sm font-semibold text-navy"
+              >
+                Sign in
+              </a>
+            </li>
             <li>
               <a
                 href="#cta"

@@ -139,7 +139,7 @@ function FrontDesk() {
         data: {
           patientId: patient!.id,
           hospitalId: activeHospital,
-          departmentId: departmentId || undefined,
+          ...(departmentId ? { departmentId } : {}),
           chiefComplaint,
           consentGiven: consent,
         },
