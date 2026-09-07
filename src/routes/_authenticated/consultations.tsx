@@ -69,7 +69,16 @@ import {
   generateAiEncounterSummary,
   type AiCopilotResult,
 } from "@/lib/ai-copilot.functions";
+import {
+  getPatientImagingStudies,
+  type RadiologyStudyItem,
+} from "@/lib/radiology.functions";
+import { MedicalImageViewerModal } from "@/components/radiology/MedicalImageViewerModal";
+import { UploadImagingModal } from "@/components/radiology/UploadImagingModal";
+import { PrintableDocumentModal } from "@/components/clinical-docs/PrintableDocumentModal";
+import { DischargeSummaryDocument } from "@/components/clinical-docs/DischargeSummaryDocument";
 import { toast } from "sonner";
+import { Camera, Eye, FileImage, Image as ImageIcon, Printer } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/consultations")({
   head: () => ({
@@ -152,6 +161,28 @@ function ConsultationsPage() {
         ? getWorkspaceFn({ data: { encounterId: selectedEncounterId, hospitalId: activeHospitalId || undefined } })
         : null,
     enabled: Boolean(selectedEncounterId),
+  });
+
+  // Radiology & Medical Imaging Subsystem
+  const getImagingFn = useServerFn(getPatientImagingStudies);
+  const [activeImagingStudy, setActiveImagingStudy] = useState<RadiologyStudyItem | null>(null);
+  const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
+  const [isUploadImagingOpen, setIsUploadImagingOpen] = useState(false);
+  const [isPrintDischargeOpen, setIsPrintDischargeOpen] = useState(false);
+
+  const { data: imagingData, refetch: refetchImaging } = useQuery({
+    queryKey: ["patient-imaging-studies", workspaceData?.patient?.id, activeHospitalId],
+    queryFn: () =>
+      workspaceData?.patient?.id
+        ? getImagingFn({
+            data: {
+              patientId: workspaceData.patient.id,
+              encounterId: selectedEncounterId || undefined,
+              hospitalId: activeHospitalId || undefined,
+            },
+          })
+        : null,
+    enabled: Boolean(workspaceData?.patient?.id),
   });
 
   const handleOpenWorkspace = (encounterId: string) => {
@@ -643,7 +674,25 @@ function ConsultationsPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsUploadImagingOpen(true)}
+                        className="gap-1.5 text-xs border-teal-500/40 hover:bg-teal-500/10 font-semibold"
+                      >
+                        <Camera className="size-3.5 text-teal-600" /> Attach Scan
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsPrintDischargeOpen(true)}
+                        className="gap-1.5 text-xs font-semibold shadow-xs"
+                      >
+                        <Printer className="size-3.5 text-teal-600" /> Print Summary
+                      </Button>
+
                       {!workspaceData.encounter.practitionerId && (
                         <Button
                           size="sm"
@@ -1127,6 +1176,99 @@ function ConsultationsPage() {
                   </div>
                 </div>
 
+                {/* 6. Medical Imaging & Radiology Section */}
+                <div className="rounded-2xl border border-border bg-card p-6 shadow-soft space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="size-4 text-teal-600" />
+                      <div>
+                        <h3 className="font-display text-base font-bold text-foreground">
+                          Diagnostic Imaging & Radiology Scans
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          View X-rays, CT scans, MRIs, and Ultrasounds with pan, zoom, and negative film contrast.
+                        </p>
+                      </div>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setIsUploadImagingOpen(true)}
+                      className="gap-1.5 text-xs font-semibold border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
+                    >
+                      <Camera className="size-3.5" /> Upload Scan
+                    </Button>
+                  </div>
+
+                  {(!imagingData?.studies || imagingData.studies.length === 0) ? (
+                    <div className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
+                      No radiological imaging studies recorded for this patient. Click "Upload Scan" to attach an X-ray or ultrasound.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {imagingData.studies.map((study) => (
+                        <div
+                          key={study.id}
+                          className="rounded-xl border border-border bg-muted/20 p-3.5 flex items-start gap-3 hover:border-teal-500/50 hover:bg-teal-500/5 transition-all group"
+                        >
+                          <div
+                            onClick={() => {
+                              setActiveImagingStudy(study);
+                              setIsImageViewerOpen(true);
+                            }}
+                            className="relative size-20 shrink-0 rounded-lg overflow-hidden border border-border bg-black cursor-pointer group-hover:scale-105 transition-transform"
+                          >
+                            <img
+                              src={study.thumbnailUrl || study.imageUrl}
+                              alt={study.bodyPart}
+                              className="size-full object-cover opacity-90 group-hover:opacity-100"
+                            />
+                            <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 py-0.2 font-mono text-[9px] font-bold text-teal-400 uppercase">
+                              {study.modality}
+                            </span>
+                          </div>
+
+                          <div className="flex-1 space-y-1 text-xs">
+                            <div className="flex items-start justify-between gap-1">
+                              <span className="font-bold text-foreground group-hover:text-teal-700 dark:group-hover:text-teal-300">
+                                {study.bodyPart}
+                              </span>
+                              {study.isCritical && (
+                                <Badge variant="destructive" className="text-[9px] py-0 px-1.5 bg-rose-600 uppercase">
+                                  Critical
+                                </Badge>
+                              )}
+                            </div>
+
+                            <p className="text-[11px] text-muted-foreground line-clamp-1">
+                              {study.clinicalIndication || "Diagnostic examination"}
+                            </p>
+
+                            <p className="text-[10px] text-muted-foreground">
+                              {new Date(study.studyDate).toLocaleDateString("en-GB", { dateStyle: "medium" })} • {study.status.toUpperCase()}
+                            </p>
+
+                            <div className="pt-1.5 flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setActiveImagingStudy(study);
+                                  setIsImageViewerOpen(true);
+                                }}
+                                className="h-6 text-[11px] px-2 gap-1 bg-background hover:bg-teal-500/10 text-teal-700 dark:text-teal-300"
+                              >
+                                <Eye className="size-3" /> View Scan
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* CONCLUDE CONSULTATION ACTION BANNER */}
                 <div className="rounded-2xl border border-teal-500/30 bg-teal-500/10 p-5 shadow-soft flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -1327,6 +1469,81 @@ function ConsultationsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Radiology & Medical Imaging Viewer Modal */}
+      <MedicalImageViewerModal
+        study={activeImagingStudy}
+        open={isImageViewerOpen}
+        onOpenChange={setIsImageViewerOpen}
+        patientName={workspaceData?.patient?.fullName}
+        patientNin={workspaceData?.patient?.nin}
+      />
+
+      {/* Upload Imaging Study Modal */}
+      {workspaceData?.patient?.id && (
+        <UploadImagingModal
+          open={isUploadImagingOpen}
+          onOpenChange={setIsUploadImagingOpen}
+          patientId={workspaceData.patient.id}
+          encounterId={selectedEncounterId || undefined}
+          hospitalId={activeHospitalId || undefined}
+          onSuccess={() => refetchImaging()}
+        />
+      )}
+
+      {/* Printable Clinical Discharge Summary Modal */}
+      {workspaceData && (
+        <PrintableDocumentModal
+          open={isPrintDischargeOpen}
+          onOpenChange={setIsPrintDischargeOpen}
+          title="Clinical Discharge & Consultation Summary"
+          documentRefCode={`DOC-${workspaceData.encounter.id.slice(0, 8).toUpperCase()}`}
+        >
+          <DischargeSummaryDocument
+            hospital={{
+              name: "HospNest Accredited Hospital",
+              address: "Tertiary Health Complex",
+              state: "Nigeria",
+              contactPhone: "+234 800 000 9999",
+              licenseNumber: "FMOH-CLIN-001",
+            }}
+            patient={{
+              fullName: workspaceData.patient.fullName,
+              nin: workspaceData.patient.nin,
+              age: workspaceData.patient.age,
+              gender: workspaceData.patient.gender,
+              bloodGroup: workspaceData.patient.bloodGroup,
+            }}
+            discharge={{
+              summaryNumber: `DS-${workspaceData.encounter.id.slice(0, 8).toUpperCase()}`,
+              admissionDate: workspaceData.encounter.createdAt,
+              dischargeDate: new Date().toISOString(),
+              wardName: "Consultation Outpatient",
+              attendingPhysician: workspaceData.encounter.practitionerName
+                ? `Dr. ${workspaceData.encounter.practitionerName}`
+                : "Dr. Attending Medical Officer",
+              admissionReason: workspaceData.encounter.chiefComplaint || "Medical Consultation",
+              primaryDiagnosis: workspaceData.encounter.diagnosis || customDiagnosis || "Clinical Assessment",
+              secondaryDiagnoses: selectedDiagnoses.map((d) => d.name),
+              hospitalCourseSummary:
+                presentingComplaint ||
+                workspaceData.encounter.clinicalNotes ||
+                "Patient presented for clinical evaluation and diagnostic review. Physical examination conducted and appropriate therapeutic plan initiated.",
+              dischargeCondition: "improved",
+              dischargeMedications: workspaceData.activePrescriptions.map((rx) => ({
+                drugName: rx.drugName,
+                dosage: rx.dosage,
+                frequency: rx.frequency,
+                duration: rx.duration,
+                specialInstructions: rx.instructions || undefined,
+              })),
+              followUpInstructions:
+                "Adhere to prescribed medication regimen. Report immediately to emergency unit if symptoms worsen.",
+              nextAppointmentDate: "In 2 weeks",
+            }}
+          />
+        </PrintableDocumentModal>
+      )}
     </div>
   );
 }

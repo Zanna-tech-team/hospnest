@@ -53,7 +53,10 @@ import {
   recordLabResult,
   type LabWorklistItem,
 } from "@/lib/lab.functions";
+import { PrintableDocumentModal } from "@/components/clinical-docs/PrintableDocumentModal";
+import { LabReportDocument } from "@/components/clinical-docs/LabReportDocument";
 import { toast } from "sonner";
+import { Printer } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/lab")({
   head: () => ({
@@ -84,6 +87,10 @@ function LabWorkbenchPage() {
   const [referenceRange, setReferenceRange] = useState("");
   const [abnormalFlag, setAbnormalFlag] = useState<"normal" | "abnormal" | "critical">("normal");
   const [comments, setComments] = useState("");
+
+  // Printable Report state
+  const [printingLabItem, setPrintingLabItem] = useState<LabWorklistItem | null>(null);
+  const [isPrintReportOpen, setIsPrintReportOpen] = useState(false);
 
   const [isPending, startTransition] = useTransition();
 
@@ -521,15 +528,28 @@ function LabWorkbenchPage() {
                   )}
 
                   {(item.status === "completed" || item.status === "critical") && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleOpenResultModal(item)}
-                      disabled={isPending}
-                      className="text-xs h-8 gap-1.5 border-border"
-                    >
-                      <FileText className="size-3.5" /> Edit Result
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setPrintingLabItem(item);
+                          setIsPrintReportOpen(true);
+                        }}
+                        className="text-xs h-8 gap-1.5 border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 font-semibold"
+                      >
+                        <Printer className="size-3.5 text-teal-600" /> Print Report
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenResultModal(item)}
+                        disabled={isPending}
+                        className="text-xs h-8 gap-1.5 border-border"
+                      >
+                        <FileText className="size-3.5" /> Edit Result
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -677,6 +697,60 @@ function LabWorkbenchPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Printable Diagnostic Laboratory Report Modal */}
+      {printingLabItem && (
+        <PrintableDocumentModal
+          open={isPrintReportOpen}
+          onOpenChange={setIsPrintReportOpen}
+          title="Diagnostic Pathology Report"
+          documentRefCode={`LAB-${printingLabItem.id.slice(0, 8).toUpperCase()}`}
+        >
+          <LabReportDocument
+            hospital={{
+              name: labData?.hospitalName || "HospNest Diagnostic Laboratory",
+              address: "Department of Pathology & Medical Investigation",
+              state: "Nigeria",
+              contactPhone: "+234 800 000 9999",
+              licenseNumber: "FMOH-LAB-014",
+            }}
+            patient={{
+              fullName: printingLabItem.patient.fullName,
+              nin: printingLabItem.patient.nin,
+              age: printingLabItem.patient.age,
+              gender: printingLabItem.patient.gender,
+            }}
+            lab={{
+              reportNumber: `LAB-${printingLabItem.id.slice(0, 8).toUpperCase()}`,
+              testName: printingLabItem.test.name,
+              testCode: printingLabItem.test.code,
+              category: printingLabItem.test.category || "Clinical Investigation",
+              specimenType: printingLabItem.sampleType || "Blood / Serum",
+              collectionDate: printingLabItem.sampleCollectedAt || printingLabItem.createdAt,
+              reportedDate: printingLabItem.resultMetadata?.enteredAt || new Date().toISOString(),
+              orderingDoctor: printingLabItem.orderedByDoctor.fullName
+                ? `Dr. ${printingLabItem.orderedByDoctor.fullName}`
+                : "Attending Physician",
+              pathologistOrScientist:
+                printingLabItem.technician.fullName || "Medical Laboratory Scientist",
+              overallStatus: printingLabItem.isCritical ? "critical" : "completed",
+              clinicalIndication: "Clinical evaluation & diagnostic investigation",
+              parameters: [
+                {
+                  parameterName: printingLabItem.test.name,
+                  measuredValue: printingLabItem.resultValue || "Recorded",
+                  unit: printingLabItem.resultMetadata?.unit || "",
+                  referenceInterval: printingLabItem.resultMetadata?.referenceRange || "Normal Range",
+                  flag: printingLabItem.resultMetadata?.abnormalFlag || "normal",
+                },
+              ],
+              comments:
+                printingLabItem.resultMetadata?.comments ||
+                "Result validated and authorized in accordance with standard medical laboratory protocol.",
+            }}
+          />
+        </PrintableDocumentModal>
+      )}
     </div>
   );
 }

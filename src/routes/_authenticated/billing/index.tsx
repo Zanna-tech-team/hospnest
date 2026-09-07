@@ -59,6 +59,8 @@ import {
   type HospitalServiceItem,
   type BillingClaimItem,
 } from "@/lib/billing.functions";
+import { PrintableDocumentModal } from "@/components/clinical-docs/PrintableDocumentModal";
+import { PaymentReceiptDocument } from "@/components/clinical-docs/PaymentReceiptDocument";
 
 export const Route = createFileRoute("/_authenticated/billing/")({
   component: BillingPage,
@@ -1022,181 +1024,67 @@ export function BillingPage() {
         </DialogContent>
       </Dialog>
 
-      {/* PRINTABLE RECEIPT DIALOG WITH CLEAN PRINT CSS */}
-      <Dialog open={isReceiptModalOpen} onOpenChange={setIsReceiptModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader className="print:hidden">
-            <DialogTitle className="font-display text-lg font-bold">Official Invoice & Payment Receipt</DialogTitle>
-          </DialogHeader>
-
-          {selectedInvoice && (
-            <div id="printable-receipt" className="space-y-5 p-4 bg-card text-foreground font-sans print:p-0">
-              {/* Receipt Header */}
-              <div className="flex justify-between items-start border-b border-border pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                      <Building2 className="size-6" />
-                    </div>
-                    <div>
-                      <h2 className="font-display text-xl font-bold text-foreground tracking-tight">
-                        {data?.hospitalName || "HospNest Health Center"}
-                      </h2>
-                      <p className="text-xs text-muted-foreground">National Clinical Electronic Health Platform</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-right font-mono text-xs">
-                  <div className="font-bold text-base text-foreground">{selectedInvoice.invoiceNumber}</div>
-                  <div className="text-muted-foreground">Date: {new Date(selectedInvoice.createdAt).toLocaleDateString()}</div>
-                  <span
-                    className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                      selectedInvoice.status === "paid"
-                        ? "bg-emerald-500/15 text-emerald-700"
-                        : "bg-amber-500/15 text-amber-700"
-                    }`}
-                  >
-                    {selectedInvoice.status.replace("_", " ")}
-                  </span>
-                </div>
-              </div>
-
-              {/* Patient & Encounter Details */}
-              <div className="grid grid-cols-2 gap-4 text-xs bg-muted/20 p-3 rounded-xl border border-border">
-                <div>
-                  <span className="text-muted-foreground text-[10px] uppercase font-bold block">Patient Details</span>
-                  <span className="font-bold text-foreground text-sm">{selectedInvoice.patientName}</span>
-                  <div className="text-muted-foreground mt-0.5">
-                    Age: {selectedInvoice.patientAge || "N/A"} • Gender: {selectedInvoice.patientGender || "N/A"}
-                  </div>
-                  {selectedInvoice.patientNin && (
-                    <div className="font-mono text-muted-foreground">NIN: {selectedInvoice.patientNin}</div>
-                  )}
-                </div>
-
-                <div className="text-right">
-                  <span className="text-muted-foreground text-[10px] uppercase font-bold block">Encounter Info</span>
-                  <span className="font-semibold text-foreground">Attending: {selectedInvoice.doctorName || "Staff"}</span>
-                  {selectedInvoice.insuranceProvider && (
-                    <div className="text-blue-600 font-medium mt-0.5">
-                      HMO: {selectedInvoice.insuranceProvider} ({selectedInvoice.insurancePolicyNumber || "Enrollee"})
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Itemized Line Items Table */}
-              <div className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Itemized Charges</span>
-                <table className="w-full text-xs text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40 text-[11px] font-bold text-muted-foreground">
-                      <th className="py-2 px-3">Service / Item Description</th>
-                      <th className="py-2 px-3 text-center">Qty</th>
-                      <th className="py-2 px-3 text-right">Unit Price</th>
-                      <th className="py-2 px-3 text-right">Total Price</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/40 font-mono">
-                    {selectedInvoice.lineItems.map((item) => (
-                      <tr key={item.id}>
-                        <td className="py-2 px-3 font-sans font-medium text-foreground">
-                          {item.description || "Medical Service"}
-                          <span className="text-muted-foreground ml-1.5 text-[10px] uppercase font-mono">
-                            [{item.serviceType}]
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-center">{item.quantity}</td>
-                        <td className="py-2 px-3 text-right">₦{item.unitPrice.toLocaleString()}</td>
-                        <td className="py-2 px-3 text-right font-bold">₦{item.totalPrice.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Financial Totals Summary */}
-              <div className="flex justify-end pt-2 border-t border-border">
-                <div className="w-64 space-y-1.5 text-xs font-mono">
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Gross Subtotal:</span>
-                    <span>₦{selectedInvoice.totalAmount.toLocaleString()}</span>
-                  </div>
-                  {selectedInvoice.insuranceCoverageAmount > 0 && (
-                    <div className="flex justify-between text-blue-600 font-semibold">
-                      <span>HMO Coverage:</span>
-                      <span>-₦{selectedInvoice.insuranceCoverageAmount.toLocaleString()}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between font-bold text-foreground pt-1 border-t border-border">
-                    <span>Patient Payable:</span>
-                    <span>₦{selectedInvoice.patientPayableAmount.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-emerald-600 font-bold">
-                    <span>Amount Paid to Date:</span>
-                    <span>₦{selectedInvoice.amountPaid.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-sm font-bold text-foreground pt-1 border-t-2 border-border">
-                    <span>Balance Due:</span>
-                    <span className={selectedInvoice.balanceDue > 0 ? "text-rose-600" : "text-emerald-600"}>
-                      ₦{selectedInvoice.balanceDue.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Payments History Table */}
-              {selectedInvoice.payments.length > 0 && (
-                <div className="space-y-1.5 pt-2 border-t border-border/60">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Payment Receipts Recorded
-                  </span>
-                  <div className="space-y-1">
-                    {selectedInvoice.payments.map((p) => (
-                      <div
-                        key={p.id}
-                        className="flex justify-between items-center text-[11px] bg-muted/20 px-3 py-1.5 rounded border border-border/40 font-mono"
-                      >
-                        <div>
-                          <span className="font-bold text-foreground uppercase">{p.paymentMethod.replace("_", " ")}</span>
-                          <span className="text-muted-foreground ml-2">Ref: {p.transactionReference || "Direct"}</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="font-bold text-emerald-600">₦{p.amountPaid.toLocaleString()}</span>
-                          <span className="text-muted-foreground ml-2">
-                            ({new Date(p.paidAt).toLocaleDateString()})
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Footer Stamp & Disclaimer */}
-              <div className="pt-4 border-t border-dashed border-border flex justify-between items-end text-[10px] text-muted-foreground">
-                <div>
-                  <p>Thank you for choosing HospNest Health Services.</p>
-                  <p>Computer generated invoice & receipt. Valid without physical stamp.</p>
-                </div>
-                <div className="text-right">
-                  <div className="border-t border-muted-foreground/40 pt-1 w-32 text-center">Authorized Cashier</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2 print:hidden">
-            <Button variant="outline" size="sm" onClick={() => setIsReceiptModalOpen(false)}>
-              Close
-            </Button>
-            <Button size="sm" onClick={handlePrint} className="bg-primary text-primary-foreground font-semibold">
-              <Printer className="mr-1.5 size-4" /> Print Official Receipt
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* PRINTABLE OFFICIAL PAYMENT RECEIPT MODAL */}
+      {selectedInvoice && (
+        <PrintableDocumentModal
+          open={isReceiptModalOpen}
+          onOpenChange={setIsReceiptModalOpen}
+          title="Official Hospital Payment Receipt"
+          documentRefCode={selectedInvoice.invoiceNumber}
+        >
+          <PaymentReceiptDocument
+            hospital={{
+              name: data?.hospitalName || "HospNest Hospital",
+              address: "Revenue & Finance Billing Directorate",
+              state: "Nigeria",
+              contactPhone: "+234 800 000 9999",
+              licenseNumber: "FMOH-REV-001",
+            }}
+            patient={{
+              fullName: selectedInvoice.patientName,
+              nin: selectedInvoice.patientNin,
+              phone: selectedInvoice.patientPhone,
+              insuranceProvider: selectedInvoice.insuranceProvider,
+              policyNumber: selectedInvoice.insurancePolicyNumber,
+            }}
+            receipt={{
+              receiptNumber: `RCPT-${selectedInvoice.invoiceNumber.replace("INV-", "")}`,
+              invoiceNumber: selectedInvoice.invoiceNumber,
+              paymentDate:
+                selectedInvoice.payments.length > 0
+                  ? selectedInvoice.payments[0]!.paidAt
+                  : selectedInvoice.createdAt,
+              paymentMethod:
+                selectedInvoice.payments.length > 0
+                  ? selectedInvoice.payments[0]!.paymentMethod
+                  : "cash",
+              transactionReference:
+                selectedInvoice.payments.length > 0
+                  ? selectedInvoice.payments[0]!.transactionReference || "DIRECT-SETTLE"
+                  : `TXN-${selectedInvoice.id.slice(0, 8).toUpperCase()}`,
+              recordedBy: selectedInvoice.doctorName
+                ? `Cashier (Signed by ${selectedInvoice.doctorName})`
+                : "Authorized Revenue Officer",
+              lineItems: selectedInvoice.lineItems.map((l) => ({
+                description: l.description || "Hospital Healthcare Service",
+                serviceType: l.serviceType,
+                quantity: l.quantity,
+                unitPrice: l.unitPrice,
+                totalPrice: l.totalPrice,
+              })),
+              subtotal: selectedInvoice.totalAmount,
+              insuranceCoverage: selectedInvoice.insuranceCoverageAmount,
+              patientPayable: selectedInvoice.patientPayableAmount,
+              amountPaid: selectedInvoice.amountPaid,
+              balanceRemaining: selectedInvoice.balanceDue,
+              amountInWords:
+                selectedInvoice.amountPaid > 0
+                  ? `Payment of standard hospital fees fulfilled in Nigerian Naira (NGN)`
+                  : undefined,
+            }}
+          />
+        </PrintableDocumentModal>
+      )}
     </div>
   );
 }

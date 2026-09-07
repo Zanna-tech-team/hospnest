@@ -25,6 +25,8 @@ import {
   Info,
   Loader2,
   Lock,
+  Scan,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,18 +57,25 @@ import {
   requestBreakGlassAccess,
   type PatientProfileData,
 } from "@/lib/patient-profile.functions";
+import {
+  getPatientImagingStudies,
+  type RadiologyStudyItem,
+} from "@/lib/radiology.functions";
+import { MedicalImageViewerModal } from "@/components/radiology/MedicalImageViewerModal";
+import { UploadImagingModal } from "@/components/radiology/UploadImagingModal";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/patients/$patientId")({
   component: PatientProfilePage,
 });
 
-type TabType = "visits" | "vitals" | "labs" | "prescriptions" | "invoices" | "notes";
+type TabType = "visits" | "vitals" | "labs" | "imaging" | "prescriptions" | "invoices" | "notes";
 
 function PatientProfilePage() {
   const { patientId } = Route.useParams();
   const { activeHospitalId } = useAppShell();
   const getProfileFn = useServerFn(getPatientProfile);
+  const getImagingStudiesFn = useServerFn(getPatientImagingStudies);
   const updateDemographicsFn = useServerFn(updatePatientDemographics);
   const toggleConsentFn = useServerFn(togglePatientConsent);
   const requestBreakGlassFn = useServerFn(requestBreakGlassAccess);
@@ -77,6 +86,10 @@ function PatientProfilePage() {
   const [breakGlassJustification, setBreakGlassJustification] = useState("");
   const [isPending, startTransition] = useTransition();
 
+  // Radiology state
+  const [viewingStudy, setViewingStudy] = useState<RadiologyStudyItem | null>(null);
+  const [isUploadScanOpen, setIsUploadScanOpen] = useState(false);
+
   const {
     data: profile,
     isLoading,
@@ -86,6 +99,15 @@ function PatientProfilePage() {
   } = useQuery({
     queryKey: ["patient-profile", patientId, activeHospitalId],
     queryFn: () => getProfileFn({ data: { patientId, hospitalId: activeHospitalId || undefined } }),
+    enabled: Boolean(patientId),
+  });
+
+  const {
+    data: imagingData,
+    refetch: refetchImaging,
+  } = useQuery({
+    queryKey: ["patient-imaging", patientId, activeHospitalId],
+    queryFn: () => getImagingStudiesFn({ data: { patientId, hospitalId: activeHospitalId || undefined } }),
     enabled: Boolean(patientId),
   });
 
@@ -574,6 +596,7 @@ function PatientProfilePage() {
             { id: "visits", label: "Visits & Encounters", icon: Calendar, count: encounters.length },
             { id: "vitals", label: "Vitals History", icon: Activity, count: vitals.length },
             { id: "labs", label: "Lab Results", icon: FlaskConical, count: labOrders.length },
+            { id: "imaging", label: "Medical Imaging", icon: Scan, count: imagingData?.studies?.length ?? 0 },
             { id: "prescriptions", label: "Prescriptions", icon: Pill, count: prescriptions.length },
             { id: "invoices", label: "Invoices & Billing", icon: Receipt, count: invoices.length },
             { id: "notes", label: "Clinical Notes", icon: FileText, count: null },
@@ -805,6 +828,141 @@ function PatientProfilePage() {
                       ) : (
                         <div className="text-xs text-muted-foreground italic">Restricted view</div>
                       )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Medical Imaging & Scans */}
+        {activeTab === "imaging" && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Diagnostic Imaging & Radiology Archive</h3>
+                <p className="text-xs text-muted-foreground">
+                  X-rays, CT Scans, Ultrasounds, and MRIs linked to patient clinical record.
+                </p>
+              </div>
+
+              {isClinical && (
+                <Button
+                  size="sm"
+                  onClick={() => setIsUploadScanOpen(true)}
+                  className="gap-1.5 bg-primary text-primary-foreground text-xs font-semibold"
+                >
+                  <Plus className="size-3.5" />
+                  Attach New Scan
+                </Button>
+              )}
+            </div>
+
+            {!imagingData?.studies || imagingData.studies.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border bg-card/50 p-12 text-center">
+                <Scan className="mx-auto size-10 text-muted-foreground/60" />
+                <h3 className="mt-3 font-display text-base font-semibold text-foreground">
+                  No medical imaging studies recorded
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground max-w-sm mx-auto">
+                  Diagnostic scans (X-rays, CT, MRI, Ultrasounds) ordered during encounters will appear here.
+                </p>
+                {isClinical && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsUploadScanOpen(true)}
+                    className="mt-4 gap-1.5 text-xs"
+                  >
+                    <Plus className="size-3.5" />
+                    Attach First Scan
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {imagingData.studies.map((study) => (
+                  <div
+                    key={study.id}
+                    className="group relative flex flex-col justify-between overflow-hidden rounded-xl border border-border bg-card shadow-soft transition-all hover:border-primary/50 hover:shadow-md"
+                  >
+                    {/* Scan thumbnail / preview banner */}
+                    <div
+                      className="relative h-44 w-full cursor-pointer overflow-hidden bg-slate-950 flex items-center justify-center"
+                      onClick={() => setViewingStudy(study)}
+                    >
+                      <img
+                        src={study.imageUrl}
+                        alt={study.bodyPart}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+                      {/* Modality & Critical Badges */}
+                      <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                        <span className="rounded bg-teal-500/90 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-950">
+                          {study.modality}
+                        </span>
+                        {study.isCritical && (
+                          <span className="rounded bg-rose-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white animate-pulse">
+                            CRITICAL
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="absolute top-2.5 right-2.5">
+                        <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] font-medium text-slate-300 backdrop-blur-sm">
+                          {new Date(study.studyDate).toLocaleDateString()}
+                        </span>
+                      </div>
+
+                      <div className="absolute bottom-2.5 left-2.5 right-2.5">
+                        <p className="text-xs font-bold text-white line-clamp-1">{study.bodyPart}</p>
+                        <p className="text-[11px] text-slate-300 line-clamp-1">
+                          {study.clinicalIndication || "Diagnostic examination"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Scan details & findings */}
+                    <div className="p-3.5 space-y-2.5 text-xs flex-1 flex flex-col justify-between">
+                      <div className="space-y-1.5">
+                        {study.impression ? (
+                          <div>
+                            <span className="text-[11px] font-semibold text-foreground block">Impression:</span>
+                            <p className="text-muted-foreground line-clamp-2 text-[11px]">
+                              {study.impression}
+                            </p>
+                          </div>
+                        ) : study.findings ? (
+                          <div>
+                            <span className="text-[11px] font-semibold text-foreground block">Findings:</span>
+                            <p className="text-muted-foreground line-clamp-2 text-[11px]">
+                              {study.findings}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground italic">
+                            Awaiting radiologist structured reporting.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="pt-2 border-t border-border flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-muted-foreground">
+                          {study.radiologistName ? `Rep: ${study.radiologistName}` : "Unreported"}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setViewingStudy(study)}
+                          className="h-7 text-xs font-semibold gap-1"
+                        >
+                          <Scan className="size-3" />
+                          View Scan
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1333,6 +1491,28 @@ function PatientProfilePage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* DIAGNOSTIC IMAGING VIEWER MODAL */}
+      <MedicalImageViewerModal
+        study={viewingStudy}
+        patientName={patient.fullName}
+        open={Boolean(viewingStudy)}
+        onOpenChange={(open) => !open && setViewingStudy(null)}
+        onReportSaved={() => {
+          refetchImaging();
+        }}
+      />
+
+      {/* UPLOAD IMAGING STUDY MODAL */}
+      <UploadImagingModal
+        open={isUploadScanOpen}
+        onOpenChange={setIsUploadScanOpen}
+        patientId={patient.id}
+        patientName={patient.fullName}
+        onUploadComplete={() => {
+          refetchImaging();
+        }}
+      />
     </div>
   );
 }
