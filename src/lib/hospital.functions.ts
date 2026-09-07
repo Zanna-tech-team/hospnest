@@ -156,5 +156,32 @@ export const createHospital = createServerFn({ method: "POST" })
       phone: data.contactPhone,
     });
 
+    // Auto-initialize published custom landing page
+    await supabaseAdmin.from("hospital_landing_pages").insert({
+      hospital_id: hospital.id,
+      hero_headline: `Welcome to ${data.name}`,
+      hero_subheadline: `Excellence in specialized and primary healthcare in ${data.state}, Nigeria.`,
+      about_us: `${data.name} is a licensed healthcare provider committed to clinical excellence, compassionate patient recovery, and cutting-edge diagnostics.`,
+      brand_color_primary: "#0d9488",
+      brand_color_secondary: "#0284c7",
+      is_published: true,
+      public_contact: {
+        emergencyPhone: data.contactPhone || "+234 800 000 9999",
+        generalInquiries: data.contactEmail || "info@hospital.ng",
+        openingHours: "Open 24 Hours / 7 Days",
+      },
+    }).select().maybeSingle();
+
+    // Auto-initialize default ward with beds
+    await supabaseAdmin.from("wards").insert({
+      hospital_id: hospital.id,
+      name: "Main Inpatient Ward",
+      ward_type: "general",
+      floor: "Ground Floor",
+      gender: "mixed",
+      total_beds: 20,
+      is_active: true,
+    }).select().maybeSingle();
+
     return { hospitalId: hospital.id as string, name: hospital.name as string, slug };
   });
