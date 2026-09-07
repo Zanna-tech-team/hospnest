@@ -196,9 +196,12 @@ function FrontDesk() {
               You are not attached to a hospital yet
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              A hospital administrator has to add you to their team before you can open patient
-              records. Once they do, this page unlocks automatically.
+              Register your own hospital to become its administrator, or ask an existing
+              administrator to add you to their team — this page unlocks as soon as they do.
             </p>
+            <Button asChild className="mt-4">
+              <Link to="/hospital-setup">Register your hospital</Link>
+            </Button>
           </div>
         ) : (
           <div className="mt-8 space-y-6">
