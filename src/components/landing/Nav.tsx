@@ -7,6 +7,7 @@ const links = [
   { label: "Platform", href: "#platform" },
   { label: "Journey", href: "#journey" },
   { label: "Modules", href: "#modules" },
+  { label: "Hospitals", href: "#hospitals-directory" },
   { label: "Multi-tenant", href: "#tenants" },
 ];
 

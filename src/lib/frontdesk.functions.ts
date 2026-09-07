@@ -340,3 +340,181 @@ export const openEncounterForPatient = createServerFn({ method: "POST" })
 
     return { encounterId: encounter.id as string, alreadyOpen: false as const, queueNumber };
   });
+
+/** Retrieves scheduled and recent appointments for the hospital workbench */
+export const getHospitalAppointments = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { hospitalId: string; statusFilter?: string }) => {
+    if (!input?.hospitalId) throw new Error("Choose a hospital first.");
+    return {
+      hospitalId: input.hospitalId,
+      statusFilter: input.statusFilter || "all",
+    };
+  })
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await assertHospitalStaff(supabase, userId, data.hospitalId);
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    let query = supabaseAdmin
+      .from("appointments")
+      .select(`
+        id,
+        hospital_id,
+        patient_id,
+        doctor_id,
+        department_id,
+        appointment_date,
+        status,
+        is_walk_in,
+        queue_number,
+        symptoms_summary,
+        created_at,
+        patients (
+          id,
+          nin,
+          first_name,
+          last_name,
+          phone,
+          gender,
+          date_of_birth
+        ),
+        departments (
+          id,
+          name
+        )
+      `)
+      .eq("hospital_id", data.hospitalId)
+      .order("appointment_date", { ascending: true });
+
+    if (data.statusFilter && data.statusFilter !== "all") {
+      query = (query as any).eq("status", data.statusFilter);
+    }
+
+    const { data: appointments, error } = await query;
+    if (error) throw new Error(error.message);
+
+    return { appointments: appointments || [] };
+  });
+
+/** Checks in a booked patient appointment, creating an encounter in triage */
+export const checkInBookedAppointment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { appointmentId: string; hospitalId: string }) => {
+    if (!input?.appointmentId) throw new Error("Appointment ID is required.");
+    if (!input?.hospitalId) throw new Error("Choose a hospital first.");
+    return {
+      appointmentId: input.appointmentId,
+      hospitalId: input.hospitalId,
+    };
+  })
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const role = await assertHospitalStaff(supabase, userId, data.hospitalId);
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Fetch the appointment
+    const { data: appt, error: apptError } = await supabaseAdmin
+      .from("appointments")
+      .select("id, patient_id, department_id, symptoms_summary, status, is_walk_in")
+      .eq("id", data.appointmentId)
+      .eq("hospital_id", data.hospitalId)
+      .single();
+
+    if (apptError || !appt) {
+      throw new Error("Appointment not found.");
+    }
+
+    // Check if open encounter already exists
+    const { data: openVisit } = await supabaseAdmin
+      .from("encounters")
+      .select("id")
+      .eq("patient_id", appt.patient_id)
+      .eq("hospital_id", data.hospitalId)
+      .not("encounter_status", "in", "(discharged,closed)")
+      .maybeSingle();
+
+    if (openVisit) {
+      // Update appointment status to checked_in if needed
+      if (appt.status !== "checked_in") {
+        await supabaseAdmin
+          .from("appointments")
+          .update({ status: "checked_in" })
+          .eq("id", data.appointmentId);
+      }
+      return { encounterId: openVisit.id as string, alreadyOpen: true as const, queueNumber: null };
+    }
+
+    // Grant or renew active consent
+    const { data: consentRow } = await supabaseAdmin
+      .from("patient_consents")
+      .select("id")
+      .eq("patient_id", appt.patient_id)
+      .eq("hospital_id", data.hospitalId)
+      .maybeSingle();
+
+    if (consentRow) {
+      await supabaseAdmin
+        .from("patient_consents")
+        .update({ is_active: true, expires_at: null, granted_by: userId })
+        .eq("id", consentRow.id);
+    } else {
+      await supabaseAdmin.from("patient_consents").insert({
+        patient_id: appt.patient_id,
+        hospital_id: data.hospitalId,
+        granted_by: userId,
+        scope: "full_record",
+      });
+    }
+
+    // Calculate today's queue number
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const { count: todaysVisits } = await supabaseAdmin
+      .from("appointments")
+      .select("id", { count: "exact", head: true })
+      .eq("hospital_id", data.hospitalId)
+      .gte("appointment_date", startOfDay.toISOString())
+      .eq("status", "checked_in");
+
+    const queueNumber = (todaysVisits ?? 0) + 1;
+
+    // Update appointment
+    await supabaseAdmin
+      .from("appointments")
+      .update({
+        status: "checked_in",
+        queue_number: queueNumber,
+      })
+      .eq("id", data.appointmentId);
+
+    // Create encounter
+    const { data: encounter, error: encError } = await supabaseAdmin
+      .from("encounters")
+      .insert({
+        hospital_id: data.hospitalId,
+        patient_id: appt.patient_id,
+        appointment_id: data.appointmentId,
+        department_id: appt.department_id,
+        encounter_status: "triage",
+        chief_complaint: appt.symptoms_summary || "Scheduled clinic consultation",
+      })
+      .select("id")
+      .single();
+
+    if (encError) throw new Error(encError.message);
+
+    await writeAuditEntry(supabase, {
+      hospital_id: data.hospitalId,
+      accessor_id: userId,
+      accessor_role: role,
+      patient_id: appt.patient_id,
+      encounter_id: encounter.id,
+      action: "WRITE",
+      justification: "Front desk check-in of booked appointment, visit opened for triage",
+    });
+
+    return { encounterId: encounter.id as string, alreadyOpen: false as const, queueNumber };
+  });

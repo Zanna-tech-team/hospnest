@@ -1396,6 +1396,124 @@ export type Database = {
           },
         ]
       }
+      staff_invitations: {
+        Row: {
+          created_at: string
+          department_id: string | null
+          email: string
+          expires_at: string
+          full_name: string
+          hospital_id: string
+          id: string
+          invited_by: string | null
+          role: Database["public"]["Enums"]["user_role_type"]
+          staff_id_code: string | null
+          status: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          department_id?: string | null
+          email: string
+          expires_at?: string
+          full_name: string
+          hospital_id: string
+          id?: string
+          invited_by?: string | null
+          role: Database["public"]["Enums"]["user_role_type"]
+          staff_id_code?: string | null
+          status?: string
+          token?: string
+        }
+        Update: {
+          created_at?: string
+          department_id?: string | null
+          email?: string
+          expires_at?: string
+          full_name?: string
+          hospital_id?: string
+          id?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["user_role_type"]
+          staff_id_code?: string | null
+          status?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_invitations_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_invitations_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_weekly_shifts: {
+        Row: {
+          created_at: string
+          day_of_week: number
+          department_id: string | null
+          end_time_str: string
+          hospital_id: string
+          id: string
+          is_active: boolean
+          staff_id: string
+          start_time_str: string
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: number
+          department_id?: string | null
+          end_time_str: string
+          hospital_id: string
+          id?: string
+          is_active?: boolean
+          staff_id: string
+          start_time_str: string
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: number
+          department_id?: string | null
+          end_time_str?: string
+          hospital_id?: string
+          id?: string
+          is_active?: boolean
+          staff_id?: string
+          start_time_str?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_weekly_shifts_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_weekly_shifts_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_weekly_shifts_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string

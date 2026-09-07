@@ -1,0 +1,1497 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import {
+  getPatientPortalDashboardData,
+  bookPatientAppointment,
+  updatePatientSelfProfile,
+  type PatientPortalDashboardResponse,
+  type PatientPortalAppointment,
+  type PatientPortalEncounter,
+  type PatientPortalLabResult,
+  type PatientPortalPrescription,
+  type PatientPortalInvoice,
+} from "@/lib/patient-portal.functions";
+import {
+  Activity,
+  AlertCircle,
+  AlertTriangle,
+  Calendar,
+  CalendarPlus,
+  Check,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  Droplet,
+  FileCheck2,
+  FileText,
+  FlaskConical,
+  HeartPulse,
+  Hospital,
+  Info,
+  Layers,
+  Lock,
+  Pill,
+  Printer,
+  Receipt,
+  RefreshCw,
+  Search,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Stethoscope,
+  Tag,
+  User,
+  UserCheck,
+  Pencil,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+
+export const Route = createFileRoute("/_authenticated/portal")({
+  component: PatientPortalPage,
+});
+
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function formatDate(dateStr?: string | null) {
+  if (!dateStr) return "N/A";
+  return new Date(dateStr).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatDateTime(dateStr?: string | null) {
+  if (!dateStr) return "N/A";
+  return new Date(dateStr).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function PatientPortalPage() {
+  const queryClient = useQueryClient();
+  const getDashboardFn = useServerFn(getPatientPortalDashboardData);
+  const bookApptFn = useServerFn(bookPatientAppointment);
+  const updateProfileFn = useServerFn(updatePatientSelfProfile);
+
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "visits" | "labs" | "prescriptions" | "invoices" | "profile"
+  >("overview");
+
+  // Booking Modal State
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [bookHospitalId, setBookHospitalId] = useState("");
+  const [bookDeptId, setBookDeptId] = useState<string>("");
+  const [bookDoctorId, setBookDoctorId] = useState<string>("");
+  const [bookDate, setBookDate] = useState("");
+  const [bookTime, setBookTime] = useState("09:00");
+  const [bookSymptoms, setBookSymptoms] = useState("");
+
+  // Edit Profile Modal State
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [profileEmergName, setProfileEmergName] = useState("");
+  const [profileEmergRel, setProfileEmergRel] = useState("");
+  const [profileEmergPhone, setProfileEmergPhone] = useState("");
+
+  // Print Invoice / Receipt View State
+  const [viewingInvoice, setViewingInvoice] = useState<PatientPortalInvoice | null>(null);
+
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<PatientPortalDashboardResponse>({
+    queryKey: ["patient-portal-dashboard"],
+    queryFn: () => getDashboardFn(),
+  });
+
+  const bookMutation = useMutation({
+    mutationFn: async () => {
+      const fullDateTime = `${bookDate}T${bookTime}:00`;
+      return bookApptFn({
+        data: {
+          hospitalId: bookHospitalId,
+          departmentId: bookDeptId || undefined,
+          doctorId: bookDoctorId || undefined,
+          appointmentDate: new Date(fullDateTime).toISOString(),
+          symptomsSummary: bookSymptoms,
+        },
+      });
+    },
+    onSuccess: () => {
+      toast.success("Appointment booked successfully! Our clinic team has been notified.");
+      setBookingOpen(false);
+      setBookSymptoms("");
+      queryClient.invalidateQueries({ queryKey: ["patient-portal-dashboard"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to book appointment");
+    },
+  });
+
+  const profileMutation = useMutation({
+    mutationFn: async () => {
+      return updateProfileFn({
+        data: {
+          phone: profilePhone,
+          email: profileEmail,
+          emergencyContact: {
+            name: profileEmergName,
+            relationship: profileEmergRel,
+            phone: profileEmergPhone,
+          },
+        },
+      });
+    },
+    onSuccess: () => {
+      toast.success("Profile contact details updated successfully.");
+      setEditProfileOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["patient-portal-dashboard"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to update profile");
+    },
+  });
+
+  const handleOpenEditProfile = () => {
+    if (data?.patient) {
+      setProfilePhone(data.patient.phone || "");
+      setProfileEmail(data.patient.email || "");
+      setProfileEmergName(data.patient.emergencyContact?.name || "");
+      setProfileEmergRel(data.patient.emergencyContact?.relationship || "");
+      setProfileEmergPhone(data.patient.emergencyContact?.phone || "");
+      setEditProfileOpen(true);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-[80vh] flex-col items-center justify-center gap-4">
+        <RefreshCw className="h-8 w-8 animate-spin text-teal-600" />
+        <p className="text-sm font-medium text-muted-foreground">
+          Loading your verified medical portal and health records...
+        </p>
+      </div>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive mb-4">
+          <AlertCircle className="h-7 w-7" />
+        </div>
+        <h2 className="font-display text-xl font-bold text-foreground">
+          Unable to Load Patient Portal
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : "You may need to link your NIN identity with the hospital first."}
+        </p>
+        <div className="mt-6 flex justify-center gap-3">
+          <Button onClick={() => refetch()} variant="outline">
+            <RefreshCw className="mr-2 h-4 w-4" /> Try Again
+          </Button>
+          <Button asChild className="bg-teal-600 hover:bg-teal-700 text-white">
+            <a href="/auth?tab=patient">Verify NIN Record</a>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const {
+    patient,
+    upcomingAppointments,
+    recentEncounters,
+    recentLabResults,
+    activePrescriptions,
+    invoices,
+    availableHospitals,
+    counts,
+  } = data;
+
+  const selectedHospital = availableHospitals.find((h) => h.id === bookHospitalId);
+  const selectedHospitalDepts = selectedHospital?.departments || [];
+  const selectedHospitalDoctors = selectedHospital?.doctors || [];
+
+  return (
+    <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950/40 pb-16">
+      {/* Top Banner with Patient Demographics summary */}
+      <div className="border-b border-border bg-card px-4 py-6 sm:px-8">
+        <div className="mx-auto max-w-7xl flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-md font-display text-xl font-bold">
+              {patient.firstName.charAt(0)}
+              {patient.lastName.charAt(0)}
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="font-display text-2xl font-bold text-foreground">
+                  {patient.fullName}
+                </h1>
+                <Badge variant="outline" className="bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20 font-mono text-xs">
+                  NIN: {patient.nin.slice(0, 3)}••••{patient.nin.slice(-3)}
+                </Badge>
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20 text-xs">
+                  <ShieldCheck className="h-3 w-3 mr-1" />
+                  Verified Identity
+                </Badge>
+              </div>
+              <p className="mt-1 text-xs sm:text-sm text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>DOB: {formatDate(patient.dateOfBirth)}</span>
+                <span>•</span>
+                <span>Gender: {patient.gender || "Not specified"}</span>
+                {patient.bloodGroup && (
+                  <>
+                    <span>•</span>
+                    <span className="font-semibold text-rose-600 dark:text-rose-400">
+                      Blood: {patient.bloodGroup}
+                    </span>
+                  </>
+                )}
+                {patient.genotype && (
+                  <>
+                    <span>•</span>
+                    <span className="font-semibold text-purple-600 dark:text-purple-400">
+                      Genotype: {patient.genotype}
+                    </span>
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isRefetching}
+              className="text-xs"
+            >
+              <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isRefetching ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleOpenEditProfile}
+              className="text-xs"
+            >
+              <Pencil className="mr-1.5 h-3.5 w-3.5" />
+              Edit Contact Info
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (availableHospitals.length > 0 && !bookHospitalId) {
+                  setBookHospitalId(availableHospitals[0]!.id);
+                }
+                setBookingOpen(true);
+              }}
+              className="bg-teal-600 hover:bg-teal-700 text-white shadow-sm text-xs font-semibold"
+            >
+              <CalendarPlus className="mr-1.5 h-4 w-4" />
+              Book Appointment
+            </Button>
+          </div>
+        </div>
+
+        {/* Clinical alerts ribbon if allergies or chronic conditions exist */}
+        {(patient.allergies.length > 0 || patient.chronicConditions.length > 0) && (
+          <div className="mx-auto max-w-7xl mt-4 pt-4 border-t border-border flex flex-wrap gap-2 items-center">
+            <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1 mr-2">
+              <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
+              Medical Alerts:
+            </span>
+            {patient.allergies.map((allergy, i) => (
+              <Badge key={i} variant="destructive" className="text-[11px] font-medium">
+                Allergy: {allergy}
+              </Badge>
+            ))}
+            {patient.chronicConditions.map((cond, i) => (
+              <Badge
+                key={i}
+                variant="outline"
+                className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 text-[11px] font-medium"
+              >
+                Condition: {cond}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Main Portal Body */}
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-8">
+        {/* KPI Counter Cards */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 mb-6">
+          <Card className="shadow-xs border-border/80">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Bookings</p>
+                <p className="font-display text-xl font-bold text-foreground mt-0.5">{counts.appointments}</p>
+              </div>
+              <div className="h-9 w-9 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center">
+                <Calendar className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-xs border-border/80">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Closed Visits</p>
+                <p className="font-display text-xl font-bold text-foreground mt-0.5">{counts.visits}</p>
+              </div>
+              <div className="h-9 w-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
+                <Stethoscope className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-xs border-border/80">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Lab Results</p>
+                <p className="font-display text-xl font-bold text-foreground mt-0.5">{counts.labs}</p>
+              </div>
+              <div className="h-9 w-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center">
+                <FlaskConical className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-xs border-border/80">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Prescriptions</p>
+                <p className="font-display text-xl font-bold text-foreground mt-0.5">{counts.prescriptions}</p>
+              </div>
+              <div className="h-9 w-9 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center">
+                <Pill className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className={`shadow-xs col-span-2 sm:col-span-1 border-border/80 ${counts.totalUnpaidAmount > 0 ? "bg-amber-500/5 border-amber-500/30" : ""}`}>
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Balance Due</p>
+                <p className={`font-display text-xl font-bold mt-0.5 ${counts.totalUnpaidAmount > 0 ? "text-amber-700 dark:text-amber-400" : "text-emerald-600"}`}>
+                  {formatCurrency(counts.totalUnpaidAmount)}
+                </p>
+              </div>
+              <div className="h-9 w-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                <Receipt className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Portal Navigation Tabs */}
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as any)}
+          className="space-y-6"
+        >
+          <TabsList className="bg-muted/80 p-1 rounded-2xl flex flex-wrap h-auto gap-1">
+            <TabsTrigger
+              value="overview"
+              className="rounded-xl text-xs sm:text-sm font-semibold py-2 px-3 sm:px-4"
+            >
+              <HeartPulse className="h-4 w-4 mr-1.5" />
+              Overview
+            </TabsTrigger>
+            <TabsTrigger
+              value="visits"
+              className="rounded-xl text-xs sm:text-sm font-semibold py-2 px-3 sm:px-4"
+            >
+              <Stethoscope className="h-4 w-4 mr-1.5" />
+              Visits & History ({counts.visits})
+            </TabsTrigger>
+            <TabsTrigger
+              value="labs"
+              className="rounded-xl text-xs sm:text-sm font-semibold py-2 px-3 sm:px-4"
+            >
+              <FlaskConical className="h-4 w-4 mr-1.5" />
+              Lab Reports ({counts.labs})
+            </TabsTrigger>
+            <TabsTrigger
+              value="prescriptions"
+              className="rounded-xl text-xs sm:text-sm font-semibold py-2 px-3 sm:px-4"
+            >
+              <Pill className="h-4 w-4 mr-1.5" />
+              Medications ({counts.prescriptions})
+            </TabsTrigger>
+            <TabsTrigger
+              value="invoices"
+              className="rounded-xl text-xs sm:text-sm font-semibold py-2 px-3 sm:px-4"
+            >
+              <Receipt className="h-4 w-4 mr-1.5" />
+              Billing & Receipts ({invoices.length})
+            </TabsTrigger>
+            <TabsTrigger
+              value="profile"
+              className="rounded-xl text-xs sm:text-sm font-semibold py-2 px-3 sm:px-4"
+            >
+              <User className="h-4 w-4 mr-1.5" />
+              My Profile
+            </TabsTrigger>
+          </TabsList>
+
+          {/* TAB 1: OVERVIEW */}
+          <TabsContent value="overview" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left 2 Cols: Upcoming visits & active prescriptions */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Upcoming / Booked Appointments */}
+                <Card className="border-border">
+                  <CardHeader className="flex flex-row items-center justify-between pb-3">
+                    <div>
+                      <CardTitle className="text-base font-bold text-foreground">
+                        Upcoming & Scheduled Visits
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Booked clinic consultations and queue status
+                      </CardDescription>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setBookingOpen(true)}
+                      className="text-xs"
+                    >
+                      <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Book New
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {upcomingAppointments.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-border p-8 text-center">
+                        <Calendar className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" />
+                        <p className="text-sm font-medium text-foreground">No upcoming visits booked</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Need to consult a doctor? Book a hospital visit online.
+                        </p>
+                        <Button
+                          size="sm"
+                          onClick={() => setBookingOpen(true)}
+                          className="mt-3 bg-teal-600 hover:bg-teal-700 text-white text-xs"
+                        >
+                          Book Appointment
+                        </Button>
+                      </div>
+                    ) : (
+                      upcomingAppointments.map((appt) => (
+                        <div
+                          key={appt.id}
+                          className="rounded-2xl border border-border bg-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-sm text-foreground">
+                                {appt.hospitalName}
+                              </span>
+                              {appt.departmentName && (
+                                <Badge variant="secondary" className="text-[10px]">
+                                  {appt.departmentName}
+                                </Badge>
+                              )}
+                              <Badge
+                                className={
+                                  appt.status === "checked_in"
+                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20"
+                                    : appt.status === "booked"
+                                    ? "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20"
+                                    : "bg-muted text-muted-foreground"
+                                }
+                              >
+                                {appt.status.replace("_", " ").toUpperCase()}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Date: <strong className="text-foreground">{formatDateTime(appt.appointmentDate)}</strong>
+                              {appt.doctorName && <span> • Doctor: {appt.doctorName}</span>}
+                            </p>
+                            {appt.symptomsSummary && (
+                              <p className="text-xs text-muted-foreground italic">
+                                Note: {appt.symptomsSummary}
+                              </p>
+                            )}
+                          </div>
+
+                          {appt.queueNumber && (
+                            <div className="rounded-xl bg-teal-500/10 px-3 py-2 text-center shrink-0 border border-teal-500/20">
+                              <span className="block text-[10px] uppercase font-bold text-teal-700 dark:text-teal-300">
+                                Queue #
+                              </span>
+                              <span className="font-display text-lg font-black text-teal-800 dark:text-teal-200">
+                                {appt.queueNumber}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Recent Completed Lab Results Preview */}
+                <Card className="border-border">
+                  <CardHeader className="flex flex-row items-center justify-between pb-3">
+                    <div>
+                      <CardTitle className="text-base font-bold text-foreground">
+                        Recent Lab Results
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Diagnostic investigations completed for you
+                      </CardDescription>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setActiveTab("labs")}
+                      className="text-xs text-teal-600 hover:text-teal-700"
+                    >
+                      View All ({counts.labs})
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="space-y-2.5">
+                    {recentLabResults.slice(0, 3).length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic text-center py-4">
+                        No completed laboratory investigations on file.
+                      </p>
+                    ) : (
+                      recentLabResults.slice(0, 3).map((lab) => (
+                        <div
+                          key={lab.id}
+                          className="rounded-xl border border-border p-3 flex items-center justify-between gap-3 text-xs"
+                        >
+                          <div>
+                            <p className="font-semibold text-foreground">{lab.testName}</p>
+                            <p className="text-muted-foreground text-[11px]">
+                              {lab.hospitalName} • {formatDate(lab.createdAt)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-mono font-bold text-foreground text-xs">
+                              {lab.resultValue || "Completed"}
+                            </span>
+                            {lab.isCritical && (
+                              <Badge variant="destructive" className="ml-2 text-[10px]">
+                                Critical
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Right Col: Insurance Info & Unpaid Invoices */}
+              <div className="space-y-6">
+                {/* Insurance / HMO Card */}
+                <Card className="border-border bg-gradient-to-br from-card to-secondary/30">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                        <Shield className="h-4 w-4 text-teal-600" />
+                        Insurance & HMO Cover
+                      </CardTitle>
+                      <Badge variant="outline" className="text-[10px] bg-teal-500/10 text-teal-700 border-teal-500/20">
+                        {patient.insuranceProvider ? "Active" : "Self-Pay"}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-xs">
+                    {patient.insuranceProvider ? (
+                      <>
+                        <div className="flex justify-between py-1 border-b border-border/50">
+                          <span className="text-muted-foreground">HMO Provider:</span>
+                          <span className="font-semibold text-foreground">{patient.insuranceProvider}</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-border/50">
+                          <span className="text-muted-foreground">Policy Number:</span>
+                          <span className="font-mono font-semibold text-foreground">{patient.insurancePolicyNumber || "N/A"}</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-border/50">
+                          <span className="text-muted-foreground">Plan Type:</span>
+                          <span className="font-medium text-foreground">{patient.insurancePlanType || "Standard"}</span>
+                        </div>
+                        <div className="flex justify-between py-1">
+                          <span className="text-muted-foreground">Expiry:</span>
+                          <span className="text-foreground">{formatDate(patient.insuranceExpiryDate)}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-muted-foreground italic py-2">
+                        No HMO policy linked. You are currently billed as Self-Pay. You can present your HMO card at the hospital front desk to update.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Open Bills Card */}
+                <Card className="border-border">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                      <CreditCard className="h-4 w-4 text-amber-500" />
+                      Hospital Billing Status
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="rounded-xl bg-secondary/50 p-3 text-xs space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Open Invoices:</span>
+                        <span className="font-bold text-foreground">{counts.unpaidBills}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Outstanding Balance:</span>
+                        <span className="font-bold text-amber-600 dark:text-amber-400">
+                          {formatCurrency(counts.totalUnpaidAmount)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {counts.totalUnpaidAmount > 0 && (
+                      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-[11px] text-amber-800 dark:text-amber-200">
+                        <p className="font-semibold flex items-center gap-1">
+                          <Info className="h-3.5 w-3.5 shrink-0" />
+                          Pay-at-Desk Info
+                        </p>
+                        <p className="mt-0.5 text-muted-foreground">
+                          Present your Invoice Number at the hospital cashier to pay via Cash, POS/Card, or Bank Transfer.
+                        </p>
+                      </div>
+                    )}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveTab("invoices")}
+                      className="w-full text-xs"
+                    >
+                      View Billing Breakdown & Receipts
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* TAB 2: VISITS HISTORY (Prompt 17: Closed Encounters with Diagnoses) */}
+          <TabsContent value="visits" className="space-y-4">
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="text-lg font-bold text-foreground">
+                  Clinical Visit History
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Per privacy policy, consultation notes & diagnoses appear here once the encounter is closed by the hospital.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {recentEncounters.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border p-12 text-center">
+                    <Stethoscope className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
+                    <p className="font-semibold text-foreground">No completed medical encounters yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Once a doctor closes a consultation, your verified visit summaries and diagnosis records will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  recentEncounters.map((enc) => (
+                    <div
+                      key={enc.id}
+                      className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs hover:border-teal-500/40 transition-colors"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-3">
+                        <div className="flex items-center gap-2">
+                          <Hospital className="h-4 w-4 text-teal-600" />
+                          <span className="font-bold text-sm text-foreground">{enc.hospitalName}</span>
+                          <Badge variant="outline" className="text-[10px] bg-muted capitalize">
+                            {enc.status}
+                          </Badge>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          Visit Date: <strong className="text-foreground">{formatDate(enc.createdAt)}</strong>
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <span className="text-muted-foreground font-medium block mb-1">
+                            Chief Complaint / Reason for Visit:
+                          </span>
+                          <p className="text-foreground bg-secondary/30 p-2.5 rounded-xl">
+                            {enc.chiefComplaint || "Routine consultation"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <span className="text-muted-foreground font-medium block mb-1">
+                            Verified Diagnosis (ICD-10 / Clinical):
+                          </span>
+                          <p className="text-foreground font-semibold bg-teal-500/5 border border-teal-500/20 p-2.5 rounded-xl">
+                            {enc.diagnosis || "No primary diagnosis recorded"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {enc.doctorName && (
+                        <div className="text-[11px] text-muted-foreground pt-1 flex items-center justify-between">
+                          <span>Attending Practitioner: <strong>Dr. {enc.doctorName}</strong></span>
+                          {enc.closedAt && <span>Closed: {formatDateTime(enc.closedAt)}</span>}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TAB 3: LAB REPORTS */}
+          <TabsContent value="labs" className="space-y-4">
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="text-lg font-bold text-foreground">
+                  Diagnostic Laboratory Results
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Verified pathology and diagnostic lab investigations
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {recentLabResults.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border p-12 text-center">
+                    <FlaskConical className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
+                    <p className="font-semibold text-foreground">No laboratory records found</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Completed blood tests, urinalysis, and specimen results will appear here automatically.
+                    </p>
+                  </div>
+                ) : (
+                  recentLabResults.map((lab) => (
+                    <div
+                      key={lab.id}
+                      className="rounded-2xl border border-border bg-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-foreground">{lab.testName}</span>
+                          {lab.testCode && (
+                            <Badge variant="secondary" className="text-[10px] font-mono">
+                              {lab.testCode}
+                            </Badge>
+                          )}
+                          <Badge
+                            className={
+                              lab.isCritical
+                                ? "bg-destructive/10 text-destructive border-destructive/20"
+                                : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20"
+                            }
+                          >
+                            {lab.status.toUpperCase()}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {lab.hospitalName} • Sample: <strong>{lab.sampleType || "General"}</strong> • Date: {formatDate(lab.createdAt)}
+                        </p>
+                        {lab.orderedByName && (
+                          <p className="text-[11px] text-muted-foreground">
+                            Ordered by: Dr. {lab.orderedByName} {lab.technicianName && `• Verified by: ${lab.technicianName}`}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl bg-secondary/60 px-4 py-2.5 text-right shrink-0">
+                        <span className="block text-[10px] font-medium text-muted-foreground uppercase">
+                          Result Value
+                        </span>
+                        <span className="font-mono text-sm font-bold text-foreground">
+                          {lab.resultValue || "Verified Normal"}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TAB 4: PRESCRIPTIONS & MEDICATIONS */}
+          <TabsContent value="prescriptions" className="space-y-4">
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="text-lg font-bold text-foreground">
+                  Prescription History & Pharmacy Dispensing
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Track prescribed drugs, dosage instructions, and dispensing status
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {activePrescriptions.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border p-12 text-center">
+                    <Pill className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
+                    <p className="font-semibold text-foreground">No prescription records found</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Prescriptions written by attending physicians will show dosage instructions and dispensing status here.
+                    </p>
+                  </div>
+                ) : (
+                  activePrescriptions.map((rx) => (
+                    <div
+                      key={rx.id}
+                      className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-3">
+                        <div className="flex items-center gap-2">
+                          <Pill className="h-4 w-4 text-rose-500" />
+                          <span className="font-bold text-sm text-foreground">{rx.hospitalName}</span>
+                          <Badge
+                            className={
+                              rx.status === "dispensed"
+                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20"
+                                : rx.status === "partially_dispensed"
+                                ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                                : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20"
+                            }
+                          >
+                            {rx.status.replace("_", " ").toUpperCase()}
+                          </Badge>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          Prescribed: {formatDate(rx.createdAt)} {rx.doctorName && `by Dr. ${rx.doctorName}`}
+                        </span>
+                      </div>
+
+                      {/* Prescribed Items Table */}
+                      <div className="space-y-2">
+                        {rx.items.map((item) => (
+                          <div
+                            key={item.id}
+                            className="rounded-xl border border-border/60 bg-secondary/20 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                          >
+                            <div>
+                              <p className="font-bold text-foreground text-sm">{item.drugName}</p>
+                              <p className="text-muted-foreground text-xs">
+                                Dosage: <strong>{item.dosage || "As directed"}</strong> • Frequency: {item.frequency || "Daily"} • Duration: {item.duration || "7 days"}
+                              </p>
+                              {item.dispenseNotes && (
+                                <p className="text-[11px] text-amber-700 dark:text-amber-300 italic mt-0.5">
+                                  Note: {item.dispenseNotes}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-3 shrink-0">
+                              <div className="text-right">
+                                <span className="block text-[10px] text-muted-foreground">Dispensed / Prescribed</span>
+                                <span className="font-semibold font-mono text-foreground">
+                                  {item.quantityDispensed} / {item.quantityPrescribed} units
+                                </span>
+                              </div>
+                              {item.quantityDispensed >= item.quantityPrescribed ? (
+                                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                              ) : item.quantityDispensed > 0 ? (
+                                <Clock className="h-5 w-5 text-amber-500" />
+                              ) : (
+                                <Badge variant="outline" className="text-[10px]">Pending</Badge>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TAB 5: BILLING, INVOICES & RECEIPTS */}
+          <TabsContent value="invoices" className="space-y-4">
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="text-lg font-bold text-foreground">
+                  Invoices, Billing & Payment Receipts
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Review itemized hospital service charges, insurance coverage, and view official printable receipts.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {invoices.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border p-12 text-center">
+                    <Receipt className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
+                    <p className="font-semibold text-foreground">No invoices generated</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Hospital billing summaries and payment receipts will appear here once generated by the cashier.
+                    </p>
+                  </div>
+                ) : (
+                  invoices.map((inv) => (
+                    <div
+                      key={inv.id}
+                      className="rounded-2xl border border-border bg-card p-5 space-y-4 shadow-xs"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-3">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm font-mono text-foreground">
+                              {inv.invoiceNumber}
+                            </span>
+                            <Badge
+                              className={
+                                inv.status === "paid"
+                                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20"
+                                  : inv.status === "partially_paid"
+                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                                  : "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20"
+                              }
+                            >
+                              {inv.status.replace("_", " ").toUpperCase()}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {inv.hospitalName} • Issued: {formatDate(inv.createdAt)}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <span className="block text-[10px] text-muted-foreground">Balance Due</span>
+                            <span className={`font-display text-base font-bold ${inv.balanceDue > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                              {formatCurrency(inv.balanceDue)}
+                            </span>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setViewingInvoice(inv)}
+                            className="text-xs"
+                          >
+                            <Printer className="mr-1.5 h-3.5 w-3.5" />
+                            View Receipt
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Line items brief */}
+                      <div className="rounded-xl bg-secondary/30 p-3 space-y-1.5 text-xs">
+                        <div className="flex justify-between font-semibold text-muted-foreground pb-1 border-b border-border/40 text-[11px]">
+                          <span>Service / Item</span>
+                          <span>Amount</span>
+                        </div>
+                        {inv.lineItems.map((line) => (
+                          <div key={line.id} className="flex justify-between text-muted-foreground">
+                            <span>
+                              {line.description || line.serviceType} {line.quantity > 1 ? `(x${line.quantity})` : ""}
+                            </span>
+                            <span className="font-mono text-foreground">{formatCurrency(line.totalPrice)}</span>
+                          </div>
+                        ))}
+
+                        <div className="pt-2 border-t border-border/50 flex flex-col gap-1 text-[11px]">
+                          <div className="flex justify-between text-muted-foreground">
+                            <span>Gross Total:</span>
+                            <span className="font-mono">{formatCurrency(inv.totalAmount)}</span>
+                          </div>
+                          {inv.insuranceCoverageAmount > 0 && (
+                            <div className="flex justify-between text-emerald-600 font-medium">
+                              <span>HMO / Insurance Cover:</span>
+                              <span className="font-mono">- {formatCurrency(inv.insuranceCoverageAmount)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between font-bold text-foreground pt-1 border-t border-border/40">
+                            <span>Patient Payable:</span>
+                            <span className="font-mono">{formatCurrency(inv.patientPayableAmount)}</span>
+                          </div>
+                          <div className="flex justify-between text-muted-foreground">
+                            <span>Amount Paid:</span>
+                            <span className="font-mono">{formatCurrency(inv.amountPaid)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TAB 6: PROFILE DEMOGRAPHICS */}
+          <TabsContent value="profile" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Verified Identity (Read-only per prompt 17) */}
+              <Card className="border-border">
+                <CardHeader>
+                  <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                    <Lock className="h-4 w-4 text-teal-600" />
+                    Verified Medical Identity (Read-Only)
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Legal national demographics registered via hospital intake
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 text-xs">
+                  <div className="flex justify-between py-2 border-b border-border/50">
+                    <span className="text-muted-foreground">Full Legal Name:</span>
+                    <span className="font-semibold text-foreground">{patient.fullName}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-border/50">
+                    <span className="text-muted-foreground">National Identity Number (NIN):</span>
+                    <span className="font-mono font-bold text-foreground">{patient.nin}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-border/50">
+                    <span className="text-muted-foreground">Date of Birth:</span>
+                    <span className="font-medium text-foreground">{formatDate(patient.dateOfBirth)}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-border/50">
+                    <span className="text-muted-foreground">Gender:</span>
+                    <span className="font-medium text-foreground capitalize">{patient.gender || "Not specified"}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-border/50">
+                    <span className="text-muted-foreground">Blood Group:</span>
+                    <span className="font-bold text-rose-600">{patient.bloodGroup || "N/A"}</span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-muted-foreground">Genotype:</span>
+                    <span className="font-bold text-purple-600">{patient.genotype || "N/A"}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Editable Contact Info (Prompt 17) */}
+              <Card className="border-border">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base font-bold text-foreground">
+                      Contact & Emergency Details
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Editable phone, email, and next of kin contact
+                    </CardDescription>
+                  </div>
+                  <Button size="sm" onClick={handleOpenEditProfile} className="text-xs">
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                    Edit
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-3 text-xs">
+                  <div className="flex justify-between py-2 border-b border-border/50">
+                    <span className="text-muted-foreground">Phone Number:</span>
+                    <span className="font-medium text-foreground">{patient.phone || "Not provided"}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-border/50">
+                    <span className="text-muted-foreground">Email Address:</span>
+                    <span className="font-medium text-foreground">{patient.email || "Not provided"}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-border/50">
+                    <span className="text-muted-foreground">Emergency Contact Name:</span>
+                    <span className="font-medium text-foreground">{patient.emergencyContact?.name || "None specified"}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-border/50">
+                    <span className="text-muted-foreground">Relationship:</span>
+                    <span className="font-medium text-foreground">{patient.emergencyContact?.relationship || "N/A"}</span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-muted-foreground">Emergency Phone:</span>
+                    <span className="font-medium text-foreground">{patient.emergencyContact?.phone || "N/A"}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* MODAL: Book Online Appointment (Prompt 18) */}
+      <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <CalendarPlus className="h-5 w-5 text-teal-600" />
+              Book Hospital Appointment
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Schedule a clinic consultation. Front desk will confirm your queue slot on arrival.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              bookMutation.mutate();
+            }}
+            className="space-y-4 py-2"
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="book-hospital">Select Hospital</Label>
+              <Select value={bookHospitalId} onValueChange={setBookHospitalId} required>
+                <SelectTrigger id="book-hospital">
+                  <SelectValue placeholder="Choose a hospital" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableHospitals.map((h) => (
+                    <SelectItem key={h.id} value={h.id}>
+                      {h.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedHospitalDepts.length > 0 && (
+              <div className="space-y-1.5">
+                <Label htmlFor="book-dept">Department / Clinic (Optional)</Label>
+                <Select value={bookDeptId} onValueChange={setBookDeptId}>
+                  <SelectTrigger id="book-dept">
+                    <SelectValue placeholder="General Outpatient (Default)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedHospitalDepts.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {selectedHospitalDoctors.length > 0 && (
+              <div className="space-y-1.5">
+                <Label htmlFor="book-doc">Preferred Doctor (Optional)</Label>
+                <Select value={bookDoctorId} onValueChange={setBookDoctorId}>
+                  <SelectTrigger id="book-doc">
+                    <SelectValue placeholder="Any Available Doctor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedHospitalDoctors.map((doc) => (
+                      <SelectItem key={doc.id} value={doc.id}>
+                        Dr. {doc.fullName} {doc.specialization ? `(${doc.specialization})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="book-date">Preferred Date</Label>
+                <Input
+                  id="book-date"
+                  type="date"
+                  required
+                  min={new Date().toISOString().split("T")[0]}
+                  value={bookDate}
+                  onChange={(e) => setBookDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="book-time">Preferred Time Slot</Label>
+                <Select value={bookTime} onValueChange={setBookTime}>
+                  <SelectTrigger id="book-time">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="08:30">08:30 AM (Morning)</SelectItem>
+                    <SelectItem value="09:30">09:30 AM (Morning)</SelectItem>
+                    <SelectItem value="11:00">11:00 AM (Late Morning)</SelectItem>
+                    <SelectItem value="14:00">02:00 PM (Afternoon)</SelectItem>
+                    <SelectItem value="16:00">04:00 PM (Evening)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="book-symptoms">Reason for Visit / Symptoms</Label>
+              <Textarea
+                id="book-symptoms"
+                placeholder="Briefly describe what you would like to consult the doctor for..."
+                rows={3}
+                required
+                value={bookSymptoms}
+                onChange={(e) => setBookSymptoms(e.target.value)}
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setBookingOpen(false)}
+                disabled={bookMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-teal-600 hover:bg-teal-700 text-white"
+                disabled={bookMutation.isPending || !bookHospitalId || !bookDate || !bookSymptoms}
+              >
+                {bookMutation.isPending ? "Booking..." : "Confirm Appointment"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: Edit Profile Info */}
+      <Dialog open={editProfileOpen} onOpenChange={setEditProfileOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-teal-600" />
+              Update Contact Information
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Keep your contact details up-to-date for appointment SMS and notifications.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              profileMutation.mutate();
+            }}
+            className="space-y-4 py-2"
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-phone">Phone Number</Label>
+              <Input
+                id="edit-phone"
+                type="tel"
+                placeholder="e.g. 08012345678"
+                value={profilePhone}
+                onChange={(e) => setProfilePhone(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-email">Email Address</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                placeholder="name@example.com"
+                value={profileEmail}
+                onChange={(e) => setProfileEmail(e.target.value)}
+              />
+            </div>
+
+            <div className="border-t border-border pt-3 space-y-3">
+              <p className="text-xs font-semibold text-foreground">Emergency Contact (Next of Kin)</p>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="emerg-name">Full Name</Label>
+                <Input
+                  id="emerg-name"
+                  placeholder="e.g. Jane Doe"
+                  value={profileEmergName}
+                  onChange={(e) => setProfileEmergName(e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="emerg-rel">Relationship</Label>
+                  <Input
+                    id="emerg-rel"
+                    placeholder="e.g. Spouse / Sibling"
+                    value={profileEmergRel}
+                    onChange={(e) => setProfileEmergRel(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="emerg-phone">Emergency Phone</Label>
+                  <Input
+                    id="emerg-phone"
+                    type="tel"
+                    placeholder="e.g. 08087654321"
+                    value={profileEmergPhone}
+                    onChange={(e) => setProfileEmergPhone(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditProfileOpen(false)}
+                disabled={profileMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-teal-600 hover:bg-teal-700 text-white"
+                disabled={profileMutation.isPending}
+              >
+                {profileMutation.isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: Printable Receipt View */}
+      <Dialog open={Boolean(viewingInvoice)} onOpenChange={(open) => !open && setViewingInvoice(null)}>
+        <DialogContent className="sm:max-w-lg">
+          {viewingInvoice && (
+            <div className="space-y-4">
+              <div className="border-b border-border pb-4 text-center">
+                <span className="font-display text-lg font-bold text-foreground">
+                  {viewingInvoice.hospitalName}
+                </span>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                  Official Patient Receipt & Invoice
+                </p>
+                <div className="mt-2 flex items-center justify-center gap-2">
+                  <Badge variant="outline" className="font-mono text-xs">
+                    {viewingInvoice.invoiceNumber}
+                  </Badge>
+                  <Badge
+                    className={
+                      viewingInvoice.status === "paid"
+                        ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20"
+                        : "bg-amber-500/10 text-amber-700 border-amber-500/20"
+                    }
+                  >
+                    {viewingInvoice.status.toUpperCase()}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="text-xs space-y-1 text-muted-foreground">
+                <p>Patient: <strong className="text-foreground">{patient.fullName}</strong></p>
+                <p>NIN: <span className="font-mono">{patient.nin}</span></p>
+                <p>Date: {formatDateTime(viewingInvoice.createdAt)}</p>
+              </div>
+
+              {/* Line Items */}
+              <div className="rounded-xl border border-border bg-secondary/30 p-3 space-y-2 text-xs">
+                <div className="flex justify-between font-bold text-foreground pb-1 border-b border-border/50">
+                  <span>Item / Description</span>
+                  <span>Total</span>
+                </div>
+                {viewingInvoice.lineItems.map((line) => (
+                  <div key={line.id} className="flex justify-between text-muted-foreground">
+                    <span>
+                      {line.description || line.serviceType} (x{line.quantity})
+                    </span>
+                    <span className="font-mono text-foreground">{formatCurrency(line.totalPrice)}</span>
+                  </div>
+                ))}
+
+                <div className="pt-2 border-t border-border/60 space-y-1 text-[11px]">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Gross Total:</span>
+                    <span className="font-mono">{formatCurrency(viewingInvoice.totalAmount)}</span>
+                  </div>
+                  {viewingInvoice.insuranceCoverageAmount > 0 && (
+                    <div className="flex justify-between text-emerald-600">
+                      <span>HMO Coverage:</span>
+                      <span className="font-mono">- {formatCurrency(viewingInvoice.insuranceCoverageAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-foreground pt-1 border-t border-border/40">
+                    <span>Patient Payable:</span>
+                    <span className="font-mono">{formatCurrency(viewingInvoice.patientPayableAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-700 dark:text-emerald-300 font-semibold">
+                    <span>Total Paid:</span>
+                    <span className="font-mono">{formatCurrency(viewingInvoice.amountPaid)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-amber-600">
+                    <span>Balance Due:</span>
+                    <span className="font-mono">{formatCurrency(viewingInvoice.balanceDue)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payments History */}
+              {viewingInvoice.payments.length > 0 && (
+                <div className="rounded-xl border border-border p-3 text-xs space-y-1.5">
+                  <p className="font-bold text-foreground text-[11px] uppercase tracking-wide">
+                    Recorded Payment Transactions
+                  </p>
+                  {viewingInvoice.payments.map((p) => (
+                    <div key={p.id} className="flex justify-between text-muted-foreground text-[11px]">
+                      <span>
+                        {p.paymentMethod.toUpperCase()} {p.transactionReference ? `(${p.transactionReference})` : ""} - {formatDate(p.paidAt)}
+                      </span>
+                      <span className="font-mono font-bold text-emerald-600">
+                        {formatCurrency(p.amountPaid)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <DialogFooter className="pt-2 flex sm:justify-between items-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => window.print()}
+                  className="text-xs"
+                >
+                  <Printer className="mr-1.5 h-3.5 w-3.5" />
+                  Print Receipt
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => setViewingInvoice(null)}
+                  className="text-xs"
+                >
+                  Close
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
