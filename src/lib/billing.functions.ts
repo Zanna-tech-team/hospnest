@@ -201,11 +201,11 @@ export const getBillingWorkbenchData = createServerFn({ method: "GET" })
     const { data: invoiceRows, error: invError } = await (supabase as any)
       .from("invoices")
       .select(`
-        id, invoice_number, encounter_id, patient_id, total_amount, insurance_coverage_amount,
-        patient_payable_amount, status, notes, due_date, created_at,
+        id, encounter_id, patient_id, total_amount, insurance_coverage_amount,
+        patient_payable_amount, status, due_date, created_at,
         encounter:encounter_id (
-          id, queue_number, status, created_at,
-          doctor:doctor_id (full_name)
+          id, encounter_status, created_at,
+          practitioner:practitioner_id (full_name)
         ),
         patient:patient_id (
           id, first_name, last_name, nin, date_of_birth, gender, phone,
@@ -266,7 +266,7 @@ export const getBillingWorkbenchData = createServerFn({ method: "GET" })
     const invoices: BillingInvoice[] = (invoiceRows ?? []).map((inv: any) => {
       const patient = inv.patient || {};
       const encounter = inv.encounter || {};
-      const doctor = encounter.doctor || {};
+      const doctor = encounter.practitioner || {};
       const rawLines = inv.billing_line_items ?? [];
       const rawPayments = inv.payments ?? [];
       const rawClaims = inv.insurance_claims ?? [];

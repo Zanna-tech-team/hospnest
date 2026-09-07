@@ -1038,11 +1038,11 @@ export const dispensePrescriptionOrder = createServerFn({ method: "POST" })
     // 5. Check if encounter can advance
     const { data: encounterRow } = await (supabase as any)
       .from("encounters")
-      .select("id, status")
+      .select("id, encounter_status")
       .eq("id", input.encounterId)
       .single();
 
-    if (encounterRow && ["pharmacy_pending", "awaiting_services"].includes(encounterRow.status)) {
+    if (encounterRow && ["pharmacy_pending", "awaiting_services"].includes(encounterRow.encounter_status)) {
       // Check if all lab orders are completed
       const { data: pendingLabs } = await (supabase as any)
         .from("lab_orders")
@@ -1061,7 +1061,8 @@ export const dispensePrescriptionOrder = createServerFn({ method: "POST" })
         await (supabase as any)
           .from("encounters")
           .update({
-            status: "closed",
+            encounter_status: "closed",
+            closed_at: new Date().toISOString(),
           })
           .eq("id", input.encounterId);
       }
