@@ -39,7 +39,7 @@ export type PaymentReceiptProps = {
     patientPayable: number;
     amountPaid: number;
     balanceRemaining: number;
-    amountInWords?: string;
+    amountInWords?: string | undefined;
   };
 };
 

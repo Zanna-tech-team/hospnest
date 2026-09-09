@@ -14,6 +14,116 @@ export type Database = {
   }
   public: {
     Tables: {
+      admissions: {
+        Row: {
+          admission_date: string
+          admission_reason: string | null
+          admitting_doctor_id: string | null
+          bed_id: string | null
+          created_at: string
+          discharge_condition: string | null
+          discharge_date: string | null
+          discharge_instructions: string | null
+          discharge_summary: string | null
+          encounter_id: string | null
+          hospital_id: string
+          id: string
+          initial_condition: string | null
+          patient_id: string
+          status: string
+          updated_at: string
+          ward_id: string | null
+        }
+        Insert: {
+          admission_date?: string
+          admission_reason?: string | null
+          admitting_doctor_id?: string | null
+          bed_id?: string | null
+          created_at?: string
+          discharge_condition?: string | null
+          discharge_date?: string | null
+          discharge_instructions?: string | null
+          discharge_summary?: string | null
+          encounter_id?: string | null
+          hospital_id: string
+          id?: string
+          initial_condition?: string | null
+          patient_id: string
+          status?: string
+          updated_at?: string
+          ward_id?: string | null
+        }
+        Update: {
+          admission_date?: string
+          admission_reason?: string | null
+          admitting_doctor_id?: string | null
+          bed_id?: string | null
+          created_at?: string
+          discharge_condition?: string | null
+          discharge_date?: string | null
+          discharge_instructions?: string | null
+          discharge_summary?: string | null
+          encounter_id?: string | null
+          hospital_id?: string
+          id?: string
+          initial_condition?: string | null
+          patient_id?: string
+          status?: string
+          updated_at?: string
+          ward_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admissions_admitting_doctor_id_fkey"
+            columns: ["admitting_doctor_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admissions_bed_id_fkey"
+            columns: ["bed_id"]
+            isOneToOne: false
+            referencedRelation: "beds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admissions_encounter_id_fkey"
+            columns: ["encounter_id"]
+            isOneToOne: false
+            referencedRelation: "encounters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admissions_encounter_id_fkey"
+            columns: ["encounter_id"]
+            isOneToOne: false
+            referencedRelation: "encounters_masked"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admissions_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admissions_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admissions_ward_id_fkey"
+            columns: ["ward_id"]
+            isOneToOne: false
+            referencedRelation: "wards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointments: {
         Row: {
           appointment_date: string
@@ -94,7 +204,9 @@ export type Database = {
           bed_type: Database["public"]["Enums"]["bed_type"]
           created_at: string
           current_patient_id: string | null
+          daily_rate: number
           id: string
+          notes: string | null
           status: Database["public"]["Enums"]["bed_status"]
           ward_id: string
         }
@@ -103,7 +215,9 @@ export type Database = {
           bed_type?: Database["public"]["Enums"]["bed_type"]
           created_at?: string
           current_patient_id?: string | null
+          daily_rate?: number
           id?: string
+          notes?: string | null
           status?: Database["public"]["Enums"]["bed_status"]
           ward_id: string
         }
@@ -112,7 +226,9 @@ export type Database = {
           bed_type?: Database["public"]["Enums"]["bed_type"]
           created_at?: string
           current_patient_id?: string | null
+          daily_rate?: number
           id?: string
+          notes?: string | null
           status?: Database["public"]["Enums"]["bed_status"]
           ward_id?: string
         }
@@ -959,6 +1075,106 @@ export type Database = {
             columns: ["patient_id"]
             isOneToOne: false
             referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patient_transfers: {
+        Row: {
+          approved_by_id: string | null
+          clinical_summary: string | null
+          consent_scope: string | null
+          consent_verified: boolean
+          created_at: string
+          id: string
+          patient_consent_id: string | null
+          patient_id: string
+          priority: string
+          reason_for_transfer: string | null
+          receiving_hospital_id: string
+          referring_hospital_id: string
+          requested_by_id: string | null
+          response_notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          approved_by_id?: string | null
+          clinical_summary?: string | null
+          consent_scope?: string | null
+          consent_verified?: boolean
+          created_at?: string
+          id?: string
+          patient_consent_id?: string | null
+          patient_id: string
+          priority?: string
+          reason_for_transfer?: string | null
+          receiving_hospital_id: string
+          referring_hospital_id: string
+          requested_by_id?: string | null
+          response_notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          approved_by_id?: string | null
+          clinical_summary?: string | null
+          consent_scope?: string | null
+          consent_verified?: boolean
+          created_at?: string
+          id?: string
+          patient_consent_id?: string | null
+          patient_id?: string
+          priority?: string
+          reason_for_transfer?: string | null
+          receiving_hospital_id?: string
+          referring_hospital_id?: string
+          requested_by_id?: string | null
+          response_notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_transfers_approved_by_id_fkey"
+            columns: ["approved_by_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_transfers_patient_consent_id_fkey"
+            columns: ["patient_consent_id"]
+            isOneToOne: false
+            referencedRelation: "patient_consents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_transfers_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_transfers_receiving_hospital_id_fkey"
+            columns: ["receiving_hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_transfers_referring_hospital_id_fkey"
+            columns: ["referring_hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_transfers_requested_by_id_fkey"
+            columns: ["requested_by_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
             referencedColumns: ["id"]
           },
         ]
@@ -1821,30 +2037,109 @@ export type Database = {
           },
         ]
       }
+      ward_staff_assignments: {
+        Row: {
+          created_at: string
+          end_time: string | null
+          hospital_id: string
+          id: string
+          notes: string | null
+          role_in_ward: string
+          shift_date: string
+          shift_type: string
+          staff_id: string
+          start_time: string | null
+          ward_id: string
+        }
+        Insert: {
+          created_at?: string
+          end_time?: string | null
+          hospital_id: string
+          id?: string
+          notes?: string | null
+          role_in_ward: string
+          shift_date: string
+          shift_type: string
+          staff_id: string
+          start_time?: string | null
+          ward_id: string
+        }
+        Update: {
+          created_at?: string
+          end_time?: string | null
+          hospital_id?: string
+          id?: string
+          notes?: string | null
+          role_in_ward?: string
+          shift_date?: string
+          shift_type?: string
+          staff_id?: string
+          start_time?: string | null
+          ward_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ward_staff_assignments_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ward_staff_assignments_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ward_staff_assignments_ward_id_fkey"
+            columns: ["ward_id"]
+            isOneToOne: false
+            referencedRelation: "wards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wards: {
         Row: {
           created_at: string
           department_id: string | null
+          floor_location: string | null
           gender_allocation: Database["public"]["Enums"]["gender_allocation"]
+          gender_restriction: string
           hospital_id: string
           id: string
+          is_active: boolean
           name: string
+          total_beds: number
+          type: string
         }
         Insert: {
           created_at?: string
           department_id?: string | null
+          floor_location?: string | null
           gender_allocation?: Database["public"]["Enums"]["gender_allocation"]
+          gender_restriction?: string
           hospital_id: string
           id?: string
+          is_active?: boolean
           name: string
+          total_beds?: number
+          type?: string
         }
         Update: {
           created_at?: string
           department_id?: string | null
+          floor_location?: string | null
           gender_allocation?: Database["public"]["Enums"]["gender_allocation"]
+          gender_restriction?: string
           hospital_id?: string
           id?: string
+          is_active?: boolean
           name?: string
+          total_beds?: number
+          type?: string
         }
         Relationships: [
           {

@@ -550,7 +550,7 @@ export const admitPatient = createServerFn({ method: "POST" })
       accessor_id: userId,
       accessor_role: callerRole,
       patient_id: input.patientId,
-      encounter_id: input.encounterId,
+      ...(input.encounterId ? { encounter_id: input.encounterId } : {}),
       action: "WRITE",
       justification: `Admitted patient to ward bed ${bedRow.bed_number}. Reason: ${input.admissionReason}`,
     });
@@ -620,10 +620,12 @@ export const transferBed = createServerFn({ method: "POST" })
     }
 
     // Free old bed
-    await supabase
-      .from("beds")
-      .update({ status: "available" })
-      .eq("id", currentAdm.bed_id);
+    if (currentAdm.bed_id) {
+      await supabase
+        .from("beds")
+        .update({ status: "available" })
+        .eq("id", currentAdm.bed_id);
+    }
 
     // Occupy new bed
     await supabase

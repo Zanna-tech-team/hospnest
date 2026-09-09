@@ -80,7 +80,7 @@ function HospitalLandingPage() {
   const [patientNin, setPatientNin] = useState("");
   const [selectedDeptId, setSelectedDeptId] = useState("");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
-  const [apptDate, setApptDate] = useState(new Date().toISOString().split("T")[0]);
+  const [apptDate, setApptDate] = useState(new Date().toISOString().slice(0, 10));
   const [apptTime, setApptTime] = useState("09:00");
   const [apptReason, setApptReason] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -103,9 +103,8 @@ function HospitalLandingPage() {
             hospitalId: data.hospital.id,
             departmentId: selectedDeptId || undefined,
             doctorId: selectedDoctorId || undefined,
-            appointmentDate: apptDate,
-            appointmentTime: apptTime,
-            reason: apptReason,
+            appointmentDate: apptTime ? `${apptDate}T${apptTime}` : apptDate,
+            symptomsSummary: apptReason,
           },
         });
 
@@ -179,7 +178,7 @@ function HospitalLandingPage() {
               variant="outline"
               className="hidden sm:inline-flex border-border text-xs"
             >
-              <Link to="/auth">Staff Portal</Link>
+              <Link to="/auth" search={{ next: undefined, invite: undefined, email: undefined, tab: undefined }}>Staff Portal</Link>
             </Button>
             <Button
               size="sm"
@@ -247,7 +246,7 @@ function HospitalLandingPage() {
                   variant="outline"
                   className="gap-2 border-border text-sm font-semibold"
                 >
-                  <Link to="/auth">
+                  <Link to="/auth" search={{ next: undefined, invite: undefined, email: undefined, tab: undefined }}>
                     <UserPlus className="size-4" /> Create Patient Account
                   </Link>
                 </Button>
@@ -504,7 +503,7 @@ function HospitalLandingPage() {
           <div className="flex items-center gap-4">
             <Link to="/" className="hover:text-foreground">HospNest Home</Link>
             <Link to="/portal" className="hover:text-foreground">Patient Portal</Link>
-            <Link to="/auth" className="hover:text-foreground">Staff Login</Link>
+            <Link to="/auth" search={{ next: undefined, invite: undefined, email: undefined, tab: undefined }} className="hover:text-foreground">Staff Login</Link>
             <Link to="/hospital-setup" className="hover:text-foreground">Register Facility</Link>
           </div>
         </div>

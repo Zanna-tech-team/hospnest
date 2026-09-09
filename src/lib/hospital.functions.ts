@@ -176,9 +176,9 @@ export const createHospital = createServerFn({ method: "POST" })
     await supabaseAdmin.from("wards").insert({
       hospital_id: hospital.id,
       name: "Main Inpatient Ward",
-      ward_type: "general",
-      floor: "Ground Floor",
-      gender: "mixed",
+      type: "general",
+      floor_location: "Ground Floor",
+      gender_restriction: "mixed",
       total_beds: 20,
       is_active: true,
     }).select().maybeSingle();

@@ -38,9 +38,11 @@ interface UploadImagingModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   patientId: string;
-  encounterId?: string;
-  hospitalId?: string;
-  onSuccess?: () => void;
+  encounterId?: string | undefined;
+  hospitalId?: string | undefined;
+  patientName?: string | undefined;
+  onSuccess?: (() => void) | undefined;
+  onUploadComplete?: (() => void) | undefined;
 }
 
 const SAMPLE_XRAY_PRESETS = [
@@ -57,6 +59,7 @@ export function UploadImagingModal({
   encounterId,
   hospitalId,
   onSuccess,
+  onUploadComplete,
 }: UploadImagingModalProps) {
   const queryClient = useQueryClient();
   const uploadFn = useServerFn(uploadImagingStudy);
@@ -90,6 +93,7 @@ export function UploadImagingModal({
       queryClient.invalidateQueries({ queryKey: ["patient-imaging-studies"] });
       onOpenChange(false);
       onSuccess?.();
+      onUploadComplete?.();
       // Reset
       setBodyPart("");
       setClinicalIndication("");

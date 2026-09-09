@@ -216,7 +216,7 @@ export const getPatientImagingStudies = createServerFn({ method: "POST" })
       accessor_id: userId,
       accessor_role: callerRole,
       patient_id: input.patientId,
-      encounter_id: input.encounterId,
+      ...(input.encounterId ? { encounter_id: input.encounterId } : {}),
       action: "READ",
       justification: `Accessed radiology imaging studies archive (${studies.length} studies)`,
     });
@@ -327,7 +327,7 @@ export const uploadImagingStudy = createServerFn({ method: "POST" })
       accessor_id: userId,
       accessor_role: callerRole,
       patient_id: input.patientId,
-      encounter_id: input.encounterId,
+      ...(input.encounterId ? { encounter_id: input.encounterId } : {}),
       action: "WRITE",
       justification: `Uploaded ${input.modality.toUpperCase()} imaging scan (${input.bodyPart}) for patient #${input.patientId.slice(0, 8)}`,
     });
