@@ -79,7 +79,7 @@ type WardTab = "matrix" | "inpatients" | "rosters" | "discharges";
 
 function WardManagementPage() {
   const { activeHospitalId, shellData } = useAppShell();
-  const currentHospital = shellData?.hospitals.find((h) => h.id === activeHospitalId);
+  const currentHospital = shellData?.workplaces.find((w) => w.hospitalId === activeHospitalId);
   const getWardDataFn = useServerFn(getWardManagementData);
   const admitFn = useServerFn(admitPatient);
   const transferFn = useServerFn(transferBed);
@@ -358,7 +358,7 @@ function WardManagementPage() {
             size="sm"
             onClick={() => {
               if (wardData?.wards && wardData.wards.length > 0) {
-                setAdmitWardId(wardData.wards[0].id);
+                setAdmitWardId(wardData.wards[0]!.id);
               }
               setIsAdmitModalOpen(true);
             }}

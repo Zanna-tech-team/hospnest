@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { useAppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -433,7 +434,7 @@ function ConsultationsPage() {
       setPlanAndOrders(aiResult.soapSummary.plan);
     }
     if (selectedDiagnoses.length === 0 && !customDiagnosis && aiResult.differentialDiagnoses.length > 0) {
-      const topDx = aiResult.differentialDiagnoses[0];
+      const topDx = aiResult.differentialDiagnoses[0]!;
       setSelectedDiagnoses([{
         code: topDx.code,
         name: topDx.name,

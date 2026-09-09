@@ -37,8 +37,9 @@ interface MedicalImageViewerModalProps {
   study: RadiologyStudyItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  patientName?: string;
-  patientNin?: string;
+  patientName?: string | undefined;
+  patientNin?: string | undefined;
+  onReportSaved?: (() => void) | undefined;
 }
 
 export function MedicalImageViewerModal({

@@ -35,10 +35,10 @@ export type DischargeSummaryProps = {
     dischargeCondition: "recovered" | "improved" | "stable" | "transferred" | "against_medical_advice";
     dischargeMedications: Array<{
       drugName: string;
-      dosage: string;
-      frequency: string;
-      duration: string;
-      specialInstructions?: string;
+      dosage: string | null;
+      frequency: string | null;
+      duration: string | null;
+      specialInstructions?: string | undefined;
     }>;
     followUpInstructions: string;
     nextAppointmentDate?: string;
