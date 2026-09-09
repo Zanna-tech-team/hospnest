@@ -160,7 +160,12 @@ function AuthPage() {
           },
         });
 
-        if (result?.success) {
+        if (!result?.success) {
+          toast.error(result?.error || "We could not verify your details. Please try again.");
+          return;
+        }
+        {
+
           toast.success("Identity verified! Signing into your patient portal...");
           // Sign in with the newly registered credentials
           const { error: signInErr } = await supabase.auth.signInWithPassword({
