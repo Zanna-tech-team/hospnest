@@ -205,6 +205,7 @@ export const getBillingWorkbenchData = createServerFn({ method: "GET" })
         patient_payable_amount, status, due_date, created_at,
         encounter:encounter_id (
           id, encounter_status, created_at,
+          appointment:appointment_id (queue_number),
           practitioner:practitioner_id (full_name)
         ),
         patient:patient_id (
@@ -386,7 +387,7 @@ export const getBillingWorkbenchData = createServerFn({ method: "GET" })
         createdAt: inv.created_at,
         dueDate: inv.due_date || null,
         encounterDate: encounter.created_at || inv.created_at,
-        queueNumber: encounter.queue_number || null,
+        queueNumber: (encounter.appointment as any)?.queue_number ?? null,
         doctorName: doctor.full_name || null,
         lineItems,
         payments,
