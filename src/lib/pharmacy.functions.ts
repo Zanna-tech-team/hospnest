@@ -635,7 +635,7 @@ export const getPharmacyDispensingQueue = createServerFn({ method: "GET" })
       .from("prescriptions")
       .select(`
         id, encounter_id, patient_id, doctor_id, status, notes, created_at,
-        encounter:encounter_id (id, queue_number, status, created_at),
+        encounter:encounter_id (id, encounter_status, created_at, appointment:appointment_id (queue_number)),
         patient:patient_id (id, first_name, last_name, nin, date_of_birth, gender, phone, allergies, chronic_conditions),
         doctor:doctor_id (id, full_name),
         prescription_items (
@@ -729,8 +729,8 @@ export const getPharmacyDispensingQueue = createServerFn({ method: "GET" })
         id: rx.id,
         encounterId: rx.encounter_id,
         encounterDate: encounter.created_at || rx.created_at,
-        queueNumber: encounter.queue_number || null,
-        encounterStatus: encounter.status || "active",
+        queueNumber: (encounter.appointment as any)?.queue_number ?? null,
+        encounterStatus: encounter.encounter_status || "active",
         patientId: rx.patient_id,
         patientName: `${patient.first_name || ""} ${patient.last_name || ""}`.trim() || "Unknown Patient",
         patientNin: isClinical ? patient.nin || null : maskNin(patient.nin || null),
