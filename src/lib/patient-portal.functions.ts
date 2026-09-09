@@ -210,7 +210,12 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
       };
     },
   )
-  .handler(async ({ data: input }) => {
+  .handler(async ({ data: input }): Promise<{
+    success: boolean;
+    error?: string;
+    patientId?: string;
+    email?: string;
+  }> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // 1. Verify that matching patient record exists
@@ -224,21 +229,24 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
       "Verification failed. The provided NIN, name, or date of birth does not match our hospital records. Please verify your details or register at the front desk.";
 
     if (pErr || !patientRow) {
-      throw new Error(genericErrorMsg);
+      return { success: false, error: genericErrorMsg };
     }
 
     // Strict identity match (case-insensitive name & date of birth)
-    const matchesFirst = patientRow.first_name.trim().toLowerCase() === input.firstName.toLowerCase();
-    const matchesLast = patientRow.last_name.trim().toLowerCase() === input.lastName.toLowerCase();
-    const matchesDob = patientRow.date_of_birth === input.dateOfBirth;
+    const matchesFirst = String(patientRow.first_name ?? "").trim().toLowerCase() === input.firstName.toLowerCase();
+    const matchesLast = String(patientRow.last_name ?? "").trim().toLowerCase() === input.lastName.toLowerCase();
+    const matchesDob = String(patientRow.date_of_birth ?? "").slice(0, 10) === input.dateOfBirth.slice(0, 10);
 
     if (!matchesFirst || !matchesLast || !matchesDob) {
-      throw new Error(genericErrorMsg);
+      return { success: false, error: genericErrorMsg };
     }
 
     // Check if patient already linked to an online user account
     if (patientRow.user_id) {
-      throw new Error("This patient record is already linked to an online account. Please sign in instead.");
+      return {
+        success: false,
+        error: "This patient record is already linked to an online account. Please sign in instead.",
+      };
     }
 
     // 2. Create Auth User account via Supabase Admin
@@ -255,9 +263,15 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
 
     if (authError || !authData.user) {
       if (authError?.message?.includes("already been registered")) {
-        throw new Error("An account with this email address already exists. Please sign in or use another email.");
+        return {
+          success: false,
+          error: "An account with this email address already exists. Please sign in or use another email.",
+        };
       }
-      throw new Error(`Account creation error: ${authError?.message || "Failed to create user"}`);
+      return {
+        success: false,
+        error: `Account creation error: ${authError?.message || "Failed to create user"}`,
+      };
     }
 
     const newUserId = authData.user.id;
@@ -272,7 +286,7 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
       .eq("id", patientRow.id);
 
     if (linkErr) {
-      throw new Error(`Failed to link patient record: ${linkErr.message}`);
+      return { success: false, error: `Failed to link patient record: ${linkErr.message}` };
     }
 
     // 4. Assign patient role in user_roles
@@ -297,6 +311,7 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
       email: input.email,
     };
   });
+
 
 /**
  * Returns the appropriate redirect route for a logged-in user based on their roles.
