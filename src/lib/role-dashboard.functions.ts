@@ -179,9 +179,9 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
       ? staffRoles.find((r: any) => r.hospital_id === input.hospitalId) || staffRoles[0]
       : staffRoles[0];
 
-    const activeHospitalId = matched.hospital_id as string;
-    const callerRole = (matched.role as StaffRole) || "doctor";
-    const hospitalName = (matched.hospitals as any)?.name || "Hospital";
+    const activeHospitalId = (matched?.hospital_id as string) || "";
+    const callerRole = (matched?.role as StaffRole) || "doctor";
+    const hospitalName = (matched?.hospitals as any)?.name || "Hospital";
 
     // Get current staff profile id
     const { data: staffRow } = await supabase
@@ -385,7 +385,7 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
       const occupancyRate = totalB > 0 ? Math.round((occupiedB / totalB) * 100) : 0;
 
       // Today's Duty Shift
-      const todayDate = now.toISOString().split("T")[0];
+      const todayDate = now.toISOString().slice(0, 10);
       const { data: myShiftRaw } = await supabase
         .from("ward_staff_assignments")
         .select("role_in_ward, shift_type, start_time, end_time, ward:ward_id(name)")
