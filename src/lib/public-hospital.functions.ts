@@ -434,7 +434,7 @@ export const getPublicHospitalLandingPage = createServerFn({ method: "GET" })
       { name: "Maternity & Neonatal Care", description: "Antenatal care, skilled delivery, postnatal clinics, and newborn care.", icon: "Heart", category: "Maternal" },
     ];
 
-    const defaultDoctors = doctors.length > 0 ? doctors.map(d => ({
+    const defaultDoctors = doctors.length > 0 ? doctors.map((d: { fullName: string; departmentName?: string | null }) => ({
       name: `Dr. ${d.fullName}`,
       specialty: d.departmentName || "General Practitioner",
       qualifications: "MBBS, FWACS",
