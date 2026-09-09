@@ -80,7 +80,7 @@ function HospitalLandingPage() {
   const [patientNin, setPatientNin] = useState("");
   const [selectedDeptId, setSelectedDeptId] = useState("");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
-  const [apptDate, setApptDate] = useState(new Date().toISOString().split("T")[0]);
+  const [apptDate, setApptDate] = useState(new Date().toISOString().slice(0, 10));
   const [apptTime, setApptTime] = useState("09:00");
   const [apptReason, setApptReason] = useState("");
   const [isPending, startTransition] = useTransition();
