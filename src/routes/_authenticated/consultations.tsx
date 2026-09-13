@@ -2533,13 +2533,15 @@ function ConsultationsPage() {
                 examination ? `Physical Exam: ${examination}` : null,
                 `Working Diagnosis: ${customDiagnosis || workspaceData.encounter.diagnosis || "Under evaluation"}`,
               ].filter(Boolean).join("\n\n"),
-              vitalSignsSummary: workspaceData.latestVitals ? {
-                bp: `${workspaceData.latestVitals.systolicBp}/${workspaceData.latestVitals.diastolicBp}`,
-                pulse: workspaceData.latestVitals.pulseRate || undefined,
-                temp: workspaceData.latestVitals.bodyTemperature || undefined,
-                spo2: workspaceData.latestVitals.spo2 || undefined,
-                respiratoryRate: workspaceData.latestVitals.respiratoryRate || undefined,
-              } : undefined,
+              ...(workspaceData.latestVitals ? {
+                vitalSignsSummary: {
+                  bp: `${workspaceData.latestVitals.systolicBp}/${workspaceData.latestVitals.diastolicBp}`,
+                  ...(workspaceData.latestVitals.pulseRate ? { pulse: workspaceData.latestVitals.pulseRate } : {}),
+                  ...(workspaceData.latestVitals.bodyTemperature ? { temp: workspaceData.latestVitals.bodyTemperature } : {}),
+                  ...(workspaceData.latestVitals.spo2 ? { spo2: workspaceData.latestVitals.spo2 } : {}),
+                  ...(workspaceData.latestVitals.respiratoryRate ? { respiratoryRate: workspaceData.latestVitals.respiratoryRate } : {}),
+                },
+              } : {}),
               investigationsSummary: workspaceData.activeLabOrders.length > 0
                 ? workspaceData.activeLabOrders.map((l) => `${l.testName} (${l.status})`).join("; ")
                 : "Awaiting referral center diagnostic workup.",
