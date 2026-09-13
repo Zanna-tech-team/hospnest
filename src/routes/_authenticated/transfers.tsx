@@ -58,6 +58,8 @@ import {
   completeTransfer,
   type PatientTransferItem,
 } from "@/lib/patient-transfer.functions";
+import { ReferralLetterDocument } from "@/components/clinical-docs/ReferralLetterDocument";
+import { PrintableDocumentModal } from "@/components/clinical-docs/PrintableDocumentModal";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/transfers")({
@@ -85,6 +87,7 @@ function PatientTransfersPage() {
   // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [reviewingTransfer, setReviewingTransfer] = useState<PatientTransferItem | null>(null);
+  const [isPrintLetterOpen, setIsPrintLetterOpen] = useState(false);
   const [responseDecision, setResponseDecision] = useState<"accept" | "reject">("accept");
   const [responseNotes, setResponseNotes] = useState("");
 
@@ -767,9 +770,22 @@ function PatientTransfersPage() {
           )}
 
           <DialogFooter className="gap-2 sm:justify-between">
-            <Button type="button" variant="outline" size="sm" onClick={() => setReviewingTransfer(null)}>
-              Close
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setReviewingTransfer(null)}>
+                Close
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsPrintLetterOpen(true)}
+                className="gap-1.5 text-primary border-primary/40 hover:bg-primary/5 text-xs font-semibold"
+              >
+                <FileText className="size-3.5" />
+                Print Official Referral Letter
+              </Button>
+            </div>
+
             {reviewingTransfer?.isIncoming && reviewingTransfer.status === "pending" && (
               <Button
                 type="button"
@@ -785,6 +801,44 @@ function PatientTransfersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Printable Official Medical Referral Letter */}
+      {reviewingTransfer && (
+        <PrintableDocumentModal
+          open={isPrintLetterOpen}
+          onOpenChange={setIsPrintLetterOpen}
+          title="Official Medical Referral Letter"
+          documentRefCode={`REF-${reviewingTransfer.id.slice(0, 8).toUpperCase()}`}
+        >
+          <ReferralLetterDocument
+            hospital={{
+              name: reviewingTransfer.referringHospitalName,
+              address: "Department of Clinical Services & Patient Transfers",
+              state: "Nigeria",
+              contactPhone: "+234 800 000 9999",
+              licenseNumber: "FMOH-REF-098",
+            }}
+            patient={{
+              fullName: reviewingTransfer.patientName,
+              nin: reviewingTransfer.patientNin,
+              age: reviewingTransfer.clinicalSummary ? "Recorded in Dossier" : "N/A",
+              gender: "Patient",
+            }}
+            referral={{
+              referralNumber: `REF-${reviewingTransfer.id.slice(0, 8).toUpperCase()}`,
+              referralDate: reviewingTransfer.createdAt,
+              referralType: reviewingTransfer.priority,
+              receivingFacility: reviewingTransfer.receivingHospitalName,
+              receivingSpecialty: "Tertiary & Specialized Medical Services",
+              reasonForReferral: reviewingTransfer.reasonForTransfer,
+              clinicalSummaryAndHistory: reviewingTransfer.clinicalSummary,
+              referringDoctorName: reviewingTransfer.requestedByName || "Attending Medical Officer",
+              referringDoctorRank: "Medical Officer",
+              referringDoctorLicenseNumber: "MDCN/R/99214",
+            }}
+          />
+        </PrintableDocumentModal>
+      )}
     </div>
   );
 }

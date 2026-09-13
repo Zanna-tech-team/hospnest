@@ -48,6 +48,7 @@ import {
 } from "@/lib/triage.functions";
 import { News2ScoreBadge } from "@/components/clinical-safety/News2ScoreBadge";
 import { calculateNews2Score } from "@/lib/clinical-safety";
+import { useOfflineVitalsSync } from "@/hooks/useOfflineVitalsSync";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/triage")({
@@ -96,6 +97,31 @@ function TriageQueuePage() {
     refetchInterval: 10000, // Poll live queue every 10 seconds
   });
 
+  // Offline Vitals Sync Hook
+  const { isOnline, queueCount, enqueueVital, syncQueue, isSyncing } = useOfflineVitalsSync(
+    async (item) => {
+      const res = await recordVitalsFn({
+        data: {
+          encounterId: item.id,
+          patientId: item.patientId,
+          hospitalId: item.hospitalId,
+          bodyTemperature: item.temp ? parseFloat(item.temp) : undefined,
+          systolicBp: item.systolic ? parseInt(item.systolic, 10) : undefined,
+          diastolicBp: item.diastolic ? parseInt(item.diastolic, 10) : undefined,
+          pulseRate: item.pulse ? parseInt(item.pulse, 10) : undefined,
+          respiratoryRate: item.respRate ? parseInt(item.respRate, 10) : undefined,
+          spo2: item.spo2 ? parseInt(item.spo2, 10) : undefined,
+          weightKg: item.weight ? parseFloat(item.weight) : undefined,
+          heightCm: item.height ? parseFloat(item.height) : undefined,
+          painScore: item.painScore ? parseInt(item.painScore, 10) : undefined,
+          priority: item.priority || "normal",
+          notes: item.triageNotes,
+        },
+      });
+      return res.success;
+    }
+  );
+
   // Calculate BMI in real-time
   const computedBmi = useMemo(() => {
     const w = parseFloat(weight);
@@ -138,6 +164,27 @@ function TriageQueuePage() {
   const handleSaveVitals = () => {
     if (!selectedItem) return;
 
+    if (!isOnline) {
+      enqueueVital({
+        patientId: selectedItem.patientId,
+        patientName: selectedItem.patient.fullName,
+        hospitalId: activeHospitalId || "",
+        temp,
+        systolic,
+        diastolic,
+        pulse,
+        respRate,
+        spo2,
+        weight,
+        height,
+        painScore,
+        priority,
+        triageNotes,
+      });
+      setIsRecordOpen(false);
+      return;
+    }
+
     startTransition(async () => {
       try {
         const res = await recordVitalsFn({
@@ -167,7 +214,24 @@ function TriageQueuePage() {
           refetch();
         }
       } catch (err: any) {
-        toast.error(err?.message || "Failed to record vitals");
+        toast.error(err?.message || "Failed to record vitals; queued offline locally.");
+        enqueueVital({
+          patientId: selectedItem.patientId,
+          patientName: selectedItem.patient.fullName,
+          hospitalId: activeHospitalId || "",
+          temp,
+          systolic,
+          diastolic,
+          pulse,
+          respRate,
+          spo2,
+          weight,
+          height,
+          painScore,
+          priority,
+          triageNotes,
+        });
+        setIsRecordOpen(false);
       }
     });
   };
@@ -211,18 +275,42 @@ function TriageQueuePage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Offline Sync Status Badge */}
+          {!isOnline ? (
+            <div className="flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-600 dark:text-amber-400">
+              <span className="size-2 rounded-full bg-amber-500 animate-ping" />
+              <span>Offline Mode ({queueCount} queued)</span>
+            </div>
+          ) : queueCount > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={syncQueue}
+              disabled={isSyncing}
+              className="gap-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20 font-bold text-xs h-8"
+            >
+              <RefreshCw className={`size-3.5 ${isSyncing ? "animate-spin" : ""}`} />
+              Sync Offline Queue ({queueCount})
+            </Button>
+          ) : (
+            <div className="hidden sm:flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+              <span className="size-2 rounded-full bg-emerald-500" />
+              <span>Realtime Sync Online</span>
+            </div>
+          )}
+
           <Button
             size="sm"
             variant="outline"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="gap-1.5 border-border"
+            className="gap-1.5 border-border text-xs"
           >
             <RefreshCw className={`size-3.5 ${isFetching ? "animate-spin" : ""}`} />
             Refresh Queue
           </Button>
-          <Button asChild size="sm" className="gap-1.5 shadow-sm">
+          <Button asChild size="sm" className="gap-1.5 shadow-sm text-xs">
             <Link to="/front-desk">
               <User className="size-3.5" /> Front Desk Check-In
             </Link>
