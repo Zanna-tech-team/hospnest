@@ -66,6 +66,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { GlobalCommandPalette } from "@/components/navigation/GlobalCommandPalette";
+import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import logo from "@/assets/hospnest-logo.png.asset.json";
 
 type AppShellContextType = {
@@ -235,6 +237,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [selectedHospitalId, setSelectedHospitalId] = useState<string>("");
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
 
   const shellFn = useServerFn(getAppShellData);
   const { data: shellData, isLoading } = useQuery({
@@ -555,6 +558,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               )}
 
+              {/* Command Palette Trigger */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsCommandPaletteOpen(true)}
+                className="hidden sm:flex items-center gap-2 h-8 px-2.5 text-xs text-muted-foreground bg-muted/40 hover:bg-muted border-border/80 rounded-xl"
+              >
+                <Search className="size-3.5" />
+                <span>Search</span>
+                <kbd className="pointer-events-none hidden h-4.5 select-none items-center gap-0.5 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 md:flex">
+                  <span className="text-xs">⌘</span>K
+                </kbd>
+              </Button>
+
+              {/* Live Real-time Hospital Notification Center */}
+              <NotificationCenter hospitalId={activeHospitalId} />
+
               {/* User Role Badge */}
               <Badge
                 variant="outline"
@@ -671,6 +691,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </main>
         </div>
       </div>
+
+      {/* Global Command Palette (⌘K / Ctrl+K) */}
+      <GlobalCommandPalette open={isCommandPaletteOpen} onOpenChange={setIsCommandPaletteOpen} />
     </AppShellContext.Provider>
   );
 }
