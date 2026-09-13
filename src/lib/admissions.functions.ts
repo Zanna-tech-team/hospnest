@@ -114,7 +114,8 @@ export const getInpatientsDashboardData = createServerFn({ method: "GET" })
   }) => d)
   .handler(async ({ context, data }) => {
     const { userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
 
     let targetHospitalId = data.hospitalId;
     if (!targetHospitalId) {
@@ -307,7 +308,8 @@ export const getInpatientClinicalDetail = createServerFn({ method: "GET" })
   .inputValidator((d: { admissionId: string; hospitalId?: string }) => d)
   .handler(async ({ context, data }) => {
     const { userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
 
     // A. Admission & Patient Detail
     const { data: adm, error: admError } = await supabaseAdmin
@@ -464,7 +466,8 @@ export const recordWardRoundNote = createServerFn({ method: "POST" })
   }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
     const role = await resolveCallerRole(supabase, userId);
 
     const { data: staffRow } = await supabaseAdmin
@@ -514,7 +517,8 @@ export const recordNursingCareObservation = createServerFn({ method: "POST" })
   }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
     const role = await resolveCallerRole(supabase, userId);
 
     const { data: staffRow } = await supabaseAdmin
@@ -570,7 +574,8 @@ export const finalizeInpatientDischargeLifecycle = createServerFn({ method: "POS
   }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
     const role = await resolveCallerRole(supabase, userId);
 
     const { data: adm, error: admErr } = await supabaseAdmin

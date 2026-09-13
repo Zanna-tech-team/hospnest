@@ -156,7 +156,8 @@ export const getHospitalAppointmentsCalendar = createServerFn({ method: "GET" })
   }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
     const role = await resolveCallerRole(supabase, userId);
 
     let targetHospitalId = data.hospitalId;
@@ -357,7 +358,8 @@ export const getAvailableDoctorSlots = createServerFn({ method: "GET" })
   }) => d)
   .handler(async ({ context, data }) => {
     const { userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
 
     let targetHospitalId = data.hospitalId;
     if (!targetHospitalId) {
@@ -536,7 +538,8 @@ export const createStaffAppointment = createServerFn({ method: "POST" })
   }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
     const role = await resolveCallerRole(supabase, userId);
 
     const slotDuration = data.slotDurationMinutes || 20;
@@ -610,7 +613,8 @@ export const checkInClinicAppointment = createServerFn({ method: "POST" })
   .inputValidator((d: { appointmentId: string; hospitalId: string }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
     const role = await resolveCallerRole(supabase, userId);
 
     const { data: appt, error: apptError } = await supabaseAdmin
@@ -732,7 +736,8 @@ export const rescheduleClinicAppointment = createServerFn({ method: "POST" })
   }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
     const role = await resolveCallerRole(supabase, userId);
 
     const { data: appt } = await supabaseAdmin
@@ -806,7 +811,8 @@ export const cancelClinicAppointment = createServerFn({ method: "POST" })
   .inputValidator((d: { appointmentId: string; hospitalId: string; reason: string }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
     const role = await resolveCallerRole(supabase, userId);
 
     const { data: appt } = await supabaseAdmin
@@ -847,7 +853,8 @@ export const getLiveQueueBoardData = createServerFn({ method: "GET" })
   .inputValidator((d: { hospitalId?: string; departmentId?: string }) => d)
   .handler(async ({ context, data }) => {
     const { userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
 
     let targetHospitalId = data.hospitalId;
     if (!targetHospitalId) {
@@ -968,7 +975,8 @@ export const markPastAppointmentsNoShow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { hospitalId: string }) => d)
   .handler(async ({ context, data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
     const { data: updated, error } = await supabaseAdmin
