@@ -472,7 +472,7 @@ export const orderImagingStudy = createServerFn({ method: "POST" })
       accessor_id: userId,
       accessor_role: role,
       patient_id: input.patientId,
-      encounter_id: input.encounterId || undefined,
+      ...(input.encounterId ? { encounter_id: input.encounterId } : {}),
       action: "WRITE",
       justification: `Ordered ${input.modality.toUpperCase()} (${input.bodyPart}) for patient. Priority: ${input.priority || "routine"}`,
     });
