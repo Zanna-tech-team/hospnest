@@ -80,7 +80,7 @@ export const Route = createFileRoute("/_authenticated/admissions")({
 
 function InpatientsAdmissionsPage() {
   const { activeHospitalId, shellData } = useAppShell();
-  const currentHospital = shellData?.hospitals.find((h) => h.id === activeHospitalId);
+  const currentHospital = shellData?.hospitals?.find((h) => h.id === activeHospitalId);
   const queryClient = useQueryClient();
 
   const getDashboardFn = useServerFn(getInpatientsDashboardData);
