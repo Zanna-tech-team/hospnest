@@ -496,13 +496,15 @@ export type RadiologyDepartmentData = {
  * Retrieves imaging department studies partitioned into Requests, Worklist, and Reports.
  */
 export const getRadiologyDepartmentWorklist = createServerFn({ method: "GET" })
-  .validator((d: {
-    hospitalId?: string;
-    modalityFilter?: string;
-    searchQuery?: string;
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
+    hospitalId?: string | undefined;
+    modalityFilter?: string | undefined;
+    searchQuery?: string | undefined;
   }) => d)
-  .handler(async ({ data: input }) => {
-    const { supabaseAdmin, userId } = await requireSupabaseAuth();
+  .handler(async ({ context, data: input }) => {
+    const { userId } = context;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     let targetHospitalId = input.hospitalId;
     if (!targetHospitalId) {
