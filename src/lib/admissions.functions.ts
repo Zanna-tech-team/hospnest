@@ -282,8 +282,8 @@ export const getInpatientsDashboardData = createServerFn({ method: "GET" })
       ? (admissions.reduce((acc, a) => acc + a.lengthOfStayDays, 0) / totalAdmitted).toFixed(1)
       : "0";
 
-    const totalCapacity = wardsList.reduce((acc, w) => acc + w.totalBeds, 0);
-    const totalOccupiedBeds = wardsList.reduce((acc, w) => acc + w.occupiedBeds, 0);
+    const totalCapacity = wardsList.reduce((acc: number, w: any) => acc + w.totalBeds, 0);
+    const totalOccupiedBeds = wardsList.reduce((acc: number, w: any) => acc + w.occupiedBeds, 0);
     const overallOccupancy = totalCapacity > 0 ? Math.round((totalOccupiedBeds / totalCapacity) * 100) : 0;
 
     return {
