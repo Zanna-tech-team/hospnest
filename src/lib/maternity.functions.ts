@@ -234,9 +234,8 @@ export const getMaternityDashboardData = createServerFn({ method: "GET" })
       // 4. Fetch Eligible Female Patients for Enrollment
       const { data: rawPatients } = await supabase
         .from("patients")
-        .select("id, full_name, nin, date_of_birth")
-        .eq("hospital_id", hospitalId)
-        .order("full_name", { ascending: true })
+        .select("id, first_name, last_name, nin, date_of_birth")
+        .order("last_name", { ascending: true })
         .limit(100);
 
       const patientsList = (rawPatients || []).map((p: any) => {
@@ -247,7 +246,7 @@ export const getMaternityDashboardData = createServerFn({ method: "GET" })
         }
         return {
           id: p.id,
-          fullName: p.full_name,
+          fullName: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
           nin: p.nin,
           age,
         };

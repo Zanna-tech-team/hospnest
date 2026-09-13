@@ -667,7 +667,7 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
         drugHistory: enc.drug_history || null,
         allergiesNotes: enc.allergies_notes || null,
         reviewOfSystems: enc.review_of_systems || null,
-        physicalExamSystematic: enc.physical_exam_systematic || null,
+        physicalExamSystematic: (enc.physical_exam_systematic as any) || null,
         diagnosis: enc.diagnosis,
         icd10Codes: enc.icd10_codes || [],
         clinicalNotes: enc.clinical_notes,
