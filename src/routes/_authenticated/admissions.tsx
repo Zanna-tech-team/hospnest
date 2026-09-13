@@ -156,7 +156,7 @@ function InpatientsAdmissionsPage() {
       getDetailFn({
         data: {
           admissionId: selectedAdmission!.id,
-          hospitalId: activeHospitalId || undefined,
+          ...(activeHospitalId ? { hospitalId: activeHospitalId } : {}),
         },
       }),
     enabled: Boolean(selectedAdmission?.id),
@@ -408,7 +408,7 @@ function InpatientsAdmissionsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs">All Hospital Wards</SelectItem>
-              {wards.map((w) => (
+              {wards.map((w: any) => (
                 <SelectItem key={w.id} value={w.id} className="text-xs">
                   {w.name} ({w.occupiedBeds}/{w.totalBeds})
                 </SelectItem>
