@@ -1786,7 +1786,7 @@ function ConsultationsPage() {
 
                       <Button
                         size="sm"
-                        onClick={handleAddPrescription}
+                        onClick={() => handleAddPrescription()}
                         disabled={isPending || !selectedDrugId}
                         className="w-full h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
                       >
