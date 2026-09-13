@@ -19,6 +19,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedFrontDeskRouteImport } from './routes/_authenticated/front-desk'
 import { Route as AuthenticatedHospitalSetupRouteImport } from './routes/_authenticated/hospital-setup'
 import { Route as AuthenticatedLabRouteImport } from './routes/_authenticated/lab'
+import { Route as AuthenticatedMaternityRouteImport } from './routes/_authenticated/maternity'
 import { Route as AuthenticatedPortalRouteImport } from './routes/_authenticated/portal'
 import { Route as AuthenticatedRadiologyRouteImport } from './routes/_authenticated/radiology'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
@@ -85,6 +86,11 @@ const AuthenticatedHospitalSetupRoute =
 const AuthenticatedLabRoute = AuthenticatedLabRouteImport.update({
   id: '/lab',
   path: '/lab',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedMaternityRoute = AuthenticatedMaternityRouteImport.update({
+  id: '/maternity',
+  path: '/maternity',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedPortalRoute = AuthenticatedPortalRouteImport.update({
@@ -185,6 +191,7 @@ export interface FileRoutesByFullPath {
   '/front-desk': typeof AuthenticatedFrontDeskRoute
   '/hospital-setup': typeof AuthenticatedHospitalSetupRoute
   '/lab': typeof AuthenticatedLabRoute
+  '/maternity': typeof AuthenticatedMaternityRoute
   '/portal': typeof AuthenticatedPortalRoute
   '/radiology': typeof AuthenticatedRadiologyRoute
   '/reports': typeof AuthenticatedReportsRoute
@@ -212,6 +219,7 @@ export interface FileRoutesByTo {
   '/front-desk': typeof AuthenticatedFrontDeskRoute
   '/hospital-setup': typeof AuthenticatedHospitalSetupRoute
   '/lab': typeof AuthenticatedLabRoute
+  '/maternity': typeof AuthenticatedMaternityRoute
   '/portal': typeof AuthenticatedPortalRoute
   '/radiology': typeof AuthenticatedRadiologyRoute
   '/reports': typeof AuthenticatedReportsRoute
@@ -241,6 +249,7 @@ export interface FileRoutesById {
   '/_authenticated/front-desk': typeof AuthenticatedFrontDeskRoute
   '/_authenticated/hospital-setup': typeof AuthenticatedHospitalSetupRoute
   '/_authenticated/lab': typeof AuthenticatedLabRoute
+  '/_authenticated/maternity': typeof AuthenticatedMaternityRoute
   '/_authenticated/portal': typeof AuthenticatedPortalRoute
   '/_authenticated/radiology': typeof AuthenticatedRadiologyRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
@@ -270,6 +279,7 @@ export interface FileRouteTypes {
     | '/front-desk'
     | '/hospital-setup'
     | '/lab'
+    | '/maternity'
     | '/portal'
     | '/radiology'
     | '/reports'
@@ -297,6 +307,7 @@ export interface FileRouteTypes {
     | '/front-desk'
     | '/hospital-setup'
     | '/lab'
+    | '/maternity'
     | '/portal'
     | '/radiology'
     | '/reports'
@@ -325,6 +336,7 @@ export interface FileRouteTypes {
     | '/_authenticated/front-desk'
     | '/_authenticated/hospital-setup'
     | '/_authenticated/lab'
+    | '/_authenticated/maternity'
     | '/_authenticated/portal'
     | '/_authenticated/radiology'
     | '/_authenticated/reports'
@@ -420,6 +432,13 @@ declare module '@tanstack/react-router' {
       path: '/lab'
       fullPath: '/lab'
       preLoaderRoute: typeof AuthenticatedLabRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/maternity': {
+      id: '/_authenticated/maternity'
+      path: '/maternity'
+      fullPath: '/maternity'
+      preLoaderRoute: typeof AuthenticatedMaternityRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/portal': {
@@ -545,6 +564,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedFrontDeskRoute: typeof AuthenticatedFrontDeskRoute
   AuthenticatedHospitalSetupRoute: typeof AuthenticatedHospitalSetupRoute
   AuthenticatedLabRoute: typeof AuthenticatedLabRoute
+  AuthenticatedMaternityRoute: typeof AuthenticatedMaternityRoute
   AuthenticatedPortalRoute: typeof AuthenticatedPortalRoute
   AuthenticatedRadiologyRoute: typeof AuthenticatedRadiologyRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
@@ -570,6 +590,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedFrontDeskRoute: AuthenticatedFrontDeskRoute,
   AuthenticatedHospitalSetupRoute: AuthenticatedHospitalSetupRoute,
   AuthenticatedLabRoute: AuthenticatedLabRoute,
+  AuthenticatedMaternityRoute: AuthenticatedMaternityRoute,
   AuthenticatedPortalRoute: AuthenticatedPortalRoute,
   AuthenticatedRadiologyRoute: AuthenticatedRadiologyRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,

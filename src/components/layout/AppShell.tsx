@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   Activity,
   ArrowRightLeft,
+  Baby,
   BarChart3,
   Bed,
   Bell,
@@ -163,6 +164,12 @@ const NAVIGATION_ITEMS: NavItem[] = [
     label: "Ward & Bed Matrix",
     href: "/wards",
     icon: Building2,
+    category: "clinical",
+  },
+  {
+    label: "Maternity & ANC",
+    href: "/maternity",
+    icon: Baby,
     category: "clinical",
   },
   {

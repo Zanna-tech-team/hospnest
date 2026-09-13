@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   Activity,
   ArrowRightLeft,
+  Baby,
   Bed,
   Building2,
   Calendar,
@@ -181,6 +182,17 @@ export function GlobalCommandPalette({
             <span className="font-semibold text-xs">Generate Invoices & HMO Insurance Claims</span>
             <CommandShortcut>↵</CommandShortcut>
           </CommandItem>
+
+          <CommandItem
+            onSelect={() => runAction(() => navigate({ to: "/maternity" }))}
+            className="flex items-center gap-2.5 cursor-pointer py-2"
+          >
+            <div className="flex size-6 items-center justify-center rounded-md bg-teal-500/10 text-teal-600">
+              <Baby className="size-3.5" />
+            </div>
+            <span className="font-semibold text-xs">Maternity ANC Register & Labor Partograph</span>
+            <CommandShortcut>↵</CommandShortcut>
+          </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
@@ -217,6 +229,14 @@ export function GlobalCommandPalette({
           >
             <ArrowRightLeft className="size-4 text-muted-foreground" />
             <span className="text-xs">Inter-Facility Patient Transfers & Referrals</span>
+          </CommandItem>
+
+          <CommandItem
+            onSelect={() => runAction(() => navigate({ to: "/maternity" }))}
+            className="flex items-center gap-2.5 cursor-pointer py-2"
+          >
+            <Baby className="size-4 text-muted-foreground" />
+            <span className="text-xs">Maternity, ANC & Child Immunization Register</span>
           </CommandItem>
 
           <CommandItem
