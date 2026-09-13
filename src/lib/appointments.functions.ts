@@ -495,10 +495,12 @@ export const getAvailableDoctorSlots = createServerFn({ method: "GET" })
           isAvailable: !booked,
           isBooked: Boolean(booked),
           isBlocked: false,
-          bookedAppointmentId: booked?.id,
-          bookedPatientName: booked?.patient
-            ? `${(booked.patient as any).first_name} ${(booked.patient as any).last_name || ""}`.trim()
-            : undefined,
+          ...(booked?.id ? { bookedAppointmentId: booked.id as string } : {}),
+          ...(booked?.patient
+            ? {
+                bookedPatientName: `${(booked.patient as any).first_name} ${(booked.patient as any).last_name || ""}`.trim(),
+              }
+            : {}),
         });
 
         // Advance by slot duration
