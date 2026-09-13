@@ -46,6 +46,8 @@ import {
   VITAL_THRESHOLDS,
   type TriageQueueItem,
 } from "@/lib/triage.functions";
+import { News2ScoreBadge } from "@/components/clinical-safety/News2ScoreBadge";
+import { calculateNews2Score } from "@/lib/clinical-safety";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/triage")({
@@ -455,6 +457,29 @@ function TriageQueuePage() {
                   🔴 Emergency (Immediate)
                 </button>
               </div>
+            </div>
+
+            {/* Live NEWS2 Clinical Safety Score */}
+            <div className="flex items-center justify-between p-3 rounded-xl border border-border/80 bg-background/50 backdrop-blur-sm">
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <HeartPulse className="size-3.5 text-primary" />
+                  Live NEWS2 Deterioration Score
+                </span>
+                <p className="text-[11px] text-muted-foreground">
+                  Automated Royal College of Physicians Clinical Deterioration Assessment
+                </p>
+              </div>
+              <News2ScoreBadge
+                vitals={{
+                  systolicBp: systolic ? parseFloat(systolic) : undefined,
+                  pulseRate: pulse ? parseInt(pulse, 10) : undefined,
+                  bodyTemperature: temp ? parseFloat(temp) : undefined,
+                  respiratoryRate: respRate ? parseInt(respRate, 10) : undefined,
+                  spo2: spo2 ? parseFloat(spo2) : undefined,
+                }}
+                showDetails
+              />
             </div>
 
             {/* Vitals Form Grid */}

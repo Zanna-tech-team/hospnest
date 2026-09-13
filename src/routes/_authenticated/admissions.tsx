@@ -64,6 +64,8 @@ import {
 } from "@/lib/admissions.functions";
 import { DischargeSummaryDocument } from "@/components/clinical-docs/DischargeSummaryDocument";
 import { PrintableDocumentModal } from "@/components/clinical-docs/PrintableDocumentModal";
+import { News2ScoreBadge } from "@/components/clinical-safety/News2ScoreBadge";
+import { calculateNews2Score } from "@/lib/clinical-safety";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/admissions")({
@@ -112,6 +114,12 @@ function InpatientsAdmissionsPage() {
   const [marRefusalReason, setMarRefusalReason] = useState("");
   const [fluidInputMl, setFluidInputMl] = useState<number>(0);
   const [fluidOutputMl, setFluidOutputMl] = useState<number>(0);
+  const [vitalTemp, setVitalTemp] = useState("");
+  const [vitalSystolic, setVitalSystolic] = useState("");
+  const [vitalDiastolic, setVitalDiastolic] = useState("");
+  const [vitalPulse, setVitalPulse] = useState("");
+  const [vitalResp, setVitalResp] = useState("");
+  const [vitalSpo2, setVitalSpo2] = useState("");
 
   // Discharge Form State
   const [dischargeCondition, setDischargeCondition] = useState<DischargeCondition>("improved");
@@ -227,6 +235,22 @@ function InpatientsAdmissionsPage() {
         balanceMl: Number(fluidInputMl || 0) - Number(fluidOutputMl || 0),
         recordedAt: new Date().toISOString(),
       };
+    } else if (obsType === "vitals") {
+      const vObj = {
+        systolicBp: vitalSystolic ? parseFloat(vitalSystolic) : undefined,
+        diastolicBp: vitalDiastolic ? parseFloat(vitalDiastolic) : undefined,
+        pulseRate: vitalPulse ? parseInt(vitalPulse, 10) : undefined,
+        bodyTemperature: vitalTemp ? parseFloat(vitalTemp) : undefined,
+        respiratoryRate: vitalResp ? parseInt(vitalResp, 10) : undefined,
+        spo2: vitalSpo2 ? parseFloat(vitalSpo2) : undefined,
+      };
+      const news2 = calculateNews2Score(vObj);
+      detailsPayload = {
+        ...vObj,
+        news2Score: news2.totalScore,
+        news2RiskLevel: news2.riskLevel,
+        recordedAt: new Date().toISOString(),
+      };
     }
 
     startTransition(async () => {
@@ -246,6 +270,12 @@ function InpatientsAdmissionsPage() {
         setMarDrugName("");
         setFluidInputMl(0);
         setFluidOutputMl(0);
+        setVitalTemp("");
+        setVitalSystolic("");
+        setVitalDiastolic("");
+        setVitalPulse("");
+        setVitalResp("");
+        setVitalSpo2("");
         refetchDetail();
       } catch (err: any) {
         toast.error(err.message || "Failed to save nursing observation.");
@@ -586,6 +616,33 @@ function InpatientsAdmissionsPage() {
                           <span className="text-muted-foreground">{new Date(obs.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                         </div>
                         <p className="text-[11px] font-semibold text-foreground">By {obs.nurseName}</p>
+                        {obs.observationType === "vitals" && (
+                          <div className="space-y-1.5 pt-1">
+                            <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                              {obs.details?.bodyTemperature && (
+                                <span className="rounded bg-muted px-1.5 py-0.5">
+                                  Temp: <strong>{obs.details.bodyTemperature}°C</strong>
+                                </span>
+                              )}
+                              {obs.details?.systolicBp && (
+                                <span className="rounded bg-muted px-1.5 py-0.5">
+                                  BP: <strong>{obs.details.systolicBp}/{obs.details.diastolicBp || "—"}</strong>
+                                </span>
+                              )}
+                              {obs.details?.pulseRate && (
+                                <span className="rounded bg-muted px-1.5 py-0.5">
+                                  Pulse: <strong>{obs.details.pulseRate} bpm</strong>
+                                </span>
+                              )}
+                              {obs.details?.spo2 && (
+                                <span className="rounded bg-muted px-1.5 py-0.5">
+                                  SpO2: <strong>{obs.details.spo2}%</strong>
+                                </span>
+                              )}
+                            </div>
+                            <News2ScoreBadge vitals={obs.details} showDetails />
+                          </div>
+                        )}
                         {obs.observationType === "mar" && (
                           <div className="text-[11px] text-muted-foreground">
                             <span>Drug: <strong className="text-foreground">{obs.details?.drugName}</strong></span> • Status:{" "}
@@ -710,6 +767,88 @@ function InpatientsAdmissionsPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            {obsType === "vitals" && (
+              <div className="space-y-3 rounded-xl bg-muted/20 p-3 border border-border">
+                <div className="flex items-center justify-between pb-1 border-b border-border/70">
+                  <span className="text-xs font-bold text-foreground">Ward Vital Signs & NEWS2 Risk</span>
+                  <News2ScoreBadge
+                    vitals={{
+                      systolicBp: vitalSystolic ? parseFloat(vitalSystolic) : undefined,
+                      pulseRate: vitalPulse ? parseInt(vitalPulse, 10) : undefined,
+                      bodyTemperature: vitalTemp ? parseFloat(vitalTemp) : undefined,
+                      respiratoryRate: vitalResp ? parseInt(vitalResp, 10) : undefined,
+                      spo2: vitalSpo2 ? parseFloat(vitalSpo2) : undefined,
+                    }}
+                    showDetails
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Temp (°C)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      placeholder="36.8"
+                      value={vitalTemp}
+                      onChange={(e) => setVitalTemp(e.target.value)}
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Systolic BP (mmHg)</Label>
+                    <Input
+                      type="number"
+                      placeholder="120"
+                      value={vitalSystolic}
+                      onChange={(e) => setVitalSystolic(e.target.value)}
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Diastolic BP (mmHg)</Label>
+                    <Input
+                      type="number"
+                      placeholder="80"
+                      value={vitalDiastolic}
+                      onChange={(e) => setVitalDiastolic(e.target.value)}
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Pulse Rate (bpm)</Label>
+                    <Input
+                      type="number"
+                      placeholder="72"
+                      value={vitalPulse}
+                      onChange={(e) => setVitalPulse(e.target.value)}
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Resp Rate (bpm)</Label>
+                    <Input
+                      type="number"
+                      placeholder="16"
+                      value={vitalResp}
+                      onChange={(e) => setVitalResp(e.target.value)}
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">SpO2 (%)</Label>
+                    <Input
+                      type="number"
+                      placeholder="98"
+                      value={vitalSpo2}
+                      onChange={(e) => setVitalSpo2(e.target.value)}
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {obsType === "mar" && (
               <div className="space-y-2 rounded-xl bg-muted/20 p-3 border border-border">

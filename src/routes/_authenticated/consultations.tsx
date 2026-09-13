@@ -88,6 +88,9 @@ import { RadiologyReportDocument } from "@/components/clinical-docs/RadiologyRep
 import { MedicalFitnessDocument } from "@/components/clinical-docs/MedicalFitnessDocument";
 import { ReferralLetterDocument } from "@/components/clinical-docs/ReferralLetterDocument";
 import { SickLeaveDocument } from "@/components/clinical-docs/SickLeaveDocument";
+import { News2ScoreBadge } from "@/components/clinical-safety/News2ScoreBadge";
+import { DrugInteractionWarningModal } from "@/components/clinical-safety/DrugInteractionWarningModal";
+import { checkDrugSafetyAndInteractions, type DrugSafetyResult } from "@/lib/clinical-safety";
 import { useVoiceDictation } from "@/hooks/useVoiceDictation";
 import { toast } from "sonner";
 import {
@@ -222,13 +225,16 @@ function ConsultationsPage() {
   const [labSampleType, setLabSampleType] = useState("Blood");
   const [labNotes, setLabNotes] = useState("");
 
-  // Prescription Form State
+  // Prescription Form State & Clinical Safety Checker
   const [selectedDrugId, setSelectedDrugId] = useState("");
   const [rxDosage, setRxDosage] = useState("1 tab");
   const [rxFrequency, setRxFrequency] = useState("twice daily (BD)");
   const [rxDuration, setRxDuration] = useState("5 days");
   const [rxQuantity, setRxQuantity] = useState("10");
   const [rxInstructions, setRxInstructions] = useState("Take after meals");
+  const [isDrugWarningOpen, setIsDrugWarningOpen] = useState(false);
+  const [pendingSafetyResult, setPendingSafetyResult] = useState<DrugSafetyResult | null>(null);
+  const [pendingDrugName, setPendingDrugName] = useState("");
 
   const [isPending, startTransition] = useTransition();
 
@@ -519,12 +525,39 @@ function ConsultationsPage() {
     });
   };
 
-  // Order Prescription Action
-  const handleAddPrescription = () => {
+  // Order Prescription Action with Clinical Safety Cross-Checking
+  const handleAddPrescription = (overrideJustification?: string) => {
     if (!selectedEncounterId || !workspaceData || !selectedDrugId) {
       toast.error("Please select a medication to prescribe.");
       return;
     }
+
+    const drugObj = workspaceData.availableDrugs.find((d) => d.id === selectedDrugId);
+    const drugFullName = drugObj
+      ? `${drugObj.genericName} ${drugObj.brandName ? "(" + drugObj.brandName + ")" : ""}`
+      : "Medication";
+
+    // Run clinical safety & interaction checker if no override provided yet
+    if (!overrideJustification) {
+      const activeMedNames = workspaceData.activePrescriptions.map((p) => p.drugName);
+      const safetyResult = checkDrugSafetyAndInteractions({
+        prescribedDrugName: drugFullName,
+        patientAllergies: workspaceData.patient.allergies,
+        activeMedicationNames: activeMedNames,
+      });
+
+      if (safetyResult.hasConflicts) {
+        setPendingSafetyResult(safetyResult);
+        setPendingDrugName(drugFullName);
+        setIsDrugWarningOpen(true);
+        return;
+      }
+    }
+
+    const fullInstructions = [
+      rxInstructions,
+      overrideJustification ? `[CLINICAL OVERRIDE: ${overrideJustification}]` : null,
+    ].filter(Boolean).join(" • ");
 
     startTransition(async () => {
       try {
@@ -538,7 +571,7 @@ function ConsultationsPage() {
             frequency: rxFrequency,
             duration: rxDuration,
             quantity: parseInt(rxQuantity, 10) || 1,
-            instructions: rxInstructions || undefined,
+            instructions: fullInstructions || undefined,
           },
         });
 
@@ -1030,10 +1063,19 @@ function ConsultationsPage() {
                       )}
                     </div>
 
-                    {/* Vitals snapshot */}
+                    {/* Vitals snapshot with NEWS2 Risk Engine */}
                     {workspaceData.latestVitals ? (
                       <div className="flex flex-wrap items-center gap-2 font-mono sm:justify-end">
-                        <span className="text-muted-foreground font-sans">Triage Vitals:</span>
+                        <News2ScoreBadge
+                          vitals={{
+                            systolicBp: workspaceData.latestVitals.systolicBp,
+                            pulseRate: workspaceData.latestVitals.pulseRate,
+                            bodyTemperature: workspaceData.latestVitals.bodyTemperature,
+                            respiratoryRate: workspaceData.latestVitals.respiratoryRate,
+                            spo2: workspaceData.latestVitals.spo2,
+                          }}
+                          showDetails
+                        />
                         <span className="rounded bg-muted/70 px-1.5 py-0.5">
                           Temp: {workspaceData.latestVitals.bodyTemperature ?? "—"}°C
                         </span>
@@ -2551,12 +2593,22 @@ function ConsultationsPage() {
                 ? `Dr. ${workspaceData.encounter.practitionerName}`
                 : "Dr. Attending Medical Officer",
               physicianRank: workspaceData.encounter.practitionerRank || "Medical Officer",
-              physicianLicenseNumber: workspaceData.encounter.practitionerLicenseNumber || "MDCN/R/99214",
               digitalSignatureHash: workspaceData.encounter.digitalSignatureHash || undefined,
             }}
           />
         </PrintableDocumentModal>
       )}
+
+      {/* Clinical Safety & Drug Interaction Alert Modal */}
+      <DrugInteractionWarningModal
+        open={isDrugWarningOpen}
+        onOpenChange={setIsDrugWarningOpen}
+        safetyResult={pendingSafetyResult}
+        drugName={pendingDrugName}
+        onConfirmOverride={(justification) => {
+          handleAddPrescription(justification);
+        }}
+      />
     </div>
   );
 }
