@@ -152,9 +152,15 @@ const NAVIGATION_ITEMS: NavItem[] = [
     category: "clinical",
   },
   {
-    label: "Ward & Inpatients",
-    href: "/wards",
+    label: "Inpatient Admissions",
+    href: "/admissions",
     icon: Bed,
+    category: "clinical",
+  },
+  {
+    label: "Ward & Bed Matrix",
+    href: "/wards",
+    icon: Building2,
     category: "clinical",
   },
   {
