@@ -597,7 +597,7 @@ function ConsultationsPage() {
       try {
         const res = await orderImagingFn({
           data: {
-            hospitalId: activeHospitalId || workspaceData.encounter.hospitalId,
+            hospitalId: activeHospitalId,
             patientId: workspaceData.patient.id,
             encounterId: selectedEncounterId,
             modality: orderModality,
@@ -2344,9 +2344,8 @@ function ConsultationsPage() {
               gender: workspaceData?.patient?.gender || "N/A",
             }}
             study={{
-              studyNumber: `RAD-${activeReportStudy.id.slice(0, 8).toUpperCase()}`,
+              accessionNumber: `RAD-${activeReportStudy.id.slice(0, 8).toUpperCase()}`,
               studyDate: activeReportStudy.studyDate,
-              reportDate: activeReportStudy.createdAt,
               modality: activeReportStudy.modality,
               bodyPart: activeReportStudy.bodyPart,
               clinicalIndication: activeReportStudy.clinicalIndication || "Clinical evaluation",
@@ -2354,10 +2353,7 @@ function ConsultationsPage() {
               impression: activeReportStudy.impression || "Awaiting radiologist review.",
               radiologistNotes: activeReportStudy.radiologistNotes || undefined,
               isCritical: activeReportStudy.isCritical,
-              radiologistName: activeReportStudy.radiologistName || "Radiologist On-Duty",
-              radiologistLicense: "MDCN/RAD/99824",
-              technicianName: activeReportStudy.technicianName || undefined,
-              imageUrl: activeReportStudy.imageUrl || undefined,
+              reportingRadiologist: activeReportStudy.radiologistName || "Radiologist On-Duty",
             }}
           />
         </PrintableDocumentModal>
@@ -2595,7 +2591,10 @@ function ConsultationsPage() {
                 ? `Dr. ${workspaceData.encounter.practitionerName}`
                 : "Dr. Attending Medical Officer",
               physicianRank: workspaceData.encounter.practitionerRank || "Medical Officer",
-              digitalSignatureHash: workspaceData.encounter.digitalSignatureHash || undefined,
+              physicianLicenseNumber: workspaceData.encounter.practitionerLicenseNumber || "MDCN/R/99214",
+              ...(workspaceData.encounter.digitalSignatureHash
+                ? { digitalSignatureHash: workspaceData.encounter.digitalSignatureHash }
+                : {}),
             }}
           />
         </PrintableDocumentModal>

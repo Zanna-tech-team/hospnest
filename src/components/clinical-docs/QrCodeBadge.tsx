@@ -2,9 +2,9 @@ import React, { useMemo } from "react";
 
 interface QrCodeBadgeProps {
   value: string;
-  size?: number;
-  label?: string;
-  className?: string;
+  size?: number | undefined;
+  label?: string | undefined;
+  className?: string | undefined;
 }
 
 /**

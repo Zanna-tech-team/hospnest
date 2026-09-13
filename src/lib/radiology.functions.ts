@@ -46,10 +46,10 @@ async function writeAuditEntry(
     hospital_id: string;
     accessor_id: string;
     accessor_role: StaffRole;
-    patient_id?: string;
-    encounter_id?: string;
+    patient_id?: string | undefined;
+    encounter_id?: string | undefined;
     action: "READ" | "WRITE" | "BREAK_GLASS_OVERRIDE" | "EXPORT";
-    justification?: string | null;
+    justification?: string | null | undefined;
   },
 ) {
   try {
@@ -418,17 +418,30 @@ export const saveRadiologyReport = createServerFn({ method: "POST" })
  * Creates an imaging request order from consultation or triage.
  */
 export const orderImagingStudy = createServerFn({ method: "POST" })
-  .validator((d: {
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
     hospitalId: string;
     patientId: string;
-    encounterId?: string | null;
+    encounterId?: string | null | undefined;
     modality: ImagingModality;
     bodyPart: string;
     clinicalIndication: string;
-    priority?: "routine" | "urgent" | "stat";
+    priority?: "routine" | "urgent" | "stat" | undefined;
   }) => d)
-  .handler(async ({ data: input }) => {
-    const { supabase, supabaseAdmin, userId, role } = await requireSupabaseAuth();
+  .handler(async ({ context, data: input }) => {
+    const { supabase, userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
+
+    const { data: roleRow } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("hospital_id", input.hospitalId)
+      .eq("is_active", true)
+      .maybeSingle();
+    const role = (roleRow?.role as StaffRole) || "doctor";
+
 
     const { data: staffRow } = await supabaseAdmin
       .from("staff")
@@ -460,7 +473,7 @@ export const orderImagingStudy = createServerFn({ method: "POST" })
       accessor_id: userId,
       accessor_role: role,
       patient_id: input.patientId,
-      encounter_id: input.encounterId || undefined,
+      ...(input.encounterId ? { encounter_id: input.encounterId } : {}),
       action: "WRITE",
       justification: `Ordered ${input.modality.toUpperCase()} (${input.bodyPart}) for patient. Priority: ${input.priority || "routine"}`,
     });
@@ -484,13 +497,16 @@ export type RadiologyDepartmentData = {
  * Retrieves imaging department studies partitioned into Requests, Worklist, and Reports.
  */
 export const getRadiologyDepartmentWorklist = createServerFn({ method: "GET" })
-  .validator((d: {
-    hospitalId?: string;
-    modalityFilter?: string;
-    searchQuery?: string;
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
+    hospitalId?: string | undefined;
+    modalityFilter?: string | undefined;
+    searchQuery?: string | undefined;
   }) => d)
-  .handler(async ({ data: input }) => {
-    const { supabaseAdmin, userId } = await requireSupabaseAuth();
+  .handler(async ({ context, data: input }) => {
+    const { userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
 
     let targetHospitalId = input.hospitalId;
     if (!targetHospitalId) {
@@ -590,7 +606,7 @@ export const getRadiologyDepartmentWorklist = createServerFn({ method: "GET" })
       createdAt: row.created_at,
     });
 
-    const allStudies = (rows || []).map(mapStudy);
+    const allStudies: RadiologyStudyItem[] = (rows || []).map((r: any) => mapStudy(r));
 
     const requests = allStudies.filter((s) => s.status === "scheduled" || !s.imageUrl);
     const worklist = allStudies.filter((s) => s.status === "acquired" && Boolean(s.imageUrl));

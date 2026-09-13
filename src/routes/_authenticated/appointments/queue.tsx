@@ -66,7 +66,7 @@ function LiveQueueBoardPage() {
     refetch,
   } = useQuery({
     queryKey: ["live-queue-board", activeHospitalId],
-    queryFn: () => getQueueDataFn({ data: { hospitalId: activeHospitalId || undefined } }),
+    queryFn: () => getQueueDataFn({ data: activeHospitalId ? { hospitalId: activeHospitalId } : {} }),
     enabled: Boolean(activeHospitalId),
     refetchInterval: 15000, // Auto-refresh every 15s
   });
@@ -231,7 +231,7 @@ function LiveQueueBoardPage() {
       {/* 4. Footer Bar: Department Summaries & Ticker */}
       <footer className="border-t border-slate-800/80 pt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
         <div className="flex flex-wrap items-center gap-4">
-          {departmentQueues.map((dq) => (
+          {departmentQueues.map((dq: any) => (
             <div key={dq.departmentId} className="flex items-center gap-1.5 font-medium">
               <span className="text-slate-400">{dq.departmentName}:</span>
               <strong className="text-teal-400 font-mono">

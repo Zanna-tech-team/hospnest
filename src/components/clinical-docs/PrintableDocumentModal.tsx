@@ -13,7 +13,7 @@ interface PrintableDocumentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
-  documentRefCode?: string;
+  documentRefCode?: string | undefined;
   children: React.ReactNode;
 }
 

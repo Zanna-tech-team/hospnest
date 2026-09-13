@@ -111,7 +111,7 @@ function AppointmentsCalendarPage() {
   const [isSearchingPatient, setIsSearchingPatient] = useState(false);
   const [bookDeptId, setBookDeptId] = useState<string>("");
   const [bookDoctorId, setBookDoctorId] = useState<string>("");
-  const [bookDate, setBookDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [bookDate, setBookDate] = useState<string>(new Date().toISOString().split("T")[0] ?? "");
   const [bookSlotTime, setBookSlotTime] = useState<string>("");
   const [bookPriority, setBookPriority] = useState<AppointmentPriority>("routine");
   const [bookReason, setBookReason] = useState<string>("");
@@ -576,7 +576,7 @@ function AppointmentsCalendarPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs">All Departments</SelectItem>
-              {departments.map((d) => (
+              {departments.map((d: any) => (
                 <SelectItem key={d.id} value={d.id} className="text-xs">{d.name}</SelectItem>
               ))}
             </SelectContent>
@@ -588,7 +588,7 @@ function AppointmentsCalendarPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs">All Clinicians</SelectItem>
-              {doctors.map((doc) => (
+              {doctors.map((doc: any) => (
                 <SelectItem key={doc.id} value={doc.id} className="text-xs">{doc.fullName}</SelectItem>
               ))}
             </SelectContent>
@@ -624,7 +624,7 @@ function AppointmentsCalendarPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-start">
-              {doctors.map((doc) => {
+              {doctors.map((doc: any) => {
                 const docAppointments = filteredAppointments.filter((a) => a.doctorId === doc.id);
                 return (
                   <div
@@ -716,7 +716,7 @@ function AppointmentsCalendarPage() {
                                 <Button
                                   onClick={() => {
                                     setSelectedAppt(appt);
-                                    setRescheduleDate(new Date(appt.appointmentDate).toISOString().split("T")[0]);
+                                    setRescheduleDate(new Date(appt.appointmentDate).toISOString().split("T")[0] ?? "");
                                     setRescheduleDoctorId(appt.doctorId || "");
                                     setIsRescheduleModalOpen(true);
                                   }}
@@ -811,7 +811,7 @@ function AppointmentsCalendarPage() {
                           <Button
                             onClick={() => {
                               setSelectedAppt(appt);
-                              setRescheduleDate(new Date(appt.appointmentDate).toISOString().split("T")[0]);
+                              setRescheduleDate(new Date(appt.appointmentDate).toISOString().split("T")[0] ?? "");
                               setRescheduleDoctorId(appt.doctorId || "");
                               setIsRescheduleModalOpen(true);
                             }}
@@ -895,7 +895,7 @@ function AppointmentsCalendarPage() {
                       <SelectValue placeholder="Choose department..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {departments.map((d) => (
+                      {departments.map((d: any) => (
                         <SelectItem key={d.id} value={d.id} className="text-xs">{d.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -909,7 +909,7 @@ function AppointmentsCalendarPage() {
                       <SelectValue placeholder="Choose doctor..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {doctors.map((doc) => (
+                      {doctors.map((doc: any) => (
                         <SelectItem key={doc.id} value={doc.id} className="text-xs">{doc.fullName}</SelectItem>
                       ))}
                     </SelectContent>
@@ -1073,7 +1073,7 @@ function AppointmentsCalendarPage() {
                   <SelectValue placeholder="Keep current or switch doctor..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {doctors.map((doc) => (
+                  {doctors.map((doc: any) => (
                     <SelectItem key={doc.id} value={doc.id} className="text-xs">{doc.fullName}</SelectItem>
                   ))}
                 </SelectContent>

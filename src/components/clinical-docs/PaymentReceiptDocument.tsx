@@ -13,18 +13,18 @@ export type ReceiptLineItem = {
 export type PaymentReceiptProps = {
   hospital: {
     name: string;
-    address?: string | null;
-    state?: string;
-    contactPhone?: string | null;
-    contactEmail?: string | null;
-    licenseNumber?: string | null;
+    address?: string | null | undefined;
+    state?: string | undefined;
+    contactPhone?: string | null | undefined;
+    contactEmail?: string | null | undefined;
+    licenseNumber?: string | null | undefined;
   };
   patient: {
     fullName: string;
-    nin?: string | null;
-    phone?: string | null;
-    insuranceProvider?: string | null;
-    policyNumber?: string | null;
+    nin?: string | null | undefined;
+    phone?: string | null | undefined;
+    insuranceProvider?: string | null | undefined;
+    policyNumber?: string | null | undefined;
   };
   receipt: {
     receiptNumber: string;

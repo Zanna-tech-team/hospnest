@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export interface HospitalNotificationItem {
   id: string;
@@ -11,16 +11,21 @@ export interface HospitalNotificationItem {
   timestamp: string;
   routeHref: string;
   isRead: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any> | undefined;
 }
 
+const patientName = (p: any, fallback: string) =>
+  p ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || fallback : fallback;
+
 export const getHospitalLiveNotifications = createServerFn({ method: "GET" })
-  .validator(
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
     z.object({
       hospitalId: z.string().optional(),
-    })
+    }),
   )
-  .handler(async ({ data }): Promise<{ notifications: HospitalNotificationItem[]; unreadCount: number }> => {
+  .handler(async ({ context, data }): Promise<{ notifications: HospitalNotificationItem[]; unreadCount: number }> => {
+    const supabase: any = context.supabase;
     try {
       const hospitalId = data.hospitalId;
       if (!hospitalId) {
@@ -29,115 +34,107 @@ export const getHospitalLiveNotifications = createServerFn({ method: "GET" })
 
       const notifications: HospitalNotificationItem[] = [];
 
-      // 1. Check for Pending STAT Radiology / Imaging Orders
+      // 1. Pending STAT imaging studies
       const { data: statImaging } = await supabase
-        .from("radiology_requests")
-        .select("id, study_type, clinical_indication, priority, created_at, patients(full_name)")
+        .from("radiology_studies")
+        .select("id, modality, body_part, clinical_indication, priority, created_at, patient:patient_id (first_name, last_name)")
         .eq("hospital_id", hospitalId)
         .eq("priority", "stat")
-        .eq("status", "requested")
+        .eq("status", "scheduled")
         .order("created_at", { ascending: false })
         .limit(5);
 
-      if (statImaging) {
-        for (const req of statImaging) {
-          const pName = (req as any).patients?.full_name || "Patient";
-          notifications.push({
-            id: `stat-img-${req.id}`,
-            category: "stat_imaging",
-            severity: "critical",
-            title: `STAT Imaging: ${req.study_type}`,
-            message: `Immediate ${req.study_type} requested for ${pName}. Indication: ${req.clinical_indication || "Emergency clinical scan"}`,
-            timestamp: req.created_at,
-            routeHref: `/radiology?requestId=${req.id}`,
-            isRead: false,
-            metadata: { requestId: req.id },
-          });
-        }
+      for (const req of statImaging ?? []) {
+        const pName = patientName(req.patient, "Patient");
+        const studyLabel = `${String(req.modality ?? "").toUpperCase()} ${req.body_part ?? ""}`.trim();
+        notifications.push({
+          id: `stat-img-${req.id}`,
+          category: "stat_imaging",
+          severity: "critical",
+          title: `STAT Imaging: ${studyLabel}`,
+          message: `Immediate ${studyLabel} requested for ${pName}. Indication: ${req.clinical_indication || "Emergency clinical scan"}`,
+          timestamp: req.created_at,
+          routeHref: `/radiology?requestId=${req.id}`,
+          isRead: false,
+          metadata: { requestId: req.id },
+        });
       }
 
-      // 2. Check for Low Stock Drugs (< 15 units remaining)
+      // 2. Low pharmacy stock
       const { data: lowStockDrugs } = await supabase
-        .from("inventory_items")
-        .select("id, name, generic_name, current_stock, minimum_stock")
+        .from("hospital_inventory")
+        .select("id, quantity_in_stock, reorder_level, drug:drug_id (generic_name, brand_name)")
         .eq("hospital_id", hospitalId)
-        .lt("current_stock", 15)
-        .order("current_stock", { ascending: true })
+        .lt("quantity_in_stock", 15)
+        .order("quantity_in_stock", { ascending: true })
         .limit(5);
 
-      if (lowStockDrugs) {
-        for (const drug of lowStockDrugs) {
-          notifications.push({
-            id: `low-stock-${drug.id}`,
-            category: "low_stock",
-            severity: drug.current_stock <= 5 ? "critical" : "urgent",
-            title: `Low Pharmacy Stock: ${drug.name}`,
-            message: `${drug.name} (${drug.generic_name || "Medication"}) is down to ${drug.current_stock} units. Reorder required immediately.`,
-            timestamp: new Date().toISOString(),
-            routeHref: `/pharmacy/inventory`,
-            isRead: false,
-            metadata: { drugId: drug.id },
-          });
-        }
+      for (const item of lowStockDrugs ?? []) {
+        const name = item.drug?.brand_name || item.drug?.generic_name || "Medication";
+        notifications.push({
+          id: `low-stock-${item.id}`,
+          category: "low_stock",
+          severity: item.quantity_in_stock <= 5 ? "critical" : "urgent",
+          title: `Low Pharmacy Stock: ${name}`,
+          message: `${name} (${item.drug?.generic_name || "Medication"}) is down to ${item.quantity_in_stock} units. Reorder required immediately.`,
+          timestamp: new Date().toISOString(),
+          routeHref: `/pharmacy/inventory`,
+          isRead: false,
+          metadata: { inventoryId: item.id },
+        });
       }
 
-      // 3. Check for Pending Inpatient Admissions
+      // 3. Emergency inpatient admissions
       const { data: urgentAdmissions } = await supabase
-        .from("inpatient_admissions")
-        .select("id, admission_type, provisional_diagnosis, created_at, patients(full_name)")
+        .from("admissions")
+        .select("id, admission_type, admission_reason, created_at, patient:patient_id (first_name, last_name)")
         .eq("hospital_id", hospitalId)
         .eq("status", "active")
         .eq("admission_type", "emergency")
         .order("created_at", { ascending: false })
         .limit(4);
 
-      if (urgentAdmissions) {
-        for (const adm of urgentAdmissions) {
-          const pName = (adm as any).patients?.full_name || "Inpatient";
-          notifications.push({
-            id: `adm-emg-${adm.id}`,
-            category: "critical_panic",
-            severity: "urgent",
-            title: `Emergency Inpatient Admission`,
-            message: `${pName} admitted via Emergency for ${adm.provisional_diagnosis || "Acute Clinical Management"}.`,
-            timestamp: adm.created_at,
-            routeHref: `/admissions`,
-            isRead: false,
-            metadata: { admissionId: adm.id },
-          });
-        }
+      for (const adm of urgentAdmissions ?? []) {
+        const pName = patientName(adm.patient, "Inpatient");
+        notifications.push({
+          id: `adm-emg-${adm.id}`,
+          category: "critical_panic",
+          severity: "urgent",
+          title: `Emergency Inpatient Admission`,
+          message: `${pName} admitted via Emergency for ${adm.admission_reason || "Acute Clinical Management"}.`,
+          timestamp: adm.created_at,
+          routeHref: `/admissions`,
+          isRead: false,
+          metadata: { admissionId: adm.id },
+        });
       }
 
-      // 4. Check for Pending Inter-Hospital Transfers
+      // 4. Pending inter-hospital transfers
       const { data: pendingTransfers } = await supabase
         .from("patient_transfers")
-        .select("id, transfer_reason, urgency, created_at, destination_hospital_name, patients(full_name)")
-        .or(`source_hospital_id.eq.${hospitalId},destination_hospital_id.eq.${hospitalId}`)
+        .select("id, reason_for_transfer, priority, created_at, patient:patient_id (first_name, last_name)")
+        .or(`referring_hospital_id.eq.${hospitalId},receiving_hospital_id.eq.${hospitalId}`)
         .eq("status", "pending")
         .order("created_at", { ascending: false })
         .limit(4);
 
-      if (pendingTransfers) {
-        for (const tr of pendingTransfers) {
-          const pName = (tr as any).patients?.full_name || "Patient";
-          notifications.push({
-            id: `tr-pending-${tr.id}`,
-            category: "transfer",
-            severity: tr.urgency === "emergency" ? "critical" : "urgent",
-            title: `Inter-Hospital Transfer: ${tr.urgency.toUpperCase()}`,
-            message: `Transfer for ${pName}. Reason: ${tr.transfer_reason || "Specialized tertiary care"}.`,
-            timestamp: tr.created_at,
-            routeHref: `/transfers`,
-            isRead: false,
-            metadata: { transferId: tr.id },
-          });
-        }
+      for (const tr of pendingTransfers ?? []) {
+        const pName = patientName(tr.patient, "Patient");
+        const priority = String(tr.priority ?? "routine");
+        notifications.push({
+          id: `tr-pending-${tr.id}`,
+          category: "transfer",
+          severity: priority === "emergency" ? "critical" : "urgent",
+          title: `Inter-Hospital Transfer: ${priority.toUpperCase()}`,
+          message: `Transfer for ${pName}. Reason: ${tr.reason_for_transfer || "Specialized tertiary care"}.`,
+          timestamp: tr.created_at,
+          routeHref: `/transfers`,
+          isRead: false,
+          metadata: { transferId: tr.id },
+        });
       }
 
-      // Sort notifications by timestamp descending
-      notifications.sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
+      notifications.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
       return {
         notifications,

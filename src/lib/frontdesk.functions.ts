@@ -41,9 +41,9 @@ async function writeAuditEntry(
     accessor_id: string;
     accessor_role: StaffRole;
     patient_id: string;
-    encounter_id?: string | null;
+    encounter_id?: string | null | undefined;
     action: "READ" | "WRITE" | "BREAK_GLASS_OVERRIDE" | "EXPORT";
-    justification?: string | null;
+    justification?: string | null | undefined;
   },
 ) {
   await supabase.from("record_audit_logs").insert(entry);
@@ -156,10 +156,10 @@ export const registerPatientByNin = createServerFn({ method: "POST" })
       hospitalId: string;
       firstName: string;
       lastName: string;
-      dateOfBirth?: string;
-      gender?: string;
-      phone?: string;
-      bloodGroup?: string;
+      dateOfBirth?: string | undefined;
+      gender?: string | undefined;
+      phone?: string | undefined;
+      bloodGroup?: string | undefined;
     }) => {
       const nin = String(input?.nin ?? "").trim();
       if (!NIN_RE.test(nin)) throw new Error("A NIN must be exactly 11 digits.");
@@ -230,7 +230,7 @@ export const openEncounterForPatient = createServerFn({ method: "POST" })
     (input: {
       patientId: string;
       hospitalId: string;
-      departmentId?: string;
+      departmentId?: string | undefined;
       chiefComplaint: string;
       consentGiven: boolean;
     }) => {

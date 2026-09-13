@@ -2,6 +2,17 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { StaffRole } from "./team.functions";
 
+async function resolveCallerRole(supabase: any, userId: string): Promise<any> {
+  const { data } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+  return data?.role ?? "doctor";
+}
+
 export type AppointmentPriority = "routine" | "urgent" | "emergency";
 export type AppointmentStatus =
   | "booked"
@@ -46,8 +57,8 @@ export type DoctorScheduleSlot = {
   isAvailable: boolean;
   isBooked: boolean;
   isBlocked: boolean;
-  bookedAppointmentId?: string;
-  bookedPatientName?: string;
+  bookedAppointmentId?: string | undefined;
+  bookedPatientName?: string | undefined;
 };
 
 export type DoctorAvailability = {
@@ -119,8 +130,8 @@ async function writeAuditEntry(
     hospital_id: string;
     accessor_id: string;
     accessor_role: StaffRole;
-    patient_id?: string;
-    encounter_id?: string;
+    patient_id?: string | undefined;
+    encounter_id?: string | undefined;
     action: "READ" | "WRITE" | "BREAK_GLASS_OVERRIDE" | "EXPORT" | "SIGN";
     justification: string;
   }
@@ -134,16 +145,20 @@ async function writeAuditEntry(
 
 // 1. GET CALENDAR APPOINTMENTS WITH AGGREGATIONS
 export const getHospitalAppointmentsCalendar = createServerFn({ method: "GET" })
-  .validator((d: {
-    hospitalId?: string;
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
+    hospitalId?: string | undefined;
     startDate: string; // ISO date string e.g. 2026-09-13T00:00:00.000Z
     endDate: string;   // ISO date string e.g. 2026-09-13T23:59:59.999Z
-    departmentId?: string;
-    doctorId?: string;
-    statusFilter?: string;
+    departmentId?: string | undefined;
+    doctorId?: string | undefined;
+    statusFilter?: string | undefined;
   }) => d)
-  .handler(async ({ data }) => {
-    const { supabase, supabaseAdmin, userId, role } = await requireSupabaseAuth();
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
+    const role = await resolveCallerRole(supabase, userId);
 
     let targetHospitalId = data.hospitalId;
     if (!targetHospitalId) {
@@ -334,14 +349,17 @@ export const getHospitalAppointmentsCalendar = createServerFn({ method: "GET" })
 
 // 2. GET AVAILABLE DOCTOR SLOTS
 export const getAvailableDoctorSlots = createServerFn({ method: "GET" })
-  .validator((d: {
-    hospitalId?: string;
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
+    hospitalId?: string | undefined;
     date: string; // YYYY-MM-DD
-    departmentId?: string;
-    doctorId?: string;
+    departmentId?: string | undefined;
+    doctorId?: string | undefined;
   }) => d)
-  .handler(async ({ data }) => {
-    const { supabaseAdmin, userId } = await requireSupabaseAuth();
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
 
     let targetHospitalId = data.hospitalId;
     if (!targetHospitalId) {
@@ -477,10 +495,12 @@ export const getAvailableDoctorSlots = createServerFn({ method: "GET" })
           isAvailable: !booked,
           isBooked: Boolean(booked),
           isBlocked: false,
-          bookedAppointmentId: booked?.id,
-          bookedPatientName: booked?.patient
-            ? `${(booked.patient as any).first_name} ${(booked.patient as any).last_name || ""}`.trim()
-            : undefined,
+          ...(booked?.id ? { bookedAppointmentId: booked.id as string } : {}),
+          ...(booked?.patient
+            ? {
+                bookedPatientName: `${(booked.patient as any).first_name} ${(booked.patient as any).last_name || ""}`.trim(),
+              }
+            : {}),
         });
 
         // Advance by slot duration
@@ -504,21 +524,25 @@ export const getAvailableDoctorSlots = createServerFn({ method: "GET" })
 
 // 3. CREATE APPOINTMENT WITH SERVER-SIDE DOUBLE-BOOKING CHECK
 export const createStaffAppointment = createServerFn({ method: "POST" })
-  .validator((d: {
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
     hospitalId: string;
     patientId: string;
-    departmentId?: string | null;
-    doctorId?: string | null;
+    departmentId?: string | null | undefined;
+    doctorId?: string | null | undefined;
     appointmentDate: string; // ISO string
-    slotDurationMinutes?: number;
-    priority?: AppointmentPriority;
+    slotDurationMinutes?: number | undefined;
+    priority?: AppointmentPriority | undefined;
     symptomsSummary: string;
-    notes?: string;
-    isWalkIn?: boolean;
-    previousEncounterId?: string | null;
+    notes?: string | undefined;
+    isWalkIn?: boolean | undefined;
+    previousEncounterId?: string | null | undefined;
   }) => d)
-  .handler(async ({ data }) => {
-    const { supabase, supabaseAdmin, userId, role } = await requireSupabaseAuth();
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
+    const role = await resolveCallerRole(supabase, userId);
 
     const slotDuration = data.slotDurationMinutes || 20;
     const apptDate = new Date(data.appointmentDate);
@@ -587,9 +611,13 @@ export const createStaffAppointment = createServerFn({ method: "POST" })
 
 // 4. CHECK IN APPOINTMENT & CREATE TRIAGE ENCOUNTER
 export const checkInClinicAppointment = createServerFn({ method: "POST" })
-  .validator((d: { appointmentId: string; hospitalId: string }) => d)
-  .handler(async ({ data }) => {
-    const { supabase, supabaseAdmin, userId, role } = await requireSupabaseAuth();
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { appointmentId: string; hospitalId: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
+    const role = await resolveCallerRole(supabase, userId);
 
     const { data: appt, error: apptError } = await supabaseAdmin
       .from("appointments")
@@ -700,15 +728,19 @@ export const checkInClinicAppointment = createServerFn({ method: "POST" })
 
 // 5. RESCHEDULE APPOINTMENT
 export const rescheduleClinicAppointment = createServerFn({ method: "POST" })
-  .validator((d: {
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
     appointmentId: string;
     hospitalId: string;
     newAppointmentDate: string; // ISO string
-    doctorId?: string | null;
-    reason?: string;
+    doctorId?: string | null | undefined;
+    reason?: string | undefined;
   }) => d)
-  .handler(async ({ data }) => {
-    const { supabase, supabaseAdmin, userId, role } = await requireSupabaseAuth();
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
+    const role = await resolveCallerRole(supabase, userId);
 
     const { data: appt } = await supabaseAdmin
       .from("appointments")
@@ -777,9 +809,13 @@ export const rescheduleClinicAppointment = createServerFn({ method: "POST" })
 
 // 6. CANCEL APPOINTMENT
 export const cancelClinicAppointment = createServerFn({ method: "POST" })
-  .validator((d: { appointmentId: string; hospitalId: string; reason: string }) => d)
-  .handler(async ({ data }) => {
-    const { supabase, supabaseAdmin, userId, role } = await requireSupabaseAuth();
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { appointmentId: string; hospitalId: string; reason: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
+    const role = await resolveCallerRole(supabase, userId);
 
     const { data: appt } = await supabaseAdmin
       .from("appointments")
@@ -815,9 +851,12 @@ export const cancelClinicAppointment = createServerFn({ method: "POST" })
 
 // 7. GET LIVE QUEUE BOARD DATA
 export const getLiveQueueBoardData = createServerFn({ method: "GET" })
-  .validator((d: { hospitalId?: string; departmentId?: string }) => d)
-  .handler(async ({ data }) => {
-    const { supabaseAdmin, userId } = await requireSupabaseAuth();
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { hospitalId?: string; departmentId?: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
 
     let targetHospitalId = data.hospitalId;
     if (!targetHospitalId) {
@@ -935,9 +974,11 @@ export const getLiveQueueBoardData = createServerFn({ method: "GET" })
 
 // 8. AUTO-MARK NO SHOWS
 export const markPastAppointmentsNoShow = createServerFn({ method: "POST" })
-  .validator((d: { hospitalId: string }) => d)
-  .handler(async ({ data }) => {
-    const { supabaseAdmin } = await requireSupabaseAuth();
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { hospitalId: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
     const { data: updated, error } = await supabaseAdmin

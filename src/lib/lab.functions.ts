@@ -11,11 +11,11 @@ export type LabWorklistItem = {
   resultValue: string | null;
   isCritical: boolean;
   resultMetadata: {
-    unit?: string;
-    referenceRange?: string;
-    abnormalFlag?: "normal" | "abnormal" | "critical";
-    comments?: string;
-    enteredAt?: string;
+    unit?: string | undefined;
+    referenceRange?: string | undefined;
+    abnormalFlag?: "normal" | "abnormal" | "critical" | undefined;
+    comments?: string | undefined;
+    enteredAt?: string | undefined;
   } | null;
   sampleCollectedAt: string | null;
   createdAt: string;
@@ -97,10 +97,10 @@ async function writeAuditEntry(
     hospital_id: string;
     accessor_id: string;
     accessor_role: StaffRole;
-    patient_id?: string;
-    encounter_id?: string;
+    patient_id?: string | undefined;
+    encounter_id?: string | undefined;
     action: "READ" | "WRITE" | "BREAK_GLASS_OVERRIDE" | "EXPORT";
-    justification?: string | null;
+    justification?: string | null | undefined;
   },
 ) {
   try {

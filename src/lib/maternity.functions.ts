@@ -9,7 +9,7 @@ export interface AntenatalEnrollmentItem {
   patientName: string;
   patientNin: string;
   patientAge: number;
-  patientPhone?: string;
+  patientPhone?: string | undefined;
   gravida: number;
   para: number;
   alive: number;
@@ -17,15 +17,15 @@ export interface AntenatalEnrollmentItem {
   lmp: string;
   edd: string;
   gestationalAgeWeeks: number;
-  bloodGroup?: string;
-  genotype?: string;
-  rhesus?: string;
+  bloodGroup?: string | undefined;
+  genotype?: string | undefined;
+  rhesus?: string | undefined;
   hivStatus: string;
   hepatitisBStatus: string;
   riskFactors: string[];
   status: "active" | "delivered" | "transferred" | "completed";
   visitsCount: number;
-  lastVisitDate?: string;
+  lastVisitDate?: string | undefined;
 }
 
 export interface AntenatalVisitItem {
@@ -34,18 +34,18 @@ export interface AntenatalVisitItem {
   visitNumber: number;
   visitDate: string;
   gestationalAgeWeeks: number;
-  fundalHeightCm?: number;
-  fetalHeartRateBpm?: number;
-  fetalPresentation?: string;
-  fetalLie?: string;
-  maternalBpSystolic?: number;
-  maternalBpDiastolic?: number;
-  maternalWeightKg?: number;
+  fundalHeightCm?: number | undefined;
+  fetalHeartRateBpm?: number | undefined;
+  fetalPresentation?: string | undefined;
+  fetalLie?: string | undefined;
+  maternalBpSystolic?: number | undefined;
+  maternalBpDiastolic?: number | undefined;
+  maternalWeightKg?: number | undefined;
   urinalysisProtein: string;
   urinalysisGlucose: string;
-  clinicalNotes?: string;
-  nextVisitDate?: string;
-  practitionerName?: string;
+  clinicalNotes?: string | undefined;
+  nextVisitDate?: string | undefined;
+  practitionerName?: string | undefined;
 }
 
 export interface LaborDeliveryItem {
@@ -54,33 +54,33 @@ export interface LaborDeliveryItem {
   patientName: string;
   patientNin: string;
   laborStartTime: string;
-  deliveryTime?: string;
+  deliveryTime?: string | undefined;
   deliveryMode: string;
   cervicalDilationCm: number;
   contractionsPer10min: number;
   membranesStatus: string;
-  babyGender?: string;
-  birthWeightKg?: number;
-  apgar1min?: number;
-  apgar5min?: number;
-  estimatedBloodLossMl?: number;
-  attendingObstetrician?: string;
-  attendingMidwife?: string;
-  notes?: string;
+  babyGender?: string | undefined;
+  birthWeightKg?: number | undefined;
+  apgar1min?: number | undefined;
+  apgar5min?: number | undefined;
+  estimatedBloodLossMl?: number | undefined;
+  attendingObstetrician?: string | undefined;
+  attendingMidwife?: string | undefined;
+  notes?: string | undefined;
 }
 
 export interface ImmunizationRecordItem {
   id: string;
   childName: string;
-  patientId?: string;
+  patientId?: string | undefined;
   dateOfBirth: string;
   gender: string;
   vaccineName: string;
   targetAgeWeeks: number;
   doseNumber: number;
-  administeredAt?: string;
-  batchNumber?: string;
-  nurseName?: string;
+  administeredAt?: string | undefined;
+  batchNumber?: string | undefined;
+  nurseName?: string | undefined;
   status: "given" | "pending" | "overdue" | "missed";
 }
 
@@ -234,9 +234,8 @@ export const getMaternityDashboardData = createServerFn({ method: "GET" })
       // 4. Fetch Eligible Female Patients for Enrollment
       const { data: rawPatients } = await supabase
         .from("patients")
-        .select("id, full_name, nin, date_of_birth")
-        .eq("hospital_id", hospitalId)
-        .order("full_name", { ascending: true })
+        .select("id, first_name, last_name, nin, date_of_birth")
+        .order("last_name", { ascending: true })
         .limit(100);
 
       const patientsList = (rawPatients || []).map((p: any) => {
@@ -247,7 +246,7 @@ export const getMaternityDashboardData = createServerFn({ method: "GET" })
         }
         return {
           id: p.id,
-          fullName: p.full_name,
+          fullName: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
           nin: p.nin,
           age,
         };

@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/command";
 
 interface GlobalCommandPaletteProps {
-  open?: boolean;
+  open?: boolean | undefined;
   onOpenChange?: (open: boolean) => void;
 }
 

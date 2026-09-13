@@ -2,6 +2,17 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { StaffRole } from "./team.functions";
 
+async function resolveCallerRole(supabase: any, userId: string): Promise<any> {
+  const { data } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+  return data?.role ?? "doctor";
+}
+
 export type AdmissionType = "emergency" | "elective" | "maternity" | "day_case";
 export type DischargeCondition = "recovered" | "improved" | "stable" | "transferred" | "deceased" | "against_medical_advice";
 
@@ -41,7 +52,7 @@ export type InpatientCardItem = {
     heartRate: number | null;
     respiratoryRate: number | null;
     spo2: number | null;
-    news2Score?: number;
+    news2Score?: number | undefined;
     recordedAt: string;
   };
   outstandingLabsCount: number;
@@ -79,8 +90,8 @@ async function writeAuditEntry(
     hospital_id: string;
     accessor_id: string;
     accessor_role: StaffRole;
-    patient_id?: string;
-    encounter_id?: string;
+    patient_id?: string | undefined;
+    encounter_id?: string | undefined;
     action: "READ" | "WRITE" | "BREAK_GLASS_OVERRIDE" | "EXPORT" | "SIGN";
     justification: string;
   }
@@ -94,14 +105,17 @@ async function writeAuditEntry(
 
 // 1. GET INPATIENTS DASHBOARD & WARD BOARD
 export const getInpatientsDashboardData = createServerFn({ method: "GET" })
-  .validator((d: {
-    hospitalId?: string;
-    wardFilter?: string;
-    admissionTypeFilter?: string;
-    searchQuery?: string;
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
+    hospitalId?: string | undefined;
+    wardFilter?: string | undefined;
+    admissionTypeFilter?: string | undefined;
+    searchQuery?: string | undefined;
   }) => d)
-  .handler(async ({ data }) => {
-    const { supabaseAdmin, userId } = await requireSupabaseAuth();
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
 
     let targetHospitalId = data.hospitalId;
     if (!targetHospitalId) {
@@ -268,8 +282,8 @@ export const getInpatientsDashboardData = createServerFn({ method: "GET" })
       ? (admissions.reduce((acc, a) => acc + a.lengthOfStayDays, 0) / totalAdmitted).toFixed(1)
       : "0";
 
-    const totalCapacity = wardsList.reduce((acc, w) => acc + w.totalBeds, 0);
-    const totalOccupiedBeds = wardsList.reduce((acc, w) => acc + w.occupiedBeds, 0);
+    const totalCapacity = wardsList.reduce((acc: number, w: any) => acc + w.totalBeds, 0);
+    const totalOccupiedBeds = wardsList.reduce((acc: number, w: any) => acc + w.occupiedBeds, 0);
     const overallOccupancy = totalCapacity > 0 ? Math.round((totalOccupiedBeds / totalCapacity) * 100) : 0;
 
     return {
@@ -290,9 +304,12 @@ export const getInpatientsDashboardData = createServerFn({ method: "GET" })
 
 // 2. GET INPATIENT CLINICAL DETAIL (SOAP NOTES & NURSING OBSERVATIONS)
 export const getInpatientClinicalDetail = createServerFn({ method: "GET" })
-  .validator((d: { admissionId: string; hospitalId?: string }) => d)
-  .handler(async ({ data }) => {
-    const { supabaseAdmin, userId } = await requireSupabaseAuth();
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { admissionId: string; hospitalId?: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
 
     // A. Admission & Patient Detail
     const { data: adm, error: admError } = await supabaseAdmin
@@ -437,17 +454,21 @@ export const getInpatientClinicalDetail = createServerFn({ method: "GET" })
 
 // 3. RECORD WARD ROUND SOAP NOTE
 export const recordWardRoundNote = createServerFn({ method: "POST" })
-  .validator((d: {
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
     admissionId: string;
     hospitalId: string;
-    subjective?: string;
-    objective?: string;
-    assessment?: string;
+    subjective?: string | undefined;
+    objective?: string | undefined;
+    assessment?: string | undefined;
     plan: string;
-    vitalsSnapshot?: any;
+    vitalsSnapshot?: any | undefined;
   }) => d)
-  .handler(async ({ data }) => {
-    const { supabase, supabaseAdmin, userId, role } = await requireSupabaseAuth();
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
+    const role = await resolveCallerRole(supabase, userId);
 
     const { data: staffRow } = await supabaseAdmin
       .from("staff")
@@ -486,15 +507,19 @@ export const recordWardRoundNote = createServerFn({ method: "POST" })
 
 // 4. RECORD NURSING CARE OBSERVATION (MAR, VITALS, FLUID BALANCE)
 export const recordNursingCareObservation = createServerFn({ method: "POST" })
-  .validator((d: {
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
     admissionId: string;
     hospitalId: string;
     observationType: "vitals" | "mar" | "fluid_balance" | "wound_care";
     details: any;
-    notes?: string;
+    notes?: string | undefined;
   }) => d)
-  .handler(async ({ data }) => {
-    const { supabase, supabaseAdmin, userId, role } = await requireSupabaseAuth();
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
+    const role = await resolveCallerRole(supabase, userId);
 
     const { data: staffRow } = await supabaseAdmin
       .from("staff")
@@ -531,23 +556,27 @@ export const recordNursingCareObservation = createServerFn({ method: "POST" })
 
 // 5. FINALIZE DISCHARGE WITH MEDICATION & FOLLOW-UP APPOINTMENT AUTO-BOOKING
 export const finalizeInpatientDischargeLifecycle = createServerFn({ method: "POST" })
-  .validator((d: {
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
     admissionId: string;
     hospitalId: string;
     dischargeCondition: DischargeCondition;
     dischargeSummary: string;
     dischargeInstructions: string;
-    followUpDate?: string;
+    followUpDate?: string | undefined;
     takeHomeMedications?: Array<{
       drugName: string;
       dosage: string;
       frequency: string;
       duration: string;
-      instructions?: string;
+      instructions?: string | undefined;
     }>;
   }) => d)
-  .handler(async ({ data }) => {
-    const { supabase, supabaseAdmin, userId, role } = await requireSupabaseAuth();
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
+    const role = await resolveCallerRole(supabase, userId);
 
     const { data: adm, error: admErr } = await supabaseAdmin
       .from("admissions")

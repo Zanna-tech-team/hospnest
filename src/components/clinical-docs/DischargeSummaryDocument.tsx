@@ -5,33 +5,33 @@ import { QrCodeBadge } from "./QrCodeBadge";
 export type DischargeSummaryProps = {
   hospital: {
     name: string;
-    address?: string | null;
-    state?: string;
-    contactPhone?: string | null;
-    licenseNumber?: string | null;
+    address?: string | null | undefined;
+    state?: string | undefined;
+    contactPhone?: string | null | undefined;
+    licenseNumber?: string | null | undefined;
   };
   patient: {
     fullName: string;
-    nin?: string | null;
-    age?: string | number | null;
-    gender?: string | null;
-    phone?: string | null;
-    bloodGroup?: string | null;
+    nin?: string | null | undefined;
+    age?: string | number | null | undefined;
+    gender?: string | null | undefined;
+    phone?: string | null | undefined;
+    bloodGroup?: string | null | undefined;
   };
   discharge: {
     summaryNumber: string;
     admissionDate: string;
     dischargeDate: string;
     wardName: string;
-    bedNumber?: string | null;
+    bedNumber?: string | null | undefined;
     attendingPhysician: string;
-    physicianRank?: string;
+    physicianRank?: string | undefined;
     admissionReason: string;
     primaryDiagnosis: string;
-    secondaryDiagnoses?: string[];
+    secondaryDiagnoses?: string[] | undefined;
     hospitalCourseSummary: string;
-    investigationsSummary?: string;
-    proceduresPerformed?: string[];
+    investigationsSummary?: string | undefined;
+    proceduresPerformed?: string[] | undefined;
     dischargeCondition: "recovered" | "improved" | "stable" | "transferred" | "against_medical_advice";
     dischargeMedications: Array<{
       drugName: string;
@@ -41,8 +41,8 @@ export type DischargeSummaryProps = {
       specialInstructions?: string | undefined;
     }>;
     followUpInstructions: string;
-    nextAppointmentDate?: string;
-    emergencyContactHelpline?: string;
+    nextAppointmentDate?: string | undefined;
+    emergencyContactHelpline?: string | undefined;
   };
 };
 
