@@ -2346,7 +2346,6 @@ function ConsultationsPage() {
             study={{
               accessionNumber: `RAD-${activeReportStudy.id.slice(0, 8).toUpperCase()}`,
               studyDate: activeReportStudy.studyDate,
-              reportDate: activeReportStudy.createdAt,
               modality: activeReportStudy.modality,
               bodyPart: activeReportStudy.bodyPart,
               clinicalIndication: activeReportStudy.clinicalIndication || "Clinical evaluation",
