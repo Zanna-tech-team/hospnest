@@ -413,3 +413,199 @@ export const saveRadiologyReport = createServerFn({ method: "POST" })
 
     return { success: true };
   });
+
+/**
+ * Creates an imaging request order from consultation or triage.
+ */
+export const orderImagingStudy = createServerFn({ method: "POST" })
+  .validator((d: {
+    hospitalId: string;
+    patientId: string;
+    encounterId?: string | null;
+    modality: ImagingModality;
+    bodyPart: string;
+    clinicalIndication: string;
+    priority?: "routine" | "urgent" | "stat";
+  }) => d)
+  .handler(async ({ data: input }) => {
+    const { supabase, supabaseAdmin, userId, role } = await requireSupabaseAuth();
+
+    const { data: staffRow } = await supabaseAdmin
+      .from("staff")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("hospital_id", input.hospitalId)
+      .maybeSingle();
+
+    const { data: study, error } = await supabaseAdmin
+      .from("radiology_studies")
+      .insert({
+        hospital_id: input.hospitalId,
+        patient_id: input.patientId,
+        encounter_id: input.encounterId || null,
+        modality: input.modality,
+        body_part: input.bodyPart,
+        clinical_indication: input.clinicalIndication,
+        priority: input.priority || "routine",
+        requesting_doctor_id: staffRow?.id || null,
+        status: "scheduled",
+      })
+      .select("id")
+      .single();
+
+    if (error || !study) throw new Error(`Failed to order imaging: ${error?.message}`);
+
+    await writeAuditEntry(supabase, {
+      hospital_id: input.hospitalId,
+      accessor_id: userId,
+      accessor_role: role,
+      patient_id: input.patientId,
+      encounter_id: input.encounterId || undefined,
+      action: "WRITE",
+      justification: `Ordered ${input.modality.toUpperCase()} (${input.bodyPart}) for patient. Priority: ${input.priority || "routine"}`,
+    });
+
+    return { success: true, studyId: study.id };
+  });
+
+export type RadiologyDepartmentData = {
+  requests: RadiologyStudyItem[];
+  worklist: RadiologyStudyItem[];
+  reports: RadiologyStudyItem[];
+  stats: {
+    totalRequests: number;
+    totalWorklist: number;
+    totalReports: number;
+    criticalCount: number;
+  };
+};
+
+/**
+ * Retrieves imaging department studies partitioned into Requests, Worklist, and Reports.
+ */
+export const getRadiologyDepartmentWorklist = createServerFn({ method: "GET" })
+  .validator((d: {
+    hospitalId?: string;
+    modalityFilter?: string;
+    searchQuery?: string;
+  }) => d)
+  .handler(async ({ data: input }) => {
+    const { supabaseAdmin, userId } = await requireSupabaseAuth();
+
+    let targetHospitalId = input.hospitalId;
+    if (!targetHospitalId) {
+      const { data: staffRow } = await supabaseAdmin
+        .from("staff")
+        .select("hospital_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      targetHospitalId = staffRow?.hospital_id;
+    }
+
+    if (!targetHospitalId) throw new Error("Hospital context required.");
+
+    let query = supabaseAdmin
+      .from("radiology_studies")
+      .select(`
+        id,
+        hospital_id,
+        patient_id,
+        encounter_id,
+        modality,
+        body_part,
+        clinical_indication,
+        image_url,
+        thumbnail_url,
+        study_date,
+        radiologist_id,
+        technician_id,
+        findings,
+        impression,
+        radiologist_notes,
+        is_critical,
+        status,
+        created_at,
+        patient:patient_id (
+          id,
+          first_name,
+          last_name,
+          nin,
+          gender,
+          date_of_birth
+        ),
+        doctor:requesting_doctor_id (
+          id,
+          user_id
+        ),
+        radiologist:radiologist_id (
+          id,
+          user_id
+        )
+      `)
+      .eq("hospital_id", targetHospitalId);
+
+    if (input.modalityFilter && input.modalityFilter !== "all") {
+      query = query.eq("modality", input.modalityFilter);
+    }
+
+    const { data: rows, error } = await query.order("created_at", { ascending: false });
+
+    if (error) throw new Error(`Failed to load radiology worklist: ${error.message}`);
+
+    const userIds = new Set<string>();
+    (rows || []).forEach((r: any) => {
+      if (r.doctor?.user_id) userIds.add(r.doctor.user_id);
+      if (r.radiologist?.user_id) userIds.add(r.radiologist.user_id);
+    });
+
+    let userNameMap = new Map<string, string>();
+    if (userIds.size > 0) {
+      const { data: profs } = await supabaseAdmin
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", Array.from(userIds));
+      (profs || []).forEach((p: any) => userNameMap.set(p.id, p.full_name));
+    }
+
+    const mapStudy = (row: any): RadiologyStudyItem => ({
+      id: row.id,
+      hospitalId: row.hospital_id,
+      patientId: row.patient_id,
+      encounterId: row.encounter_id,
+      modality: row.modality,
+      bodyPart: row.body_part,
+      clinicalIndication: row.clinical_indication,
+      imageUrl: row.image_url || "",
+      thumbnailUrl: row.thumbnail_url || null,
+      studyDate: row.study_date,
+      radiologistId: row.radiologist_id,
+      radiologistName: row.radiologist?.user_id ? userNameMap.get(row.radiologist.user_id) || "Radiologist" : null,
+      technicianId: row.technician_id,
+      technicianName: row.doctor?.user_id ? userNameMap.get(row.doctor.user_id) || "Physician" : null,
+      findings: row.findings,
+      impression: row.impression,
+      radiologistNotes: row.radiologist_notes,
+      isCritical: Boolean(row.is_critical),
+      status: row.status,
+      createdAt: row.created_at,
+    });
+
+    const allStudies = (rows || []).map(mapStudy);
+
+    const requests = allStudies.filter((s) => s.status === "scheduled" || !s.imageUrl);
+    const worklist = allStudies.filter((s) => s.status === "acquired" && Boolean(s.imageUrl));
+    const reports = allStudies.filter((s) => s.status === "reported" || s.status === "reviewed");
+
+    return {
+      requests,
+      worklist,
+      reports,
+      stats: {
+        totalRequests: requests.length,
+        totalWorklist: worklist.length,
+        totalReports: reports.length,
+        criticalCount: allStudies.filter((s) => s.isCritical).length,
+      },
+    };
+  });
+

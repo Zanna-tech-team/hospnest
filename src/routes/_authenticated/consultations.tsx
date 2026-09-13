@@ -72,12 +72,15 @@ import {
 } from "@/lib/ai-copilot.functions";
 import {
   getPatientImagingStudies,
+  orderImagingStudy,
   type RadiologyStudyItem,
+  type ImagingModality,
 } from "@/lib/radiology.functions";
 import { MedicalImageViewerModal } from "@/components/radiology/MedicalImageViewerModal";
 import { UploadImagingModal } from "@/components/radiology/UploadImagingModal";
 import { PrintableDocumentModal } from "@/components/clinical-docs/PrintableDocumentModal";
 import { DischargeSummaryDocument } from "@/components/clinical-docs/DischargeSummaryDocument";
+import { RadiologyReportDocument } from "@/components/clinical-docs/RadiologyReportDocument";
 import { toast } from "sonner";
 import { Camera, Eye, FileImage, Image as ImageIcon, Printer } from "lucide-react";
 
@@ -166,10 +169,20 @@ function ConsultationsPage() {
 
   // Radiology & Medical Imaging Subsystem
   const getImagingFn = useServerFn(getPatientImagingStudies);
+  const orderImagingFn = useServerFn(orderImagingStudy);
   const [activeImagingStudy, setActiveImagingStudy] = useState<RadiologyStudyItem | null>(null);
+  const [activeReportStudy, setActiveReportStudy] = useState<RadiologyStudyItem | null>(null);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [isUploadImagingOpen, setIsUploadImagingOpen] = useState(false);
+  const [isOrderImagingOpen, setIsOrderImagingOpen] = useState(false);
   const [isPrintDischargeOpen, setIsPrintDischargeOpen] = useState(false);
+  const [isPrintRadiologyOpen, setIsPrintRadiologyOpen] = useState(false);
+
+  // Order Imaging form state
+  const [orderModality, setOrderModality] = useState<ImagingModality>("xray");
+  const [orderBodyPart, setOrderBodyPart] = useState("");
+  const [orderIndication, setOrderIndication] = useState("");
+  const [orderPriority, setOrderPriority] = useState<"routine" | "urgent" | "stat">("routine");
 
   const { data: imagingData, refetch: refetchImaging } = useQuery({
     queryKey: ["patient-imaging-studies", workspaceData?.patient?.id, activeHospitalId],
@@ -327,6 +340,41 @@ function ConsultationsPage() {
         }
       } catch (err: any) {
         toast.error(err?.message || "Failed to add prescription.");
+      }
+    });
+  };
+
+  // Order Diagnostic Imaging Study Action
+  const handleOrderImaging = () => {
+    if (!selectedEncounterId || !workspaceData || !orderBodyPart.trim() || !orderIndication.trim()) {
+      toast.error("Please specify both the body part/region and clinical indication for imaging.");
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const res = await orderImagingFn({
+          data: {
+            hospitalId: activeHospitalId || workspaceData.encounter.hospitalId,
+            patientId: workspaceData.patient.id,
+            encounterId: selectedEncounterId,
+            modality: orderModality,
+            bodyPart: orderBodyPart.trim(),
+            clinicalIndication: orderIndication.trim(),
+            priority: orderPriority,
+          },
+        });
+
+        if (res.success) {
+          toast.success(`Ordered ${orderModality.toUpperCase()} (${orderBodyPart}) successfully.`);
+          setIsOrderImagingOpen(false);
+          setOrderBodyPart("");
+          setOrderIndication("");
+          setOrderPriority("routine");
+          refetchImaging();
+        }
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to order imaging study.");
       }
     });
   };
@@ -1192,19 +1240,28 @@ function ConsultationsPage() {
                       </div>
                     </div>
 
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setIsUploadImagingOpen(true)}
-                      className="gap-1.5 text-xs font-semibold border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
-                    >
-                      <Camera className="size-3.5" /> Upload Scan
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => setIsOrderImagingOpen(true)}
+                        className="gap-1.5 text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white"
+                      >
+                        <Plus className="size-3.5" /> Order Imaging
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsUploadImagingOpen(true)}
+                        className="gap-1.5 text-xs font-semibold border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
+                      >
+                        <Camera className="size-3.5" /> Upload Scan
+                      </Button>
+                    </div>
                   </div>
 
                   {(!imagingData?.studies || imagingData.studies.length === 0) ? (
                     <div className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-                      No radiological imaging studies recorded for this patient. Click "Upload Scan" to attach an X-ray or ultrasound.
+                      No radiological imaging studies recorded for this patient. Click "Order Imaging" or "Upload Scan" to attach an X-ray or ultrasound.
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1215,19 +1272,30 @@ function ConsultationsPage() {
                         >
                           <div
                             onClick={() => {
-                              setActiveImagingStudy(study);
-                              setIsImageViewerOpen(true);
+                              if (study.imageUrl) {
+                                setActiveImagingStudy(study);
+                                setIsImageViewerOpen(true);
+                              }
                             }}
-                            className="relative size-20 shrink-0 rounded-lg overflow-hidden border border-border bg-black cursor-pointer group-hover:scale-105 transition-transform"
+                            className="relative size-20 shrink-0 rounded-lg overflow-hidden border border-border bg-black cursor-pointer group-hover:scale-105 transition-transform flex items-center justify-center"
                           >
-                            <img
-                              src={study.thumbnailUrl || study.imageUrl}
-                              alt={study.bodyPart}
-                              className="size-full object-cover opacity-90 group-hover:opacity-100"
-                            />
-                            <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 py-0.2 font-mono text-[9px] font-bold text-teal-400 uppercase">
-                              {study.modality}
-                            </span>
+                            {study.imageUrl ? (
+                              <>
+                                <img
+                                  src={study.thumbnailUrl || study.imageUrl}
+                                  alt={study.bodyPart}
+                                  className="size-full object-cover opacity-90 group-hover:opacity-100"
+                                />
+                                <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 py-0.2 font-mono text-[9px] font-bold text-teal-400 uppercase">
+                                  {study.modality}
+                                </span>
+                              </>
+                            ) : (
+                              <div className="text-center p-1">
+                                <FileImage className="size-6 mx-auto text-teal-400/60 mb-1" />
+                                <span className="font-mono text-[8px] font-bold text-teal-300 uppercase">PENDING</span>
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex-1 space-y-1 text-xs">
@@ -1250,18 +1318,33 @@ function ConsultationsPage() {
                               {new Date(study.studyDate).toLocaleDateString("en-GB", { dateStyle: "medium" })} • {study.status.toUpperCase()}
                             </p>
 
-                            <div className="pt-1.5 flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setActiveImagingStudy(study);
-                                  setIsImageViewerOpen(true);
-                                }}
-                                className="h-6 text-[11px] px-2 gap-1 bg-background hover:bg-teal-500/10 text-teal-700 dark:text-teal-300"
-                              >
-                                <Eye className="size-3" /> View Scan
-                              </Button>
+                            <div className="pt-1.5 flex flex-wrap items-center gap-1.5">
+                              {study.imageUrl && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setActiveImagingStudy(study);
+                                    setIsImageViewerOpen(true);
+                                  }}
+                                  className="h-6 text-[11px] px-2 gap-1 bg-background hover:bg-teal-500/10 text-teal-700 dark:text-teal-300"
+                                >
+                                  <Eye className="size-3" /> View Scan
+                                </Button>
+                              )}
+                              {(study.findings || study.impression) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setActiveReportStudy(study);
+                                    setIsPrintRadiologyOpen(true);
+                                  }}
+                                  className="h-6 text-[11px] px-2 gap-1 bg-background hover:bg-teal-500/10 text-teal-700 dark:text-teal-300 font-semibold"
+                                >
+                                  <FileText className="size-3" /> Report
+                                </Button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1541,6 +1624,144 @@ function ConsultationsPage() {
               followUpInstructions:
                 "Adhere to prescribed medication regimen. Report immediately to emergency unit if symptoms worsen.",
               nextAppointmentDate: "In 2 weeks",
+            }}
+          />
+        </PrintableDocumentModal>
+      )}
+
+      {/* Order Imaging Dialog Modal */}
+      <Dialog open={isOrderImagingOpen} onOpenChange={setIsOrderImagingOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground font-display">
+              <ImageIcon className="size-5 text-teal-600" />
+              Order Diagnostic Imaging Study
+            </DialogTitle>
+            <DialogDescription>
+              Request a radiological investigation (X-ray, Ultrasound, CT, MRI) for {workspaceData?.patient?.fullName}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Modality</Label>
+              <Select
+                value={orderModality}
+                onValueChange={(val: any) => setOrderModality(val)}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Select imaging modality" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="xray" className="text-xs">Plain Radiography (X-Ray)</SelectItem>
+                  <SelectItem value="ultrasound" className="text-xs">Ultrasound (Sonography)</SelectItem>
+                  <SelectItem value="ct" className="text-xs">Computed Tomography (CT Scan)</SelectItem>
+                  <SelectItem value="mri" className="text-xs">Magnetic Resonance Imaging (MRI)</SelectItem>
+                  <SelectItem value="mammography" className="text-xs">Mammography</SelectItem>
+                  <SelectItem value="other" className="text-xs">Other Diagnostic Imaging</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Body Part / Anatomical Region</Label>
+              <Input
+                value={orderBodyPart}
+                onChange={(e) => setOrderBodyPart(e.target.value)}
+                placeholder="e.g. Chest PA & Lateral, Abdomen, Left Knee, Pelvis"
+                className="h-9 text-xs"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Priority Level</Label>
+              <Select
+                value={orderPriority}
+                onValueChange={(val: any) => setOrderPriority(val)}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="routine" className="text-xs">Routine (Standard Outpatient)</SelectItem>
+                  <SelectItem value="urgent" className="text-xs">Urgent (Within 4-6 Hours)</SelectItem>
+                  <SelectItem value="stat" className="text-xs text-rose-600 font-bold">STAT (Immediate / Emergency)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Clinical Indication & Specific Questions</Label>
+              <Textarea
+                value={orderIndication}
+                onChange={(e) => setOrderIndication(e.target.value)}
+                placeholder="e.g. Suspected pneumonia; check for consolidation or pleural effusion. R/O pneumothorax."
+                rows={3}
+                className="text-xs resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsOrderImagingOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleOrderImaging}
+              disabled={isPending || !orderBodyPart.trim() || !orderIndication.trim()}
+              className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold"
+            >
+              {isPending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+              Send Imaging Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Printable Official Diagnostic Imaging Report */}
+      {activeReportStudy && (
+        <PrintableDocumentModal
+          open={isPrintRadiologyOpen}
+          onOpenChange={setIsPrintRadiologyOpen}
+          title={`Radiology Report — ${activeReportStudy.modality.toUpperCase()}`}
+          documentRefCode={`RAD-${activeReportStudy.id.slice(0, 8).toUpperCase()}`}
+        >
+          <RadiologyReportDocument
+            hospital={{
+              name: "HospNest Diagnostic Imaging Center",
+              address: "Department of Radiology & Medical Imaging",
+              state: "Nigeria",
+              contactPhone: "+234 800 000 9999",
+              licenseNumber: "NNRA-RAD-0441",
+            }}
+            patient={{
+              fullName: workspaceData?.patient?.fullName || "Patient",
+              nin: workspaceData?.patient?.nin || "N/A",
+              age: workspaceData?.patient?.age || "N/A",
+              gender: workspaceData?.patient?.gender || "N/A",
+            }}
+            study={{
+              studyNumber: `RAD-${activeReportStudy.id.slice(0, 8).toUpperCase()}`,
+              studyDate: activeReportStudy.studyDate,
+              reportDate: activeReportStudy.createdAt,
+              modality: activeReportStudy.modality,
+              bodyPart: activeReportStudy.bodyPart,
+              clinicalIndication: activeReportStudy.clinicalIndication || "Clinical evaluation",
+              findings: activeReportStudy.findings || "No formal findings logged yet.",
+              impression: activeReportStudy.impression || "Awaiting radiologist review.",
+              radiologistNotes: activeReportStudy.radiologistNotes || undefined,
+              isCritical: activeReportStudy.isCritical,
+              radiologistName: activeReportStudy.radiologistName || "Radiologist On-Duty",
+              radiologistLicense: "MDCN/RAD/99824",
+              technicianName: activeReportStudy.technicianName || undefined,
+              imageUrl: activeReportStudy.imageUrl || undefined,
             }}
           />
         </PrintableDocumentModal>
