@@ -18,7 +18,9 @@ export type Database = {
         Row: {
           admission_date: string
           admission_reason: string | null
+          admission_type: string
           admitting_doctor_id: string | null
+          bed_cleaning_status: string
           bed_id: string | null
           created_at: string
           discharge_condition: string | null
@@ -26,18 +28,23 @@ export type Database = {
           discharge_instructions: string | null
           discharge_summary: string | null
           encounter_id: string | null
+          expected_stay_days: number
+          follow_up_appointment_id: string | null
           hospital_id: string
           id: string
           initial_condition: string | null
           patient_id: string
           status: string
+          take_home_prescriptions: Json | null
           updated_at: string
           ward_id: string | null
         }
         Insert: {
           admission_date?: string
           admission_reason?: string | null
+          admission_type?: string
           admitting_doctor_id?: string | null
+          bed_cleaning_status?: string
           bed_id?: string | null
           created_at?: string
           discharge_condition?: string | null
@@ -45,18 +52,23 @@ export type Database = {
           discharge_instructions?: string | null
           discharge_summary?: string | null
           encounter_id?: string | null
+          expected_stay_days?: number
+          follow_up_appointment_id?: string | null
           hospital_id: string
           id?: string
           initial_condition?: string | null
           patient_id: string
           status?: string
+          take_home_prescriptions?: Json | null
           updated_at?: string
           ward_id?: string | null
         }
         Update: {
           admission_date?: string
           admission_reason?: string | null
+          admission_type?: string
           admitting_doctor_id?: string | null
+          bed_cleaning_status?: string
           bed_id?: string | null
           created_at?: string
           discharge_condition?: string | null
@@ -64,11 +76,14 @@ export type Database = {
           discharge_instructions?: string | null
           discharge_summary?: string | null
           encounter_id?: string | null
+          expected_stay_days?: number
+          follow_up_appointment_id?: string | null
           hospital_id?: string
           id?: string
           initial_condition?: string | null
           patient_id?: string
           status?: string
+          take_home_prescriptions?: Json | null
           updated_at?: string
           ward_id?: string | null
         }
@@ -102,6 +117,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "admissions_follow_up_appointment_id_fkey"
+            columns: ["follow_up_appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "admissions_hospital_id_fkey"
             columns: ["hospital_id"]
             isOneToOne: false
@@ -124,9 +146,180 @@ export type Database = {
           },
         ]
       }
+      antenatal_enrollments: {
+        Row: {
+          alive: number | null
+          anc_number: string
+          blood_group: string | null
+          created_at: string
+          edd: string
+          genotype: string | null
+          gestational_age_at_booking_weeks: number | null
+          gravida: number | null
+          hepatitis_b_status: string | null
+          hiv_status: string | null
+          hospital_id: string
+          id: string
+          lmp: string
+          miscarriages: number | null
+          para: number | null
+          patient_id: string
+          rhesus: string | null
+          risk_factors: string[] | null
+          status: string
+          updated_at: string
+          vdrl_syphilis_status: string | null
+        }
+        Insert: {
+          alive?: number | null
+          anc_number: string
+          blood_group?: string | null
+          created_at?: string
+          edd: string
+          genotype?: string | null
+          gestational_age_at_booking_weeks?: number | null
+          gravida?: number | null
+          hepatitis_b_status?: string | null
+          hiv_status?: string | null
+          hospital_id: string
+          id?: string
+          lmp: string
+          miscarriages?: number | null
+          para?: number | null
+          patient_id: string
+          rhesus?: string | null
+          risk_factors?: string[] | null
+          status?: string
+          updated_at?: string
+          vdrl_syphilis_status?: string | null
+        }
+        Update: {
+          alive?: number | null
+          anc_number?: string
+          blood_group?: string | null
+          created_at?: string
+          edd?: string
+          genotype?: string | null
+          gestational_age_at_booking_weeks?: number | null
+          gravida?: number | null
+          hepatitis_b_status?: string | null
+          hiv_status?: string | null
+          hospital_id?: string
+          id?: string
+          lmp?: string
+          miscarriages?: number | null
+          para?: number | null
+          patient_id?: string
+          rhesus?: string | null
+          risk_factors?: string[] | null
+          status?: string
+          updated_at?: string
+          vdrl_syphilis_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "antenatal_enrollments_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "antenatal_enrollments_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      antenatal_visits: {
+        Row: {
+          clinical_notes: string | null
+          created_at: string
+          enrollment_id: string
+          fetal_heart_rate_bpm: number | null
+          fetal_lie: string | null
+          fetal_presentation: string | null
+          fundal_height_cm: number | null
+          gestational_age_weeks: number | null
+          hospital_id: string
+          id: string
+          maternal_bp_diastolic: number | null
+          maternal_bp_systolic: number | null
+          maternal_weight_kg: number | null
+          next_visit_date: string | null
+          practitioner_name: string | null
+          urinalysis_glucose: string | null
+          urinalysis_protein: string | null
+          visit_date: string
+          visit_number: number
+        }
+        Insert: {
+          clinical_notes?: string | null
+          created_at?: string
+          enrollment_id: string
+          fetal_heart_rate_bpm?: number | null
+          fetal_lie?: string | null
+          fetal_presentation?: string | null
+          fundal_height_cm?: number | null
+          gestational_age_weeks?: number | null
+          hospital_id: string
+          id?: string
+          maternal_bp_diastolic?: number | null
+          maternal_bp_systolic?: number | null
+          maternal_weight_kg?: number | null
+          next_visit_date?: string | null
+          practitioner_name?: string | null
+          urinalysis_glucose?: string | null
+          urinalysis_protein?: string | null
+          visit_date?: string
+          visit_number?: number
+        }
+        Update: {
+          clinical_notes?: string | null
+          created_at?: string
+          enrollment_id?: string
+          fetal_heart_rate_bpm?: number | null
+          fetal_lie?: string | null
+          fetal_presentation?: string | null
+          fundal_height_cm?: number | null
+          gestational_age_weeks?: number | null
+          hospital_id?: string
+          id?: string
+          maternal_bp_diastolic?: number | null
+          maternal_bp_systolic?: number | null
+          maternal_weight_kg?: number | null
+          next_visit_date?: string | null
+          practitioner_name?: string | null
+          urinalysis_glucose?: string | null
+          urinalysis_protein?: string | null
+          visit_date?: string
+          visit_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "antenatal_visits_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "antenatal_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "antenatal_visits_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointments: {
         Row: {
           appointment_date: string
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          checked_in_at: string | null
           created_at: string
           department_id: string | null
           doctor_id: string | null
@@ -134,13 +327,20 @@ export type Database = {
           id: string
           is_external_booking: boolean
           is_walk_in: boolean
+          notes: string | null
           patient_id: string
+          previous_encounter_id: string | null
+          priority: string
           queue_number: number | null
+          slot_duration_minutes: number
           status: Database["public"]["Enums"]["appointment_status"]
           symptoms_summary: string | null
         }
         Insert: {
           appointment_date: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          checked_in_at?: string | null
           created_at?: string
           department_id?: string | null
           doctor_id?: string | null
@@ -148,13 +348,20 @@ export type Database = {
           id?: string
           is_external_booking?: boolean
           is_walk_in?: boolean
+          notes?: string | null
           patient_id: string
+          previous_encounter_id?: string | null
+          priority?: string
           queue_number?: number | null
+          slot_duration_minutes?: number
           status?: Database["public"]["Enums"]["appointment_status"]
           symptoms_summary?: string | null
         }
         Update: {
           appointment_date?: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          checked_in_at?: string | null
           created_at?: string
           department_id?: string | null
           doctor_id?: string | null
@@ -162,8 +369,12 @@ export type Database = {
           id?: string
           is_external_booking?: boolean
           is_walk_in?: boolean
+          notes?: string | null
           patient_id?: string
+          previous_encounter_id?: string | null
+          priority?: string
           queue_number?: number | null
+          slot_duration_minutes?: number
           status?: Database["public"]["Enums"]["appointment_status"]
           symptoms_summary?: string | null
         }
@@ -194,6 +405,20 @@ export type Database = {
             columns: ["patient_id"]
             isOneToOne: false
             referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_previous_encounter_id_fkey"
+            columns: ["previous_encounter_id"]
+            isOneToOne: false
+            referencedRelation: "encounters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_previous_encounter_id_fkey"
+            columns: ["previous_encounter_id"]
+            isOneToOne: false
+            referencedRelation: "encounters_masked"
             referencedColumns: ["id"]
           },
         ]
@@ -290,8 +515,156 @@ export type Database = {
           },
         ]
       }
+      child_immunization_records: {
+        Row: {
+          administered_at: string | null
+          adverse_events: string | null
+          batch_number: string | null
+          child_name: string
+          created_at: string
+          date_of_birth: string
+          dose_number: number
+          gender: string | null
+          hospital_id: string
+          id: string
+          nurse_name: string | null
+          patient_id: string | null
+          status: string
+          target_age_weeks: number
+          vaccine_name: string
+        }
+        Insert: {
+          administered_at?: string | null
+          adverse_events?: string | null
+          batch_number?: string | null
+          child_name: string
+          created_at?: string
+          date_of_birth: string
+          dose_number?: number
+          gender?: string | null
+          hospital_id: string
+          id?: string
+          nurse_name?: string | null
+          patient_id?: string | null
+          status?: string
+          target_age_weeks?: number
+          vaccine_name: string
+        }
+        Update: {
+          administered_at?: string | null
+          adverse_events?: string | null
+          batch_number?: string | null
+          child_name?: string
+          created_at?: string
+          date_of_birth?: string
+          dose_number?: number
+          gender?: string | null
+          hospital_id?: string
+          id?: string
+          nurse_name?: string | null
+          patient_id?: string | null
+          status?: string
+          target_age_weeks?: number
+          vaccine_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_immunization_records_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "child_immunization_records_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clinical_note_amendments: {
+        Row: {
+          amended_notes: string
+          amendment_reason: string
+          amendment_type: string
+          author_id: string
+          created_at: string
+          digital_signature_hash: string | null
+          encounter_id: string
+          hospital_id: string
+          id: string
+          patient_id: string
+          previous_notes: string | null
+        }
+        Insert: {
+          amended_notes: string
+          amendment_reason: string
+          amendment_type?: string
+          author_id: string
+          created_at?: string
+          digital_signature_hash?: string | null
+          encounter_id: string
+          hospital_id: string
+          id?: string
+          patient_id: string
+          previous_notes?: string | null
+        }
+        Update: {
+          amended_notes?: string
+          amendment_reason?: string
+          amendment_type?: string
+          author_id?: string
+          created_at?: string
+          digital_signature_hash?: string | null
+          encounter_id?: string
+          hospital_id?: string
+          id?: string
+          patient_id?: string
+          previous_notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clinical_note_amendments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clinical_note_amendments_encounter_id_fkey"
+            columns: ["encounter_id"]
+            isOneToOne: false
+            referencedRelation: "encounters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clinical_note_amendments_encounter_id_fkey"
+            columns: ["encounter_id"]
+            isOneToOne: false
+            referencedRelation: "encounters_masked"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clinical_note_amendments_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clinical_note_amendments_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       departments: {
         Row: {
+          appointment_slot_duration_minutes: number
           code: string
           created_at: string
           floor: string | null
@@ -301,6 +674,7 @@ export type Database = {
           name: string
         }
         Insert: {
+          appointment_slot_duration_minutes?: number
           code: string
           created_at?: string
           floor?: string | null
@@ -310,6 +684,7 @@ export type Database = {
           name: string
         }
         Update: {
+          appointment_slot_duration_minutes?: number
           code?: string
           created_at?: string
           floor?: string | null
@@ -394,6 +769,7 @@ export type Database = {
       }
       encounters: {
         Row: {
+          allergies_notes: string | null
           appointment_id: string | null
           bed_id: string | null
           break_glass_reason: string | null
@@ -403,18 +779,27 @@ export type Database = {
           created_at: string
           department_id: string | null
           diagnosis: string | null
+          digital_signature_hash: string | null
+          drug_history: string | null
           encounter_status: Database["public"]["Enums"]["encounter_status"]
           hospital_id: string
           icd10_codes: string[]
           id: string
           is_break_glass: boolean
+          is_locked: boolean | null
           nurse_id: string | null
+          past_medical_history: string | null
           patient_id: string
+          physical_exam_systematic: Json | null
           practitioner_id: string | null
           psychiatric_notes: string | null
+          review_of_systems: string | null
+          signed_at: string | null
+          signed_by: string | null
           ward_id: string | null
         }
         Insert: {
+          allergies_notes?: string | null
           appointment_id?: string | null
           bed_id?: string | null
           break_glass_reason?: string | null
@@ -424,18 +809,27 @@ export type Database = {
           created_at?: string
           department_id?: string | null
           diagnosis?: string | null
+          digital_signature_hash?: string | null
+          drug_history?: string | null
           encounter_status?: Database["public"]["Enums"]["encounter_status"]
           hospital_id: string
           icd10_codes?: string[]
           id?: string
           is_break_glass?: boolean
+          is_locked?: boolean | null
           nurse_id?: string | null
+          past_medical_history?: string | null
           patient_id: string
+          physical_exam_systematic?: Json | null
           practitioner_id?: string | null
           psychiatric_notes?: string | null
+          review_of_systems?: string | null
+          signed_at?: string | null
+          signed_by?: string | null
           ward_id?: string | null
         }
         Update: {
+          allergies_notes?: string | null
           appointment_id?: string | null
           bed_id?: string | null
           break_glass_reason?: string | null
@@ -445,15 +839,23 @@ export type Database = {
           created_at?: string
           department_id?: string | null
           diagnosis?: string | null
+          digital_signature_hash?: string | null
+          drug_history?: string | null
           encounter_status?: Database["public"]["Enums"]["encounter_status"]
           hospital_id?: string
           icd10_codes?: string[]
           id?: string
           is_break_glass?: boolean
+          is_locked?: boolean | null
           nurse_id?: string | null
+          past_medical_history?: string | null
           patient_id?: string
+          physical_exam_systematic?: Json | null
           practitioner_id?: string | null
           psychiatric_notes?: string | null
+          review_of_systems?: string | null
+          signed_at?: string | null
+          signed_by?: string | null
           ward_id?: string | null
         }
         Relationships: [
@@ -502,6 +904,13 @@ export type Database = {
           {
             foreignKeyName: "encounters_practitioner_id_fkey"
             columns: ["practitioner_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "encounters_signed_by_fkey"
+            columns: ["signed_by"]
             isOneToOne: false
             referencedRelation: "staff"
             referencedColumns: ["id"]
@@ -1031,6 +1440,164 @@ export type Database = {
         }
         Relationships: []
       }
+      labor_and_delivery_records: {
+        Row: {
+          apgar_10min: number | null
+          apgar_1min: number | null
+          apgar_5min: number | null
+          attending_midwife: string | null
+          attending_obstetrician: string | null
+          baby_gender: string | null
+          birth_weight_kg: number | null
+          cervical_dilation_cm: number | null
+          contractions_per_10min: number | null
+          created_at: string
+          delivery_mode: string
+          delivery_time: string | null
+          enrollment_id: string | null
+          estimated_blood_loss_ml: number | null
+          fetal_station: string | null
+          hospital_id: string
+          id: string
+          labor_start_time: string
+          maternal_outcome: string | null
+          membranes_status: string | null
+          neonatal_outcome: string | null
+          notes: string | null
+          patient_id: string
+          perineal_tear_degree: string | null
+        }
+        Insert: {
+          apgar_10min?: number | null
+          apgar_1min?: number | null
+          apgar_5min?: number | null
+          attending_midwife?: string | null
+          attending_obstetrician?: string | null
+          baby_gender?: string | null
+          birth_weight_kg?: number | null
+          cervical_dilation_cm?: number | null
+          contractions_per_10min?: number | null
+          created_at?: string
+          delivery_mode?: string
+          delivery_time?: string | null
+          enrollment_id?: string | null
+          estimated_blood_loss_ml?: number | null
+          fetal_station?: string | null
+          hospital_id: string
+          id?: string
+          labor_start_time?: string
+          maternal_outcome?: string | null
+          membranes_status?: string | null
+          neonatal_outcome?: string | null
+          notes?: string | null
+          patient_id: string
+          perineal_tear_degree?: string | null
+        }
+        Update: {
+          apgar_10min?: number | null
+          apgar_1min?: number | null
+          apgar_5min?: number | null
+          attending_midwife?: string | null
+          attending_obstetrician?: string | null
+          baby_gender?: string | null
+          birth_weight_kg?: number | null
+          cervical_dilation_cm?: number | null
+          contractions_per_10min?: number | null
+          created_at?: string
+          delivery_mode?: string
+          delivery_time?: string | null
+          enrollment_id?: string | null
+          estimated_blood_loss_ml?: number | null
+          fetal_station?: string | null
+          hospital_id?: string
+          id?: string
+          labor_start_time?: string
+          maternal_outcome?: string | null
+          membranes_status?: string | null
+          neonatal_outcome?: string | null
+          notes?: string | null
+          patient_id?: string
+          perineal_tear_degree?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "labor_and_delivery_records_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "antenatal_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "labor_and_delivery_records_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "labor_and_delivery_records_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nursing_care_observations: {
+        Row: {
+          admission_id: string
+          created_at: string
+          details: Json
+          hospital_id: string
+          id: string
+          notes: string | null
+          nurse_id: string | null
+          observation_type: string
+        }
+        Insert: {
+          admission_id: string
+          created_at?: string
+          details?: Json
+          hospital_id: string
+          id?: string
+          notes?: string | null
+          nurse_id?: string | null
+          observation_type: string
+        }
+        Update: {
+          admission_id?: string
+          created_at?: string
+          details?: Json
+          hospital_id?: string
+          id?: string
+          notes?: string | null
+          nurse_id?: string | null
+          observation_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nursing_care_observations_admission_id_fkey"
+            columns: ["admission_id"]
+            isOneToOne: false
+            referencedRelation: "admissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nursing_care_observations_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nursing_care_observations_nurse_id_fkey"
+            columns: ["nurse_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       patient_consents: {
         Row: {
           created_at: string
@@ -1448,13 +2015,15 @@ export type Database = {
           findings: string | null
           hospital_id: string
           id: string
-          image_url: string
+          image_url: string | null
           impression: string | null
           is_critical: boolean
           modality: Database["public"]["Enums"]["imaging_modality"]
           patient_id: string
+          priority: string
           radiologist_id: string | null
           radiologist_notes: string | null
+          requesting_doctor_id: string | null
           status: Database["public"]["Enums"]["imaging_study_status"]
           study_date: string
           technician_id: string | null
@@ -1469,13 +2038,15 @@ export type Database = {
           findings?: string | null
           hospital_id: string
           id?: string
-          image_url: string
+          image_url?: string | null
           impression?: string | null
           is_critical?: boolean
           modality?: Database["public"]["Enums"]["imaging_modality"]
           patient_id: string
+          priority?: string
           radiologist_id?: string | null
           radiologist_notes?: string | null
+          requesting_doctor_id?: string | null
           status?: Database["public"]["Enums"]["imaging_study_status"]
           study_date?: string
           technician_id?: string | null
@@ -1490,13 +2061,15 @@ export type Database = {
           findings?: string | null
           hospital_id?: string
           id?: string
-          image_url?: string
+          image_url?: string | null
           impression?: string | null
           is_critical?: boolean
           modality?: Database["public"]["Enums"]["imaging_modality"]
           patient_id?: string
+          priority?: string
           radiologist_id?: string | null
           radiologist_notes?: string | null
+          requesting_doctor_id?: string | null
           status?: Database["public"]["Enums"]["imaging_study_status"]
           study_date?: string
           technician_id?: string | null
@@ -1535,6 +2108,13 @@ export type Database = {
           {
             foreignKeyName: "radiology_studies_radiologist_id_fkey"
             columns: ["radiologist_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "radiology_studies_requesting_doctor_id_fkey"
+            columns: ["requesting_doctor_id"]
             isOneToOne: false
             referencedRelation: "staff"
             referencedColumns: ["id"]
@@ -1603,12 +2183,15 @@ export type Database = {
       }
       staff: {
         Row: {
+          cadre_rank: string | null
           created_at: string
           department_id: string | null
           full_name: string
           hospital_id: string
           id: string
           is_active: boolean
+          license_number: string | null
+          license_type: string | null
           medical_license_number: string | null
           phone: string | null
           specialization: string | null
@@ -1616,12 +2199,15 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          cadre_rank?: string | null
           created_at?: string
           department_id?: string | null
           full_name: string
           hospital_id: string
           id?: string
           is_active?: boolean
+          license_number?: string | null
+          license_type?: string | null
           medical_license_number?: string | null
           phone?: string | null
           specialization?: string | null
@@ -1629,12 +2215,15 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          cadre_rank?: string | null
           created_at?: string
           department_id?: string | null
           full_name?: string
           hospital_id?: string
           id?: string
           is_active?: boolean
+          license_number?: string | null
+          license_type?: string | null
           medical_license_number?: string | null
           phone?: string | null
           specialization?: string | null
@@ -2030,6 +2619,67 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "user_roles_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ward_round_notes: {
+        Row: {
+          admission_id: string
+          assessment: string | null
+          created_at: string
+          doctor_id: string | null
+          hospital_id: string
+          id: string
+          objective: string | null
+          plan: string
+          subjective: string | null
+          vitals_snapshot: Json | null
+        }
+        Insert: {
+          admission_id: string
+          assessment?: string | null
+          created_at?: string
+          doctor_id?: string | null
+          hospital_id: string
+          id?: string
+          objective?: string | null
+          plan: string
+          subjective?: string | null
+          vitals_snapshot?: Json | null
+        }
+        Update: {
+          admission_id?: string
+          assessment?: string | null
+          created_at?: string
+          doctor_id?: string | null
+          hospital_id?: string
+          id?: string
+          objective?: string | null
+          plan?: string
+          subjective?: string | null
+          vitals_snapshot?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ward_round_notes_admission_id_fkey"
+            columns: ["admission_id"]
+            isOneToOne: false
+            referencedRelation: "admissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ward_round_notes_doctor_id_fkey"
+            columns: ["doctor_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ward_round_notes_hospital_id_fkey"
             columns: ["hospital_id"]
             isOneToOne: false
             referencedRelation: "hospitals"
