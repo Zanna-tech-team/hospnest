@@ -2353,10 +2353,7 @@ function ConsultationsPage() {
               impression: activeReportStudy.impression || "Awaiting radiologist review.",
               radiologistNotes: activeReportStudy.radiologistNotes || undefined,
               isCritical: activeReportStudy.isCritical,
-              radiologistName: activeReportStudy.radiologistName || "Radiologist On-Duty",
-              radiologistLicense: "MDCN/RAD/99824",
-              technicianName: activeReportStudy.technicianName || undefined,
-              imageUrl: activeReportStudy.imageUrl || undefined,
+              reportingRadiologist: activeReportStudy.radiologistName || "Radiologist On-Duty",
             }}
           />
         </PrintableDocumentModal>
