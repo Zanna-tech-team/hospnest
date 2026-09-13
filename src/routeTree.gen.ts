@@ -26,6 +26,8 @@ import { Route as AuthenticatedTransfersRouteImport } from './routes/_authentica
 import { Route as AuthenticatedTriageRouteImport } from './routes/_authenticated/triage'
 import { Route as AuthenticatedWardsRouteImport } from './routes/_authenticated/wards'
 import { Route as HospitalsHospitalSlugRouteImport } from './routes/hospitals/$hospitalSlug'
+import { Route as AuthenticatedAppointmentsIndexRouteImport } from './routes/_authenticated/appointments/index'
+import { Route as AuthenticatedAppointmentsQueueRouteImport } from './routes/_authenticated/appointments/queue'
 import { Route as AuthenticatedBillingIndexRouteImport } from './routes/_authenticated/billing/index'
 import { Route as AuthenticatedPatientsIndexRouteImport } from './routes/_authenticated/patients/index'
 import { Route as AuthenticatedPatientsPatientIdRouteImport } from './routes/_authenticated/patients/$patientId'
@@ -118,6 +120,18 @@ const HospitalsHospitalSlugRoute = HospitalsHospitalSlugRouteImport.update({
   path: '/hospitals/$hospitalSlug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedAppointmentsIndexRoute =
+  AuthenticatedAppointmentsIndexRouteImport.update({
+    id: '/appointments/',
+    path: '/appointments/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAppointmentsQueueRoute =
+  AuthenticatedAppointmentsQueueRouteImport.update({
+    id: '/appointments/queue',
+    path: '/appointments/queue',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedBillingIndexRoute =
   AuthenticatedBillingIndexRouteImport.update({
     id: '/billing/',
@@ -166,8 +180,10 @@ export interface FileRoutesByFullPath {
   '/triage': typeof AuthenticatedTriageRoute
   '/wards': typeof AuthenticatedWardsRoute
   '/hospitals/$hospitalSlug': typeof HospitalsHospitalSlugRoute
+  '/appointments/queue': typeof AuthenticatedAppointmentsQueueRoute
   '/patients/$patientId': typeof AuthenticatedPatientsPatientIdRoute
   '/pharmacy/inventory': typeof AuthenticatedPharmacyInventoryRoute
+  '/appointments/': typeof AuthenticatedAppointmentsIndexRoute
   '/billing/': typeof AuthenticatedBillingIndexRoute
   '/patients/': typeof AuthenticatedPatientsIndexRoute
   '/pharmacy/': typeof AuthenticatedPharmacyIndexRoute
@@ -189,8 +205,10 @@ export interface FileRoutesByTo {
   '/triage': typeof AuthenticatedTriageRoute
   '/wards': typeof AuthenticatedWardsRoute
   '/hospitals/$hospitalSlug': typeof HospitalsHospitalSlugRoute
+  '/appointments/queue': typeof AuthenticatedAppointmentsQueueRoute
   '/patients/$patientId': typeof AuthenticatedPatientsPatientIdRoute
   '/pharmacy/inventory': typeof AuthenticatedPharmacyInventoryRoute
+  '/appointments': typeof AuthenticatedAppointmentsIndexRoute
   '/billing': typeof AuthenticatedBillingIndexRoute
   '/patients': typeof AuthenticatedPatientsIndexRoute
   '/pharmacy': typeof AuthenticatedPharmacyIndexRoute
@@ -214,8 +232,10 @@ export interface FileRoutesById {
   '/_authenticated/triage': typeof AuthenticatedTriageRoute
   '/_authenticated/wards': typeof AuthenticatedWardsRoute
   '/hospitals/$hospitalSlug': typeof HospitalsHospitalSlugRoute
+  '/_authenticated/appointments/queue': typeof AuthenticatedAppointmentsQueueRoute
   '/_authenticated/patients/$patientId': typeof AuthenticatedPatientsPatientIdRoute
   '/_authenticated/pharmacy/inventory': typeof AuthenticatedPharmacyInventoryRoute
+  '/_authenticated/appointments/': typeof AuthenticatedAppointmentsIndexRoute
   '/_authenticated/billing/': typeof AuthenticatedBillingIndexRoute
   '/_authenticated/patients/': typeof AuthenticatedPatientsIndexRoute
   '/_authenticated/pharmacy/': typeof AuthenticatedPharmacyIndexRoute
@@ -239,8 +259,10 @@ export interface FileRouteTypes {
     | '/triage'
     | '/wards'
     | '/hospitals/$hospitalSlug'
+    | '/appointments/queue'
     | '/patients/$patientId'
     | '/pharmacy/inventory'
+    | '/appointments/'
     | '/billing/'
     | '/patients/'
     | '/pharmacy/'
@@ -262,8 +284,10 @@ export interface FileRouteTypes {
     | '/triage'
     | '/wards'
     | '/hospitals/$hospitalSlug'
+    | '/appointments/queue'
     | '/patients/$patientId'
     | '/pharmacy/inventory'
+    | '/appointments'
     | '/billing'
     | '/patients'
     | '/pharmacy'
@@ -286,8 +310,10 @@ export interface FileRouteTypes {
     | '/_authenticated/triage'
     | '/_authenticated/wards'
     | '/hospitals/$hospitalSlug'
+    | '/_authenticated/appointments/queue'
     | '/_authenticated/patients/$patientId'
     | '/_authenticated/pharmacy/inventory'
+    | '/_authenticated/appointments/'
     | '/_authenticated/billing/'
     | '/_authenticated/patients/'
     | '/_authenticated/pharmacy/'
@@ -421,6 +447,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HospitalsHospitalSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/appointments/': {
+      id: '/_authenticated/appointments/'
+      path: '/appointments'
+      fullPath: '/appointments/'
+      preLoaderRoute: typeof AuthenticatedAppointmentsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/appointments/queue': {
+      id: '/_authenticated/appointments/queue'
+      path: '/appointments/queue'
+      fullPath: '/appointments/queue'
+      preLoaderRoute: typeof AuthenticatedAppointmentsQueueRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/billing/': {
       id: '/_authenticated/billing/'
       path: '/billing'
@@ -473,8 +513,10 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedTransfersRoute: typeof AuthenticatedTransfersRoute
   AuthenticatedTriageRoute: typeof AuthenticatedTriageRoute
   AuthenticatedWardsRoute: typeof AuthenticatedWardsRoute
+  AuthenticatedAppointmentsQueueRoute: typeof AuthenticatedAppointmentsQueueRoute
   AuthenticatedPatientsPatientIdRoute: typeof AuthenticatedPatientsPatientIdRoute
   AuthenticatedPharmacyInventoryRoute: typeof AuthenticatedPharmacyInventoryRoute
+  AuthenticatedAppointmentsIndexRoute: typeof AuthenticatedAppointmentsIndexRoute
   AuthenticatedBillingIndexRoute: typeof AuthenticatedBillingIndexRoute
   AuthenticatedPatientsIndexRoute: typeof AuthenticatedPatientsIndexRoute
   AuthenticatedPharmacyIndexRoute: typeof AuthenticatedPharmacyIndexRoute
@@ -494,8 +536,10 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedTransfersRoute: AuthenticatedTransfersRoute,
   AuthenticatedTriageRoute: AuthenticatedTriageRoute,
   AuthenticatedWardsRoute: AuthenticatedWardsRoute,
+  AuthenticatedAppointmentsQueueRoute: AuthenticatedAppointmentsQueueRoute,
   AuthenticatedPatientsPatientIdRoute: AuthenticatedPatientsPatientIdRoute,
   AuthenticatedPharmacyInventoryRoute: AuthenticatedPharmacyInventoryRoute,
+  AuthenticatedAppointmentsIndexRoute: AuthenticatedAppointmentsIndexRoute,
   AuthenticatedBillingIndexRoute: AuthenticatedBillingIndexRoute,
   AuthenticatedPatientsIndexRoute: AuthenticatedPatientsIndexRoute,
   AuthenticatedPharmacyIndexRoute: AuthenticatedPharmacyIndexRoute,

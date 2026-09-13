@@ -30,6 +30,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pill,
+  Scan,
   Search,
   Settings,
   ShieldAlert,
@@ -127,6 +128,12 @@ const NAVIGATION_ITEMS: NavItem[] = [
     category: "clinical",
   },
   {
+    label: "Appointments & Scheduling",
+    href: "/appointments",
+    icon: Calendar,
+    category: "clinical",
+  },
+  {
     label: "Patients Directory",
     href: "/patients",
     icon: User,
@@ -155,6 +162,12 @@ const NAVIGATION_ITEMS: NavItem[] = [
     href: "/transfers",
     icon: ArrowRightLeft,
     category: "clinical",
+  },
+  {
+    label: "Radiology & Imaging",
+    href: "/radiology",
+    icon: Scan,
+    category: "operations",
   },
   {
     label: "Laboratory",
