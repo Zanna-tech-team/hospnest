@@ -11,7 +11,7 @@ export interface HospitalNotificationItem {
   timestamp: string;
   routeHref: string;
   isRead: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any> | undefined;
 }
 
 export const getHospitalLiveNotifications = createServerFn({ method: "GET" })

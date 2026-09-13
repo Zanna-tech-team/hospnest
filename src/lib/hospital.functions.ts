@@ -54,10 +54,10 @@ export const createHospital = createServerFn({ method: "POST" })
       hospitalType: "government" | "private";
       licenseNumber: string;
       state: string;
-      lga?: string;
-      address?: string;
-      contactEmail?: string;
-      contactPhone?: string;
+      lga?: string | undefined;
+      address?: string | undefined;
+      contactEmail?: string | undefined;
+      contactPhone?: string | undefined;
       adminFullName: string;
     }) => {
       const name = String(input?.name ?? "").trim();

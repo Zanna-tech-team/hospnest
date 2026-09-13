@@ -23,9 +23,9 @@ export type PatientDemographics = {
   insurancePlanType: string | null;
   insuranceExpiryDate: string | null;
   emergencyContact: {
-    name?: string;
-    relationship?: string;
-    phone?: string;
+    name?: string | undefined;
+    relationship?: string | undefined;
+    phone?: string | undefined;
   } | null;
   createdAt: string;
 };
@@ -132,7 +132,7 @@ export type PatientConsentStatus = {
   isActive: boolean;
   expiresAt: string | null;
   scope: string;
-  isBreakGlass?: boolean;
+  isBreakGlass?: boolean | undefined;
 };
 
 export type PatientProfileData = {
@@ -182,9 +182,9 @@ async function writeAuditEntry(
     hospital_id: string;
     accessor_id: string;
     accessor_role: StaffRole;
-    patient_id?: string;
+    patient_id?: string | undefined;
     action: "READ" | "WRITE" | "BREAK_GLASS_OVERRIDE" | "EXPORT";
-    justification?: string | null;
+    justification?: string | null | undefined;
   },
 ) {
   try {

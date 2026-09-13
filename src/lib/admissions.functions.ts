@@ -52,7 +52,7 @@ export type InpatientCardItem = {
     heartRate: number | null;
     respiratoryRate: number | null;
     spo2: number | null;
-    news2Score?: number;
+    news2Score?: number | undefined;
     recordedAt: string;
   };
   outstandingLabsCount: number;
@@ -90,8 +90,8 @@ async function writeAuditEntry(
     hospital_id: string;
     accessor_id: string;
     accessor_role: StaffRole;
-    patient_id?: string;
-    encounter_id?: string;
+    patient_id?: string | undefined;
+    encounter_id?: string | undefined;
     action: "READ" | "WRITE" | "BREAK_GLASS_OVERRIDE" | "EXPORT" | "SIGN";
     justification: string;
   }
@@ -107,10 +107,10 @@ async function writeAuditEntry(
 export const getInpatientsDashboardData = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: {
-    hospitalId?: string;
-    wardFilter?: string;
-    admissionTypeFilter?: string;
-    searchQuery?: string;
+    hospitalId?: string | undefined;
+    wardFilter?: string | undefined;
+    admissionTypeFilter?: string | undefined;
+    searchQuery?: string | undefined;
   }) => d)
   .handler(async ({ context, data }) => {
     const { userId } = context;
@@ -458,11 +458,11 @@ export const recordWardRoundNote = createServerFn({ method: "POST" })
   .inputValidator((d: {
     admissionId: string;
     hospitalId: string;
-    subjective?: string;
-    objective?: string;
-    assessment?: string;
+    subjective?: string | undefined;
+    objective?: string | undefined;
+    assessment?: string | undefined;
     plan: string;
-    vitalsSnapshot?: any;
+    vitalsSnapshot?: any | undefined;
   }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
@@ -513,7 +513,7 @@ export const recordNursingCareObservation = createServerFn({ method: "POST" })
     hospitalId: string;
     observationType: "vitals" | "mar" | "fluid_balance" | "wound_care";
     details: any;
-    notes?: string;
+    notes?: string | undefined;
   }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
@@ -563,13 +563,13 @@ export const finalizeInpatientDischargeLifecycle = createServerFn({ method: "POS
     dischargeCondition: DischargeCondition;
     dischargeSummary: string;
     dischargeInstructions: string;
-    followUpDate?: string;
+    followUpDate?: string | undefined;
     takeHomeMedications?: Array<{
       drugName: string;
       dosage: string;
       frequency: string;
       duration: string;
-      instructions?: string;
+      instructions?: string | undefined;
     }>;
   }) => d)
   .handler(async ({ context, data }) => {

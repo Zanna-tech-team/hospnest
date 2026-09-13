@@ -10,12 +10,12 @@ export type StaffRole =
   | "pharmacist";
 
 export type WeeklyShift = {
-  id?: string;
+  id?: string | undefined;
   dayOfWeek: number; // 0=Sun, 1=Mon, ..., 6=Sat
   startTimeStr: string; // "08:00"
   endTimeStr: string; // "16:00"
-  departmentId?: string | null;
-  isActive?: boolean;
+  departmentId?: string | null | undefined;
+  isActive?: boolean | undefined;
 };
 
 export type TeamMember = {
@@ -32,8 +32,8 @@ export type TeamMember = {
   isActive: boolean;
   isPending: boolean;
   isOnShift: boolean;
-  inviteToken?: string | null;
-  email?: string | null;
+  inviteToken?: string | null | undefined;
+  email?: string | null | undefined;
   createdAt: string;
 };
 
@@ -69,9 +69,9 @@ async function writeAuditEntry(
     hospital_id: string;
     accessor_id: string;
     accessor_role: StaffRole;
-    patient_id?: string;
+    patient_id?: string | undefined;
     action: "READ" | "WRITE" | "BREAK_GLASS_OVERRIDE" | "EXPORT";
-    justification?: string | null;
+    justification?: string | null | undefined;
   },
 ) {
   try {

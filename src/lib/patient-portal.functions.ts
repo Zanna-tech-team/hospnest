@@ -21,9 +21,9 @@ export type PatientPortalProfile = {
   insurancePlanType: string | null;
   insuranceExpiryDate: string | null;
   emergencyContact: {
-    name?: string;
-    relationship?: string;
-    phone?: string;
+    name?: string | undefined;
+    relationship?: string | undefined;
+    phone?: string | undefined;
   } | null;
   createdAt: string;
 };
@@ -142,13 +142,13 @@ export type PatientPortalDashboardResponse = {
 async function writeAuditEntry(
   supabase: { from: (t: string) => any },
   entry: {
-    hospital_id?: string | null;
+    hospital_id?: string | null | undefined;
     accessor_id: string;
     accessor_role: StaffRole | "patient";
-    patient_id?: string;
-    encounter_id?: string;
+    patient_id?: string | undefined;
+    encounter_id?: string | undefined;
     action: "READ" | "WRITE" | "BREAK_GLASS_OVERRIDE" | "EXPORT";
-    justification?: string | null;
+    justification?: string | null | undefined;
   },
 ) {
   try {
@@ -212,9 +212,9 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
   )
   .handler(async ({ data: input }): Promise<{
     success: boolean;
-    error?: string;
-    patientId?: string;
-    email?: string;
+    error?: string | undefined;
+    patientId?: string | undefined;
+    email?: string | undefined;
   }> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 

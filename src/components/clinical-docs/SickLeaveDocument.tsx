@@ -5,17 +5,17 @@ import { QrCodeBadge } from "./QrCodeBadge";
 export type SickLeaveProps = {
   hospital: {
     name: string;
-    address?: string | null;
-    state?: string;
-    contactPhone?: string | null;
-    licenseNumber?: string | null;
+    address?: string | null | undefined;
+    state?: string | undefined;
+    contactPhone?: string | null | undefined;
+    licenseNumber?: string | null | undefined;
   };
   patient: {
     fullName: string;
-    nin?: string | null;
-    age?: string | number | null;
-    gender?: string | null;
-    employerOrSchool?: string | null;
+    nin?: string | null | undefined;
+    age?: string | number | null | undefined;
+    gender?: string | null | undefined;
+    employerOrSchool?: string | null | undefined;
   };
   sickLeave: {
     certificateNumber: string;
@@ -25,12 +25,12 @@ export type SickLeaveProps = {
     durationDays: number;
     resumeWorkDate: string;
     diagnosisCategory: string; // e.g. Acute Febrile Illness, Post-Operative Recovery, Severe Bronchitis
-    clinicalJustificationSummary?: string;
+    clinicalJustificationSummary?: string | undefined;
     excusedDutyType: "total_bed_rest" | "light_duty" | "excused_from_duty";
     attendingPhysician: string;
-    physicianRank?: string;
+    physicianRank?: string | undefined;
     physicianLicenseNumber: string; // MDCN/R/12345
-    digitalSignatureHash?: string;
+    digitalSignatureHash?: string | undefined;
   };
 };
 

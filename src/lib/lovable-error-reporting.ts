@@ -1,24 +1,24 @@
 type LovableErrorOptions = {
-  mechanism?: "manual" | "onerror" | "unhandledrejection" | "react_error_boundary";
-  handled?: boolean;
-  severity?: "error" | "warning" | "info";
+  mechanism?: "manual" | "onerror" | "unhandledrejection" | "react_error_boundary" | undefined;
+  handled?: boolean | undefined;
+  severity?: "error" | "warning" | "info" | undefined;
 };
 
 type LovableEvents = {
   captureException?: (
     error: unknown,
-    context?: Record<string, unknown>,
-    options?: LovableErrorOptions,
+    context?: Record<string, unknown> | undefined,
+    options?: LovableErrorOptions | undefined,
   ) => void;
 };
 
 declare global {
   interface Window {
-    __lovableEvents?: LovableEvents;
+    __lovableEvents?: LovableEvents | undefined;
     __lovableReportRuntimeError?: (payload: {
       message: string;
-      stack?: string;
-      filename?: string;
+      stack?: string | undefined;
+      filename?: string | undefined;
     }) => void;
   }
 }

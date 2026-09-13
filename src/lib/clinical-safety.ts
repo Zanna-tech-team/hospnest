@@ -7,13 +7,13 @@
 export type ConsciousnessLevel = "A" | "C" | "V" | "P" | "U";
 
 export interface News2Input {
-  respiratoryRate?: number | null;
-  spo2?: number | null;
-  onOxygen?: boolean | null;
-  systolicBp?: number | null;
-  pulseRate?: number | null;
-  consciousness?: ConsciousnessLevel | string | null;
-  bodyTemperature?: number | null;
+  respiratoryRate?: number | null | undefined;
+  spo2?: number | null | undefined;
+  onOxygen?: boolean | null | undefined;
+  systolicBp?: number | null | undefined;
+  pulseRate?: number | null | undefined;
+  consciousness?: ConsciousnessLevel | string | null | undefined;
+  bodyTemperature?: number | null | undefined;
   isHypercapnicRisk?: boolean; // COPD or chronic hypercapnic respiratory failure (SpO2 Scale 2)
 }
 

@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge";
 
 interface News2ScoreBadgeProps {
   vitals: News2Input;
-  showDetails?: boolean;
-  className?: string;
+  showDetails?: boolean | undefined;
+  className?: string | undefined;
   onClick?: () => void;
 }
 

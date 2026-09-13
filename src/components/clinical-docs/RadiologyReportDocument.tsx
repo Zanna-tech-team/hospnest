@@ -5,31 +5,31 @@ import { QrCodeBadge } from "./QrCodeBadge";
 export type RadiologyReportProps = {
   hospital: {
     name: string;
-    address?: string | null;
-    state?: string;
-    contactPhone?: string | null;
-    licenseNumber?: string | null;
+    address?: string | null | undefined;
+    state?: string | undefined;
+    contactPhone?: string | null | undefined;
+    licenseNumber?: string | null | undefined;
   };
   patient: {
     fullName: string;
-    nin?: string | null;
-    age?: string | number | null;
-    gender?: string | null;
-    phone?: string | null;
+    nin?: string | null | undefined;
+    age?: string | number | null | undefined;
+    gender?: string | null | undefined;
+    phone?: string | null | undefined;
   };
   study: {
     accessionNumber: string;
     studyDate: string;
     modality: string;
     bodyPart: string;
-    clinicalIndication?: string | null;
-    requestingDoctor?: string | null;
+    clinicalIndication?: string | null | undefined;
+    requestingDoctor?: string | null | undefined;
     reportingRadiologist: string;
-    radiologistRank?: string;
+    radiologistRank?: string | undefined;
     findings: string;
     impression: string;
-    isCritical?: boolean;
-    radiologistNotes?: string | null;
+    isCritical?: boolean | undefined;
+    radiologistNotes?: string | null | undefined;
   };
 };
 

@@ -5,46 +5,46 @@ import { QrCodeBadge } from "./QrCodeBadge";
 export type MedicalFitnessProps = {
   hospital: {
     name: string;
-    address?: string | null;
-    state?: string;
-    contactPhone?: string | null;
-    licenseNumber?: string | null;
+    address?: string | null | undefined;
+    state?: string | undefined;
+    contactPhone?: string | null | undefined;
+    licenseNumber?: string | null | undefined;
   };
   patient: {
     fullName: string;
-    nin?: string | null;
-    age?: string | number | null;
-    gender?: string | null;
-    occupation?: string | null;
+    nin?: string | null | undefined;
+    age?: string | number | null | undefined;
+    gender?: string | null | undefined;
+    occupation?: string | null | undefined;
   };
   fitness: {
     certificateNumber: string;
     examinationDate: string;
     purpose: string; // e.g. Employment, NYSC, Driver's License, School Admission, Offshore/Oilfield
-    heightCm?: number | null;
-    weightKg?: number | null;
-    bloodPressure?: string | null;
-    pulseRate?: number | null;
+    heightCm?: number | null | undefined;
+    weightKg?: number | null | undefined;
+    bloodPressure?: string | null | undefined;
+    pulseRate?: number | null | undefined;
     visualAcuity?: {
       rightEye: string; // e.g. 6/6
       leftEye: string;  // e.g. 6/6
       colorVision?: string; // e.g. Normal
     };
-    cardiovascularFindings?: string;
-    respiratoryFindings?: string;
-    abdomenHerniaFindings?: string;
-    cnsFindings?: string;
+    cardiovascularFindings?: string | undefined;
+    respiratoryFindings?: string | undefined;
+    abdomenHerniaFindings?: string | undefined;
+    cnsFindings?: string | undefined;
     urinalysisFindings?: {
-      protein?: string;
-      glucose?: string;
-      blood?: string;
+      protein?: string | undefined;
+      glucose?: string | undefined;
+      blood?: string | undefined;
     };
     fitnessStatus: "fit" | "temporarily_unfit" | "unfit";
-    restrictionsOrRemarks?: string;
+    restrictionsOrRemarks?: string | undefined;
     examiningPhysician: string;
-    physicianRank?: string;
+    physicianRank?: string | undefined;
     physicianLicenseNumber: string; // MDCN/R/12345
-    digitalSignatureHash?: string;
+    digitalSignatureHash?: string | undefined;
   };
 };
 

@@ -57,8 +57,8 @@ export type DoctorScheduleSlot = {
   isAvailable: boolean;
   isBooked: boolean;
   isBlocked: boolean;
-  bookedAppointmentId?: string;
-  bookedPatientName?: string;
+  bookedAppointmentId?: string | undefined;
+  bookedPatientName?: string | undefined;
 };
 
 export type DoctorAvailability = {
@@ -130,8 +130,8 @@ async function writeAuditEntry(
     hospital_id: string;
     accessor_id: string;
     accessor_role: StaffRole;
-    patient_id?: string;
-    encounter_id?: string;
+    patient_id?: string | undefined;
+    encounter_id?: string | undefined;
     action: "READ" | "WRITE" | "BREAK_GLASS_OVERRIDE" | "EXPORT" | "SIGN";
     justification: string;
   }
@@ -147,12 +147,12 @@ async function writeAuditEntry(
 export const getHospitalAppointmentsCalendar = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: {
-    hospitalId?: string;
+    hospitalId?: string | undefined;
     startDate: string; // ISO date string e.g. 2026-09-13T00:00:00.000Z
     endDate: string;   // ISO date string e.g. 2026-09-13T23:59:59.999Z
-    departmentId?: string;
-    doctorId?: string;
-    statusFilter?: string;
+    departmentId?: string | undefined;
+    doctorId?: string | undefined;
+    statusFilter?: string | undefined;
   }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
@@ -351,10 +351,10 @@ export const getHospitalAppointmentsCalendar = createServerFn({ method: "GET" })
 export const getAvailableDoctorSlots = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: {
-    hospitalId?: string;
+    hospitalId?: string | undefined;
     date: string; // YYYY-MM-DD
-    departmentId?: string;
-    doctorId?: string;
+    departmentId?: string | undefined;
+    doctorId?: string | undefined;
   }) => d)
   .handler(async ({ context, data }) => {
     const { userId } = context;
@@ -528,15 +528,15 @@ export const createStaffAppointment = createServerFn({ method: "POST" })
   .inputValidator((d: {
     hospitalId: string;
     patientId: string;
-    departmentId?: string | null;
-    doctorId?: string | null;
+    departmentId?: string | null | undefined;
+    doctorId?: string | null | undefined;
     appointmentDate: string; // ISO string
-    slotDurationMinutes?: number;
-    priority?: AppointmentPriority;
+    slotDurationMinutes?: number | undefined;
+    priority?: AppointmentPriority | undefined;
     symptomsSummary: string;
-    notes?: string;
-    isWalkIn?: boolean;
-    previousEncounterId?: string | null;
+    notes?: string | undefined;
+    isWalkIn?: boolean | undefined;
+    previousEncounterId?: string | null | undefined;
   }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
@@ -733,8 +733,8 @@ export const rescheduleClinicAppointment = createServerFn({ method: "POST" })
     appointmentId: string;
     hospitalId: string;
     newAppointmentDate: string; // ISO string
-    doctorId?: string | null;
-    reason?: string;
+    doctorId?: string | null | undefined;
+    reason?: string | undefined;
   }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;

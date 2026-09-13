@@ -5,18 +5,18 @@ import { QrCodeBadge } from "./QrCodeBadge";
 export type ReferralLetterProps = {
   hospital: {
     name: string;
-    address?: string | null;
-    state?: string;
-    contactPhone?: string | null;
-    licenseNumber?: string | null;
+    address?: string | null | undefined;
+    state?: string | undefined;
+    contactPhone?: string | null | undefined;
+    licenseNumber?: string | null | undefined;
   };
   patient: {
     fullName: string;
-    nin?: string | null;
-    age?: string | number | null;
-    gender?: string | null;
-    phone?: string | null;
-    bloodGroup?: string | null;
+    nin?: string | null | undefined;
+    age?: string | number | null | undefined;
+    gender?: string | null | undefined;
+    phone?: string | null | undefined;
+    bloodGroup?: string | null | undefined;
   };
   referral: {
     referralNumber: string;
@@ -27,19 +27,19 @@ export type ReferralLetterProps = {
     reasonForReferral: string;
     clinicalSummaryAndHistory: string;
     vitalSignsSummary?: {
-      bp?: string;
-      pulse?: number;
-      temp?: number;
-      spo2?: number;
-      respiratoryRate?: number;
+      bp?: string | undefined;
+      pulse?: number | undefined;
+      temp?: number | undefined;
+      spo2?: number | undefined;
+      respiratoryRate?: number | undefined;
     };
-    investigationsSummary?: string;
-    treatmentGivenSoFar?: string;
+    investigationsSummary?: string | undefined;
+    treatmentGivenSoFar?: string | undefined;
     referringDoctorName: string;
-    referringDoctorRank?: string;
+    referringDoctorRank?: string | undefined;
     referringDoctorLicenseNumber: string; // MDCN/R/12345
-    referringDoctorContact?: string;
-    digitalSignatureHash?: string;
+    referringDoctorContact?: string | undefined;
+    digitalSignatureHash?: string | undefined;
   };
 };
 

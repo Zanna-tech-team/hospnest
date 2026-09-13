@@ -104,10 +104,10 @@ type NavItem = {
   label: string;
   href: string;
   icon: any;
-  roles?: StaffRole[];
-  patientOnly?: boolean;
-  category?: "core" | "clinical" | "operations" | "admin";
-  badge?: string;
+  roles?: StaffRole[] | undefined;
+  patientOnly?: boolean | undefined;
+  category?: "core" | "clinical" | "operations" | "admin" | undefined;
+  badge?: string | undefined;
 };
 
 const NAVIGATION_ITEMS: NavItem[] = [

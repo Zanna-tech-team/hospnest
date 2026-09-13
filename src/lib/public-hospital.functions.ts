@@ -11,7 +11,7 @@ export type PublicHospitalCard = {
   contactEmail: string | null;
   contactPhone: string | null;
   isVerified: boolean;
-  heroHeadline?: string | null;
+  heroHeadline?: string | null | undefined;
   departmentsCount: number;
   totalBedsCount: number;
 };
@@ -39,20 +39,20 @@ export type PublicHospitalLandingPageData = {
     services: Array<{
       name: string;
       description: string;
-      icon?: string;
-      category?: string;
+      icon?: string | undefined;
+      category?: string | undefined;
     }>;
     doctorsShowcase: Array<{
       name: string;
       specialty: string;
-      qualifications?: string;
-      photoUrl?: string;
+      qualifications?: string | undefined;
+      photoUrl?: string | undefined;
     }>;
     publicContact: {
-      emergencyPhone?: string;
-      generalInquiries?: string;
-      openingHours?: string;
-      whatsapp?: string;
+      emergencyPhone?: string | undefined;
+      generalInquiries?: string | undefined;
+      openingHours?: string | undefined;
+      whatsapp?: string | undefined;
     };
   };
   departments: Array<{

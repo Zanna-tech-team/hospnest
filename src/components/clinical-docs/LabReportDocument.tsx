@@ -5,40 +5,40 @@ import { QrCodeBadge } from "./QrCodeBadge";
 export type LabReportParam = {
   parameterName: string;
   measuredValue: string | number;
-  unit?: string;
-  referenceInterval?: string;
-  flag?: "normal" | "abnormal" | "critical";
+  unit?: string | undefined;
+  referenceInterval?: string | undefined;
+  flag?: "normal" | "abnormal" | "critical" | undefined;
 };
 
 export type LabReportProps = {
   hospital: {
     name: string;
-    address?: string | null;
-    state?: string;
-    contactPhone?: string | null;
-    licenseNumber?: string | null;
+    address?: string | null | undefined;
+    state?: string | undefined;
+    contactPhone?: string | null | undefined;
+    licenseNumber?: string | null | undefined;
   };
   patient: {
     fullName: string;
-    nin?: string | null;
-    age?: string | number | null;
-    gender?: string | null;
+    nin?: string | null | undefined;
+    age?: string | number | null | undefined;
+    gender?: string | null | undefined;
   };
   lab: {
     reportNumber: string;
     testName: string;
     testCode: string;
-    category?: string;
+    category?: string | undefined;
     specimenType: string;
     collectionDate: string;
-    receivedDate?: string;
+    receivedDate?: string | undefined;
     reportedDate: string;
     orderingDoctor: string;
     pathologistOrScientist: string;
     overallStatus: "completed" | "critical";
-    clinicalIndication?: string;
+    clinicalIndication?: string | undefined;
     parameters: LabReportParam[];
-    comments?: string;
+    comments?: string | undefined;
   };
 };
 

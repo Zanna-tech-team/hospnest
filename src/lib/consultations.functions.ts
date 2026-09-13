@@ -145,13 +145,13 @@ export type ClinicalAmendmentItem = {
 };
 
 export type SystematicPhysicalExam = {
-  general?: string;
-  cardiovascular?: string;
-  respiratory?: string;
-  gastrointestinal?: string;
-  centralNervous?: string;
-  musculoskeletal?: string;
-  genitourinary?: string;
+  general?: string | undefined;
+  cardiovascular?: string | undefined;
+  respiratory?: string | undefined;
+  gastrointestinal?: string | undefined;
+  centralNervous?: string | undefined;
+  musculoskeletal?: string | undefined;
+  genitourinary?: string | undefined;
 };
 
 export type ConsultationWorkspaceData = {
@@ -160,20 +160,20 @@ export type ConsultationWorkspaceData = {
     createdAt: string;
     status: string;
     chiefComplaint: string | null;
-    historyOfPresentingIllness?: string | null;
-    pastMedicalHistory?: string | null;
-    drugHistory?: string | null;
-    allergiesNotes?: string | null;
-    reviewOfSystems?: string | null;
-    physicalExamSystematic?: SystematicPhysicalExam | null;
+    historyOfPresentingIllness?: string | null | undefined;
+    pastMedicalHistory?: string | null | undefined;
+    drugHistory?: string | null | undefined;
+    allergiesNotes?: string | null | undefined;
+    reviewOfSystems?: string | null | undefined;
+    physicalExamSystematic?: SystematicPhysicalExam | null | undefined;
     diagnosis: string | null;
     icd10Codes: string[];
     clinicalNotes: string | null;
     psychiatricNotes: string | null;
     practitionerId: string | null;
     practitionerName: string | null;
-    practitionerRank?: string | null;
-    practitionerLicenseNumber?: string | null;
+    practitionerRank?: string | null | undefined;
+    practitionerLicenseNumber?: string | null | undefined;
     nurseName: string | null;
     isBreakGlass: boolean;
     signedAt: string | null;
@@ -259,10 +259,10 @@ async function writeAuditEntry(
     hospital_id: string;
     accessor_id: string;
     accessor_role: StaffRole;
-    patient_id?: string;
-    encounter_id?: string;
+    patient_id?: string | undefined;
+    encounter_id?: string | undefined;
     action: "READ" | "WRITE" | "BREAK_GLASS_OVERRIDE" | "EXPORT";
-    justification?: string | null;
+    justification?: string | null | undefined;
   },
 ) {
   try {

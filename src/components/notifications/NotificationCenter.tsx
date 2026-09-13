@@ -33,7 +33,7 @@ import {
 } from "@/lib/notifications.functions";
 
 interface NotificationCenterProps {
-  hospitalId?: string;
+  hospitalId?: string | undefined;
 }
 
 export function NotificationCenter({ hospitalId }: NotificationCenterProps) {
