@@ -92,7 +92,7 @@ function RadiologyDepartmentPage() {
     queryFn: () =>
       getWorklistFn({
         data: {
-          hospitalId: activeHospitalId || undefined,
+          ...(activeHospitalId ? { hospitalId: activeHospitalId } : {}),
           modalityFilter: modalityFilter,
         },
       }),
