@@ -130,20 +130,56 @@ export type EncounterPrescriptionItem = {
   createdAt: string;
 };
 
+export type ClinicalAmendmentItem = {
+  id: string;
+  encounterId: string;
+  amendmentType: "addendum" | "correction" | "late_entry";
+  amendmentReason: string;
+  previousNotes: string | null;
+  amendedNotes: string;
+  authorName: string;
+  authorRank: string;
+  authorLicense: string;
+  digitalSignatureHash: string | null;
+  createdAt: string;
+};
+
+export type SystematicPhysicalExam = {
+  general?: string;
+  cardiovascular?: string;
+  respiratory?: string;
+  gastrointestinal?: string;
+  centralNervous?: string;
+  musculoskeletal?: string;
+  genitourinary?: string;
+};
+
 export type ConsultationWorkspaceData = {
   encounter: {
     id: string;
     createdAt: string;
     status: string;
     chiefComplaint: string | null;
+    historyOfPresentingIllness?: string | null;
+    pastMedicalHistory?: string | null;
+    drugHistory?: string | null;
+    allergiesNotes?: string | null;
+    reviewOfSystems?: string | null;
+    physicalExamSystematic?: SystematicPhysicalExam | null;
     diagnosis: string | null;
     icd10Codes: string[];
     clinicalNotes: string | null;
     psychiatricNotes: string | null;
     practitionerId: string | null;
     practitionerName: string | null;
+    practitionerRank?: string | null;
+    practitionerLicenseNumber?: string | null;
     nurseName: string | null;
     isBreakGlass: boolean;
+    signedAt: string | null;
+    signedBy: string | null;
+    digitalSignatureHash: string | null;
+    isLocked: boolean;
   };
   patient: {
     id: string;
@@ -185,8 +221,11 @@ export type ConsultationWorkspaceData = {
   availableDrugs: DrugCatalogItem[];
   activeLabOrders: EncounterLabOrderItem[];
   activePrescriptions: EncounterPrescriptionItem[];
+  amendments: ClinicalAmendmentItem[];
   isDoctor: boolean;
   currentStaffId: string | null;
+  currentStaffLicenseNumber: string | null;
+  currentStaffRank: string | null;
 };
 
 function maskNin(nin: string): string {
@@ -436,20 +475,24 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
 
     const { data: staffRow } = await supabase
       .from("staff")
-      .select("id")
+      .select("id, full_name, cadre_rank, license_type, license_number")
       .eq("user_id", userId)
       .eq("hospital_id", activeHospitalId)
       .maybeSingle();
 
     const currentStaffId = staffRow?.id || null;
+    const currentStaffLicenseNumber = staffRow?.license_number || null;
+    const currentStaffRank = staffRow?.cadre_rank || null;
 
     // 1. Fetch Encounter
     const { data: enc, error: encError } = await supabase
       .from("encounters")
       .select(`
         id, created_at, encounter_status, chief_complaint, diagnosis, icd10_codes, clinical_notes, psychiatric_notes,
+        past_medical_history, drug_history, allergies_notes, review_of_systems, physical_exam_systematic,
+        signed_at, signed_by, digital_signature_hash, is_locked,
         is_break_glass, practitioner_id, patient_id,
-        practitioner:practitioner_id(full_name),
+        practitioner:practitioner_id(full_name, cadre_rank, license_number),
         nurse:nurse_id(full_name),
         patient:patient_id(*)
       `)
@@ -483,6 +526,31 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
       icd10Codes: p.icd10_codes || [],
       practitionerName: p.practitioner?.full_name || null,
       status: p.encounter_status,
+    }));
+
+    // 4. Fetch amendments for this encounter
+    const { data: amendmentRows } = await supabase
+      .from("clinical_note_amendments")
+      .select(`
+        id, encounter_id, amendment_type, amendment_reason, previous_notes, amended_notes,
+        digital_signature_hash, created_at,
+        author:author_id(full_name, cadre_rank, license_number)
+      `)
+      .eq("encounter_id", input.encounterId)
+      .order("created_at", { ascending: false });
+
+    const amendments: ClinicalAmendmentItem[] = (amendmentRows ?? []).map((a: any) => ({
+      id: a.id,
+      encounterId: a.encounter_id,
+      amendmentType: a.amendment_type,
+      amendmentReason: a.amendment_reason,
+      previousNotes: a.previous_notes,
+      amendedNotes: a.amended_notes,
+      authorName: a.author?.full_name || "Medical Officer",
+      authorRank: a.author?.cadre_rank || "Physician",
+      authorLicense: a.author?.license_number || "MDCN Registered",
+      digitalSignatureHash: a.digital_signature_hash,
+      createdAt: a.created_at,
     }));
 
     // 4. Fetch available lab tests for this hospital
@@ -595,14 +663,25 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
         createdAt: enc.created_at,
         status: enc.encounter_status,
         chiefComplaint: enc.chief_complaint,
+        pastMedicalHistory: enc.past_medical_history || null,
+        drugHistory: enc.drug_history || null,
+        allergiesNotes: enc.allergies_notes || null,
+        reviewOfSystems: enc.review_of_systems || null,
+        physicalExamSystematic: enc.physical_exam_systematic || null,
         diagnosis: enc.diagnosis,
         icd10Codes: enc.icd10_codes || [],
         clinicalNotes: enc.clinical_notes,
         psychiatricNotes: isDoctor ? enc.psychiatric_notes : null,
         practitionerId: enc.practitioner_id,
         practitionerName: (enc.practitioner as any)?.full_name || null,
+        practitionerRank: (enc.practitioner as any)?.cadre_rank || null,
+        practitionerLicenseNumber: (enc.practitioner as any)?.license_number || null,
         nurseName: (enc.nurse as any)?.full_name || null,
         isBreakGlass: Boolean(enc.is_break_glass),
+        signedAt: enc.signed_at || null,
+        signedBy: enc.signed_by || null,
+        digitalSignatureHash: enc.digital_signature_hash || null,
+        isLocked: Boolean(enc.is_locked),
       },
       patient: {
         id: patientData.id,
@@ -638,8 +717,11 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
       availableDrugs,
       activeLabOrders,
       activePrescriptions,
+      amendments,
       isDoctor,
       currentStaffId,
+      currentStaffLicenseNumber,
+      currentStaffRank,
     };
   });
 
@@ -649,10 +731,8 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
 export const claimEncounter = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
-    (input: {
-      encounterId: string;
-      hospitalId?: string | undefined;
-    }) => {
+    (input: { encounterId: string; hospitalId?: string | undefined }) => {
+      if (!input.encounterId) throw new Error("Missing encounter ID.");
       return {
         encounterId: String(input.encounterId).trim(),
         hospitalId: input.hospitalId ? String(input.hospitalId).trim() : undefined,
@@ -720,6 +800,11 @@ export const saveConsultationNotes = createServerFn({ method: "POST" })
       hospitalId?: string | undefined;
       presentingComplaint: string;
       historyOfPresentingIllness?: string | undefined;
+      pastMedicalHistory?: string | undefined;
+      drugHistory?: string | undefined;
+      allergiesNotes?: string | undefined;
+      reviewOfSystems?: string | undefined;
+      physicalExamSystematic?: SystematicPhysicalExam | undefined;
       examinationFindings?: string | undefined;
       diagnosis: string;
       icd10Codes?: string[] | undefined;
@@ -734,6 +819,11 @@ export const saveConsultationNotes = createServerFn({ method: "POST" })
         hospitalId: input.hospitalId ? String(input.hospitalId).trim() : undefined,
         presentingComplaint: String(input.presentingComplaint).trim(),
         historyOfPresentingIllness: input.historyOfPresentingIllness ? String(input.historyOfPresentingIllness).trim() : undefined,
+        pastMedicalHistory: input.pastMedicalHistory ? String(input.pastMedicalHistory).trim() : undefined,
+        drugHistory: input.drugHistory ? String(input.drugHistory).trim() : undefined,
+        allergiesNotes: input.allergiesNotes ? String(input.allergiesNotes).trim() : undefined,
+        reviewOfSystems: input.reviewOfSystems ? String(input.reviewOfSystems).trim() : undefined,
+        physicalExamSystematic: input.physicalExamSystematic,
         examinationFindings: input.examinationFindings ? String(input.examinationFindings).trim() : undefined,
         diagnosis: String(input.diagnosis).trim(),
         icd10Codes: input.icd10Codes || [],
@@ -766,9 +856,20 @@ export const saveConsultationNotes = createServerFn({ method: "POST" })
       throw new Error("Only doctors and medical administrators can save consultation notes.");
     }
 
+    // Check if encounter is already locked
+    const { data: existingEnc } = await supabase
+      .from("encounters")
+      .select("is_locked")
+      .eq("id", input.encounterId)
+      .maybeSingle();
+
+    if (existingEnc?.is_locked) {
+      throw new Error("This consultation is digitally signed and locked. Please use the Add Amendment feature to record addenda or corrections.");
+    }
+
     const { data: staffRow } = await supabase
       .from("staff")
-      .select("id, full_name")
+      .select("id, full_name, license_number, cadre_rank")
       .eq("user_id", userId)
       .eq("hospital_id", activeHospitalId)
       .maybeSingle();
@@ -777,6 +878,10 @@ export const saveConsultationNotes = createServerFn({ method: "POST" })
       `[SUBJECTIVE / HISTORY]`,
       `Chief Complaint: ${input.presentingComplaint}`,
       input.historyOfPresentingIllness ? `HPI: ${input.historyOfPresentingIllness}` : null,
+      input.pastMedicalHistory ? `Past Medical Hx: ${input.pastMedicalHistory}` : null,
+      input.drugHistory ? `Drug Hx: ${input.drugHistory}` : null,
+      input.allergiesNotes ? `Allergies / Adverse Reactions: ${input.allergiesNotes}` : null,
+      input.reviewOfSystems ? `Review of Systems: ${input.reviewOfSystems}` : null,
       "",
       `[OBJECTIVE / EXAMINATION]`,
       input.examinationFindings || "Systemic examination performed.",
@@ -798,6 +903,11 @@ export const saveConsultationNotes = createServerFn({ method: "POST" })
         icd10_codes: input.icd10Codes,
         clinical_notes: structuredSoap,
         psychiatric_notes: input.psychiatricNotes || null,
+        past_medical_history: input.pastMedicalHistory || null,
+        drug_history: input.drugHistory || null,
+        allergies_notes: input.allergiesNotes || null,
+        review_of_systems: input.reviewOfSystems || null,
+        physical_exam_systematic: input.physicalExamSystematic || {},
         practitioner_id: staffRow?.id || null,
       })
       .eq("id", input.encounterId);
@@ -815,6 +925,217 @@ export const saveConsultationNotes = createServerFn({ method: "POST" })
     });
 
     return { success: true };
+  });
+
+/**
+ * Digitally signs and locks consultation documentation.
+ */
+export const signAndLockConsultationNotes = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input: {
+      encounterId: string;
+      patientId: string;
+      hospitalId?: string | undefined;
+      diagnosis: string;
+      clinicalSummary: string;
+    }) => {
+      if (!input.encounterId) throw new Error("Missing encounter ID.");
+      return {
+        encounterId: String(input.encounterId).trim(),
+        patientId: String(input.patientId).trim(),
+        hospitalId: input.hospitalId ? String(input.hospitalId).trim() : undefined,
+        diagnosis: String(input.diagnosis || "").trim(),
+        clinicalSummary: String(input.clinicalSummary || "").trim(),
+      };
+    },
+  )
+  .handler(async ({ context, data: input }) => {
+    const { supabase, userId } = context;
+
+    const { data: roleRows } = await supabase
+      .from("user_roles")
+      .select("role, hospital_id")
+      .eq("user_id", userId)
+      .eq("is_active", true);
+
+    const roles = (roleRows ?? []).filter((r: any) => r.hospital_id && r.role !== "patient");
+    if (roles.length === 0) throw new Error("Unauthorized.");
+
+    const matchedRole = input.hospitalId
+      ? roles.find((r: any) => r.hospital_id === input.hospitalId) || roles[0]
+      : roles[0];
+
+    const activeHospitalId = matchedRole?.hospital_id || "";
+    const callerRole = (matchedRole?.role as StaffRole) || "doctor";
+    const isDoctor = ["doctor", "super_admin", "hospital_admin"].includes(callerRole);
+
+    if (!isDoctor) {
+      throw new Error("Only licensed physicians and administrators can sign clinical records.");
+    }
+
+    const { data: staffRow } = await supabase
+      .from("staff")
+      .select("id, full_name, license_number, cadre_rank")
+      .eq("user_id", userId)
+      .eq("hospital_id", activeHospitalId)
+      .maybeSingle();
+
+    if (!staffRow) throw new Error("Staff record not found.");
+
+    const timestamp = new Date().toISOString();
+    const rawSignaturePayload = `${staffRow.id}:${staffRow.license_number || "MDCN"}:${input.encounterId}:${timestamp}:${input.diagnosis}`;
+    
+    // Deterministic pseudo-hash for verification
+    let hash = 0;
+    for (let i = 0; i < rawSignaturePayload.length; i++) {
+      hash = ((hash << 5) - hash) + rawSignaturePayload.charCodeAt(i);
+      hash |= 0;
+    }
+    const signatureHash = `0x${Math.abs(hash).toString(16).padStart(8, "0")}${input.encounterId.replace(/-/g, "").slice(0, 16)}`;
+
+    const { error: updateErr } = await supabase
+      .from("encounters")
+      .update({
+        signed_at: timestamp,
+        signed_by: staffRow.id,
+        digital_signature_hash: signatureHash,
+        is_locked: true,
+      })
+      .eq("id", input.encounterId);
+
+    if (updateErr) throw new Error(updateErr.message);
+
+    await writeAuditEntry(supabase, {
+      hospital_id: activeHospitalId,
+      accessor_id: userId,
+      accessor_role: callerRole,
+      patient_id: input.patientId,
+      encounter_id: input.encounterId,
+      action: "WRITE",
+      justification: `Digitally signed and locked clinical notes by Dr. ${staffRow.full_name} (${staffRow.license_number || "MDCN"}). Signature Hash: ${signatureHash}`,
+    });
+
+    return { success: true, signatureHash, signedAt: timestamp };
+  });
+
+/**
+ * Logs an append-only clinical note amendment or correction.
+ */
+export const addClinicalAmendment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input: {
+      encounterId: string;
+      patientId: string;
+      hospitalId?: string | undefined;
+      amendmentType: "addendum" | "correction" | "late_entry";
+      amendmentReason: string;
+      amendedNotes: string;
+    }) => {
+      if (!input.encounterId || !input.amendedNotes.trim() || !input.amendmentReason.trim()) {
+        throw new Error("Encounter ID, amendment notes, and reason are required.");
+      }
+      return {
+        encounterId: String(input.encounterId).trim(),
+        patientId: String(input.patientId).trim(),
+        hospitalId: input.hospitalId ? String(input.hospitalId).trim() : undefined,
+        amendmentType: input.amendmentType,
+        amendmentReason: String(input.amendmentReason).trim(),
+        amendedNotes: String(input.amendedNotes).trim(),
+      };
+    },
+  )
+  .handler(async ({ context, data: input }) => {
+    const { supabase, userId } = context;
+
+    const { data: roleRows } = await supabase
+      .from("user_roles")
+      .select("role, hospital_id")
+      .eq("user_id", userId)
+      .eq("is_active", true);
+
+    const roles = (roleRows ?? []).filter((r: any) => r.hospital_id && r.role !== "patient");
+    if (roles.length === 0) throw new Error("Unauthorized.");
+
+    const matchedRole = input.hospitalId
+      ? roles.find((r: any) => r.hospital_id === input.hospitalId) || roles[0]
+      : roles[0];
+
+    const activeHospitalId = matchedRole?.hospital_id || "";
+    const callerRole = (matchedRole?.role as StaffRole) || "doctor";
+    const isDoctor = ["doctor", "super_admin", "hospital_admin"].includes(callerRole);
+
+    if (!isDoctor) {
+      throw new Error("Only licensed physicians and administrators can record clinical amendments.");
+    }
+
+    const { data: staffRow } = await supabase
+      .from("staff")
+      .select("id, full_name, license_number, cadre_rank")
+      .eq("user_id", userId)
+      .eq("hospital_id", activeHospitalId)
+      .maybeSingle();
+
+    if (!staffRow) throw new Error("Staff record not found.");
+
+    // Fetch existing encounter notes for audit trail
+    const { data: enc } = await supabase
+      .from("encounters")
+      .select("clinical_notes")
+      .eq("id", input.encounterId)
+      .single();
+
+    const timestamp = new Date().toISOString();
+    const rawSignaturePayload = `${staffRow.id}:${input.encounterId}:${timestamp}:${input.amendmentType}:${input.amendmentReason}`;
+    
+    let hash = 0;
+    for (let i = 0; i < rawSignaturePayload.length; i++) {
+      hash = ((hash << 5) - hash) + rawSignaturePayload.charCodeAt(i);
+      hash |= 0;
+    }
+    const signatureHash = `0x${Math.abs(hash).toString(16).padStart(8, "0")}${input.encounterId.replace(/-/g, "").slice(0, 16)}`;
+
+    // 1. Insert into clinical_note_amendments table
+    const { error: insertErr } = await supabase
+      .from("clinical_note_amendments")
+      .insert({
+        hospital_id: activeHospitalId,
+        encounter_id: input.encounterId,
+        patient_id: input.patientId,
+        author_id: staffRow.id,
+        amendment_type: input.amendmentType,
+        amendment_reason: input.amendmentReason,
+        previous_notes: enc?.clinical_notes || null,
+        amended_notes: input.amendedNotes,
+        digital_signature_hash: signatureHash,
+      });
+
+    if (insertErr) throw new Error(`Failed to record amendment: ${insertErr.message}`);
+
+    // 2. Append formatted addendum block to clinical_notes
+    const formattedAddendum = `\n\n--- [${input.amendmentType.toUpperCase()} — ${new Date().toLocaleString("en-GB")}] ---\nAuthor: Dr. ${staffRow.full_name} (${staffRow.license_number || "MDCN"})\nReason: ${input.amendmentReason}\n${input.amendedNotes}\n[Digital Signature: ${signatureHash}]`;
+
+    const updatedNotes = (enc?.clinical_notes || "") + formattedAddendum;
+
+    await supabase
+      .from("encounters")
+      .update({
+        clinical_notes: updatedNotes,
+      })
+      .eq("id", input.encounterId);
+
+    await writeAuditEntry(supabase, {
+      hospital_id: activeHospitalId,
+      accessor_id: userId,
+      accessor_role: callerRole,
+      patient_id: input.patientId,
+      encounter_id: input.encounterId,
+      action: "WRITE",
+      justification: `Added ${input.amendmentType} to encounter notes by Dr. ${staffRow.full_name}. Reason: ${input.amendmentReason}`,
+    });
+
+    return { success: true, signatureHash };
   });
 
 /**

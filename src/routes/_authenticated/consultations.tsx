@@ -59,12 +59,16 @@ import {
   getEncounterWorkspace,
   claimEncounter,
   saveConsultationNotes,
+  signAndLockConsultationNotes,
+  addClinicalAmendment,
   orderLabTest,
   orderPrescription,
   finishConsultation,
   COMMON_DIAGNOSES,
   type ConsultationQueueItem,
   type DiagnosisItem,
+  type SystematicPhysicalExam,
+  type ClinicalAmendmentItem,
 } from "@/lib/consultations.functions";
 import {
   generateAiEncounterSummary,
@@ -81,8 +85,31 @@ import { UploadImagingModal } from "@/components/radiology/UploadImagingModal";
 import { PrintableDocumentModal } from "@/components/clinical-docs/PrintableDocumentModal";
 import { DischargeSummaryDocument } from "@/components/clinical-docs/DischargeSummaryDocument";
 import { RadiologyReportDocument } from "@/components/clinical-docs/RadiologyReportDocument";
+import { MedicalFitnessDocument } from "@/components/clinical-docs/MedicalFitnessDocument";
+import { ReferralLetterDocument } from "@/components/clinical-docs/ReferralLetterDocument";
+import { SickLeaveDocument } from "@/components/clinical-docs/SickLeaveDocument";
+import { useVoiceDictation } from "@/hooks/useVoiceDictation";
 import { toast } from "sonner";
-import { Camera, Eye, FileImage, Image as ImageIcon, Printer } from "lucide-react";
+import {
+  Camera,
+  Eye,
+  FileImage,
+  Image as ImageIcon,
+  Printer,
+  Mic,
+  MicOff,
+  Copy,
+  ShieldCheck,
+  FileCheck2,
+  FileSpreadsheet,
+  KeyRound,
+  CornerDownRight,
+  Unlock,
+  Award,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/consultations")({
   head: () => ({
@@ -106,6 +133,9 @@ function ConsultationsPage() {
   const orderRxFn = useServerFn(orderPrescription);
   const finishConsultationFn = useServerFn(finishConsultation);
 
+  const signFn = useServerFn(signAndLockConsultationNotes);
+  const addAmendmentFn = useServerFn(addClinicalAmendment);
+
   const [filterTab, setFilterTab] = useState<TabFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEncounterId, setSelectedEncounterId] = useState<string | null>(null);
@@ -116,15 +146,76 @@ function ConsultationsPage() {
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [aiResult, setAiResult] = useState<AiCopilotResult | null>(null);
 
-  // Form states for clinical consultation
+  // Form states for structured clinical consultation
   const [presentingComplaint, setPresentingComplaint] = useState("");
   const [hpi, setHpi] = useState("");
+  const [pastMedicalHistory, setPastMedicalHistory] = useState("");
+  const [drugHistory, setDrugHistory] = useState("");
+  const [allergiesNotes, setAllergiesNotes] = useState("");
+  const [reviewOfSystems, setReviewOfSystems] = useState("");
+
+  // Systematic Physical Exam
+  const [examCardio, setExamCardio] = useState("");
+  const [examResp, setExamResp] = useState("");
+  const [examGi, setExamGi] = useState("");
+  const [examCns, setExamCns] = useState("");
+  const [examMusculo, setExamMusculo] = useState("");
   const [examination, setExamination] = useState("");
+
+  const [isPastHxOpen, setIsPastHxOpen] = useState(false);
+  const [isSystematicExamOpen, setIsSystematicExamOpen] = useState(false);
+
+  // Diagnosis & Plan
   const [diagnosisQuery, setDiagnosisQuery] = useState("");
   const [selectedDiagnoses, setSelectedDiagnoses] = useState<DiagnosisItem[]>([]);
   const [customDiagnosis, setCustomDiagnosis] = useState("");
   const [planAndOrders, setPlanAndOrders] = useState("");
   const [psychiatricNotes, setPsychiatricNotes] = useState("");
+
+  // Amendment modal state
+  const [isAmendmentModalOpen, setIsAmendmentModalOpen] = useState(false);
+  const [amendmentType, setAmendmentType] = useState<"addendum" | "correction" | "late_entry">("addendum");
+  const [amendmentReason, setAmendmentReason] = useState("");
+  const [amendedNotes, setAmendedNotes] = useState("");
+
+  // Printable Document Modals
+  const [isPrintFitnessOpen, setIsPrintFitnessOpen] = useState(false);
+  const [fitnessPurpose, setFitnessPurpose] = useState("Pre-Employment Examination");
+  const [fitnessStatus, setFitnessStatus] = useState<"fit" | "temporarily_unfit" | "unfit">("fit");
+
+  const [isPrintReferralOpen, setIsPrintReferralOpen] = useState(false);
+  const [referralDestination, setReferralDestination] = useState("National Hospital Abuja");
+  const [referralSpecialty, setReferralSpecialty] = useState("Consultant Physician / Specialist Unit");
+  const [referralReason, setReferralReason] = useState("Tertiary diagnostic evaluation and specialized management");
+  const [referralType, setReferralType] = useState<"emergency" | "urgent" | "routine">("routine");
+
+  const [isPrintSickLeaveOpen, setIsPrintSickLeaveOpen] = useState(false);
+  const [sickLeaveDuration, setSickLeaveDuration] = useState("3");
+  const [sickLeaveStartDate, setSickLeaveStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [sickLeaveType, setSickLeaveType] = useState<"excused_from_duty" | "total_bed_rest" | "light_duty">("excused_from_duty");
+
+  // Voice Dictation Tracking
+  const [activeVoiceField, setActiveVoiceField] = useState<"complaint" | "hpi" | "pmhx" | "exam" | "plan" | null>(null);
+
+  const { isListening, toggleListening, stopListening } = useVoiceDictation({
+    onResult: (text) => {
+      if (activeVoiceField === "complaint") setPresentingComplaint(text);
+      else if (activeVoiceField === "hpi") setHpi(text);
+      else if (activeVoiceField === "pmhx") setPastMedicalHistory(text);
+      else if (activeVoiceField === "exam") setExamination(text);
+      else if (activeVoiceField === "plan") setPlanAndOrders(text);
+    },
+  });
+
+  const handleToggleVoice = (field: "complaint" | "hpi" | "pmhx" | "exam" | "plan") => {
+    if (activeVoiceField === field && isListening) {
+      stopListening();
+      setActiveVoiceField(null);
+    } else {
+      setActiveVoiceField(field);
+      toggleListening();
+    }
+  };
 
   // Lab Order Form State
   const [selectedLabTestId, setSelectedLabTestId] = useState("");
@@ -207,6 +298,25 @@ function ConsultationsPage() {
   useMemo(() => {
     if (workspaceData?.encounter) {
       setPresentingComplaint(workspaceData.encounter.chiefComplaint || "");
+      if (workspaceData.encounter.pastMedicalHistory) {
+        setPastMedicalHistory(workspaceData.encounter.pastMedicalHistory);
+      }
+      if (workspaceData.encounter.drugHistory) {
+        setDrugHistory(workspaceData.encounter.drugHistory);
+      }
+      if (workspaceData.encounter.allergiesNotes) {
+        setAllergiesNotes(workspaceData.encounter.allergiesNotes);
+      }
+      if (workspaceData.encounter.reviewOfSystems) {
+        setReviewOfSystems(workspaceData.encounter.reviewOfSystems);
+      }
+      if (workspaceData.encounter.physicalExamSystematic) {
+        setExamCardio(workspaceData.encounter.physicalExamSystematic.cardiovascular || "");
+        setExamResp(workspaceData.encounter.physicalExamSystematic.respiratory || "");
+        setExamGi(workspaceData.encounter.physicalExamSystematic.gastrointestinal || "");
+        setExamCns(workspaceData.encounter.physicalExamSystematic.centralNervous || "");
+        setExamMusculo(workspaceData.encounter.physicalExamSystematic.musculoskeletal || "");
+      }
       if (workspaceData.encounter.diagnosis) {
         setCustomDiagnosis(workspaceData.encounter.diagnosis);
       }
@@ -236,6 +346,25 @@ function ConsultationsPage() {
     });
   };
 
+  // 1-Click Copy Forward from Previous Encounters
+  const handleCopyForward = () => {
+    if (!workspaceData || workspaceData.pastVisits.length === 0) {
+      toast.info("No previous encounter records found for copy-forward.");
+      return;
+    }
+    const lastVisit = workspaceData.pastVisits[0];
+    if (lastVisit?.diagnosis && lastVisit.diagnosis !== "Restricted") {
+      setCustomDiagnosis(lastVisit.diagnosis);
+    }
+    if (workspaceData.patient.chronicConditions.length > 0) {
+      setPastMedicalHistory(workspaceData.patient.chronicConditions.join("; "));
+    }
+    if (workspaceData.patient.allergies.length > 0) {
+      setAllergiesNotes(workspaceData.patient.allergies.join("; "));
+    }
+    toast.success("Previous clinical history, chronic conditions & allergies copied forward.");
+  };
+
   // Save consultation notes
   const handleSaveConsultation = () => {
     if (!selectedEncounterId || !workspaceData) return;
@@ -259,6 +388,17 @@ function ConsultationsPage() {
             hospitalId: activeHospitalId || undefined,
             presentingComplaint: presentingComplaint || "Routine check-up",
             historyOfPresentingIllness: hpi || undefined,
+            pastMedicalHistory: pastMedicalHistory || undefined,
+            drugHistory: drugHistory || undefined,
+            allergiesNotes: allergiesNotes || undefined,
+            reviewOfSystems: reviewOfSystems || undefined,
+            physicalExamSystematic: {
+              cardiovascular: examCardio || undefined,
+              respiratory: examResp || undefined,
+              gastrointestinal: examGi || undefined,
+              centralNervous: examCns || undefined,
+              musculoskeletal: examMusculo || undefined,
+            },
             examinationFindings: examination || undefined,
             diagnosis: primaryDiag,
             icd10Codes: selectedDiagnoses.map((d) => d.code),
@@ -274,6 +414,75 @@ function ConsultationsPage() {
         }
       } catch (err: any) {
         toast.error(err?.message || "Failed to save consultation.");
+      }
+    });
+  };
+
+  // Digitally Sign & Lock Consultation Record
+  const handleSignAndLock = () => {
+    if (!selectedEncounterId || !workspaceData) return;
+
+    const primaryDiag =
+      selectedDiagnoses.length > 0
+        ? selectedDiagnoses.map((d) => d.name).join("; ")
+        : customDiagnosis;
+
+    if (!primaryDiag.trim()) {
+      toast.error("Please enter a primary diagnosis before signing.");
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const res = await signFn({
+          data: {
+            encounterId: selectedEncounterId,
+            patientId: workspaceData.patient.id,
+            hospitalId: activeHospitalId || undefined,
+            diagnosis: primaryDiag,
+            clinicalSummary: presentingComplaint || "Clinical Consultation",
+          },
+        });
+
+        if (res.success) {
+          toast.success("Clinical documentation digitally signed & locked with cryptographic signature hash.");
+          refetchWorkspace();
+        }
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to digitally sign notes.");
+      }
+    });
+  };
+
+  // Add Append-Only Clinical Note Amendment
+  const handleAddAmendment = () => {
+    if (!selectedEncounterId || !workspaceData || !amendedNotes.trim() || !amendmentReason.trim()) {
+      toast.error("Please provide both the clinical addendum text and reason for amendment.");
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const res = await addAmendmentFn({
+          data: {
+            encounterId: selectedEncounterId,
+            patientId: workspaceData.patient.id,
+            hospitalId: activeHospitalId || undefined,
+            amendmentType,
+            amendmentReason,
+            amendedNotes,
+          },
+        });
+
+        if (res.success) {
+          toast.success(`Clinical ${amendmentType} recorded in immutable audit ledger.`);
+          setIsAmendmentModalOpen(false);
+          setAmendedNotes("");
+          setAmendmentReason("");
+          refetchWorkspace();
+        }
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to record clinical amendment.");
       }
     });
   };
@@ -723,23 +932,54 @@ function ConsultationsPage() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => setIsUploadImagingOpen(true)}
-                        className="gap-1.5 text-xs border-teal-500/40 hover:bg-teal-500/10 font-semibold"
+                        className="gap-1 text-xs border-teal-500/40 hover:bg-teal-500/10 font-semibold"
                       >
                         <Camera className="size-3.5 text-teal-600" /> Attach Scan
+                      </Button>
+
+                      {/* Printable Clinical Docs Suite */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsPrintFitnessOpen(true)}
+                        className="gap-1 text-xs font-semibold"
+                        title="Certificate of Medical Fitness"
+                      >
+                        <Award className="size-3.5 text-teal-600" /> Fitness Cert
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsPrintReferralOpen(true)}
+                        className="gap-1 text-xs font-semibold"
+                        title="Official Medical Referral Letter"
+                      >
+                        <Send className="size-3.5 text-teal-600" /> Referral Letter
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsPrintSickLeaveOpen(true)}
+                        className="gap-1 text-xs font-semibold"
+                        title="Excused Duty / Sick Leave Certificate"
+                      >
+                        <FileSpreadsheet className="size-3.5 text-amber-600" /> Sick Note
                       </Button>
 
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => setIsPrintDischargeOpen(true)}
-                        className="gap-1.5 text-xs font-semibold shadow-xs"
+                        className="gap-1 text-xs font-semibold shadow-xs"
                       >
-                        <Printer className="size-3.5 text-teal-600" /> Print Summary
+                        <Printer className="size-3.5 text-teal-600" /> Discharge Summary
                       </Button>
 
                       {!workspaceData.encounter.practitionerId && (
@@ -748,7 +988,7 @@ function ConsultationsPage() {
                           onClick={() => handleClaim(workspaceData.encounter.id)}
                           className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white shadow-sm"
                         >
-                          <UserCheck className="size-3.5" /> Claim this Patient
+                          <UserCheck className="size-3.5" /> Claim Patient
                         </Button>
                       )}
                       <Button
@@ -757,7 +997,7 @@ function ConsultationsPage() {
                         onClick={() => setSelectedEncounterId(null)}
                         className="text-xs"
                       >
-                        Close Workspace
+                        Close
                       </Button>
                     </div>
                   </div>
@@ -818,11 +1058,42 @@ function ConsultationsPage() {
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
                     <div className="flex items-center gap-2">
                       <FileText className="size-4 text-teal-600" />
-                      <h3 className="font-display text-base font-bold text-foreground">
-                        Clinical SOAP Documentation
-                      </h3>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-display text-base font-bold text-foreground">
+                            Clinical SOAP Documentation
+                          </h3>
+                          {workspaceData.encounter.isLocked ? (
+                            <Badge className="bg-emerald-600 text-white font-mono text-[10px] gap-1">
+                              <ShieldCheck className="size-3" /> Digitally Signed (Locked)
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                              Draft Record
+                            </Badge>
+                          )}
+                        </div>
+                        {workspaceData.encounter.digitalSignatureHash && (
+                          <p className="font-mono text-[10px] text-muted-foreground mt-0.5">
+                            Attribution: {workspaceData.encounter.practitionerName || "Attending Physician"} ({workspaceData.encounter.practitionerLicenseNumber || "MDCN"}) • Hash: {workspaceData.encounter.digitalSignatureHash}
+                          </p>
+                        )}
+                      </div>
                     </div>
+
                     <div className="flex items-center gap-2">
+                      {workspaceData.pastVisits.length > 0 && !workspaceData.encounter.isLocked && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={handleCopyForward}
+                          className="h-8 gap-1.5 text-xs font-semibold border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
+                        >
+                          <Copy className="size-3.5" /> Copy Forward
+                        </Button>
+                      )}
+
                       <Button
                         type="button"
                         size="sm"
@@ -836,7 +1107,7 @@ function ConsultationsPage() {
                         ) : (
                           <Sparkles className="size-3.5 text-purple-600 dark:text-purple-400" />
                         )}
-                        ✨ AI Clinical Copilot
+                        ✨ AI Copilot
                       </Button>
                     </div>
                   </div>
@@ -844,46 +1115,238 @@ function ConsultationsPage() {
                   {/* 1. Subjective: Chief Complaint & HPI */}
                   <div className="space-y-3">
                     <div className="space-y-1">
-                      <Label htmlFor="chief-complaint" className="text-xs font-bold">
-                        1. Presenting Complaint (Chief Complaint)
-                      </Label>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="chief-complaint" className="text-xs font-bold">
+                          1. Presenting Complaint (Chief Complaint)
+                        </Label>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleToggleVoice("complaint")}
+                          className={`h-6 text-[11px] px-1.5 gap-1 ${
+                            activeVoiceField === "complaint" && isListening
+                              ? "bg-rose-500/20 text-rose-600 animate-pulse font-bold"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {activeVoiceField === "complaint" && isListening ? <MicOff className="size-3" /> : <Mic className="size-3" />}
+                          {activeVoiceField === "complaint" && isListening ? "Dictating..." : "Voice Dictate"}
+                        </Button>
+                      </div>
                       <Input
                         id="chief-complaint"
                         value={presentingComplaint}
                         onChange={(e) => setPresentingComplaint(e.target.value)}
+                        disabled={workspaceData.encounter.isLocked}
                         placeholder="e.g. High grade fever, chills, body pains for 3 days"
                         className="h-9 text-xs"
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <Label htmlFor="hpi" className="text-xs font-bold">
-                        History of Presenting Illness (HPI)
-                      </Label>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="hpi" className="text-xs font-bold">
+                          History of Presenting Illness (HPI)
+                        </Label>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleToggleVoice("hpi")}
+                          className={`h-6 text-[11px] px-1.5 gap-1 ${
+                            activeVoiceField === "hpi" && isListening
+                              ? "bg-rose-500/20 text-rose-600 animate-pulse font-bold"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {activeVoiceField === "hpi" && isListening ? <MicOff className="size-3" /> : <Mic className="size-3" />}
+                          {activeVoiceField === "hpi" && isListening ? "Dictating..." : "Voice Dictate"}
+                        </Button>
+                      </div>
                       <Textarea
                         id="hpi"
                         value={hpi}
                         onChange={(e) => setHpi(e.target.value)}
-                        placeholder="Onset, character, aggravating/relieving factors, associated symptoms, past medical history..."
+                        disabled={workspaceData.encounter.isLocked}
+                        placeholder="Onset, character, duration, aggravating/relieving factors, associated symptoms..."
                         rows={3}
                         className="text-xs resize-none"
                       />
                     </div>
+
+                    {/* Expandable Medical History, Drug Hx & Allergies */}
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsPastHxOpen((prev) => !prev)}
+                        className="flex w-full items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/70 transition-colors"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <History className="size-3.5 text-teal-600" />
+                          Past Medical Hx, Drug Hx, Allergies & Review of Systems
+                        </span>
+                        {isPastHxOpen ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                      </button>
+
+                      {isPastHxOpen && (
+                        <div className="mt-2 space-y-3 rounded-xl border border-border bg-muted/20 p-3.5 text-xs">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Past Medical History (PMHx)</Label>
+                              <Input
+                                value={pastMedicalHistory}
+                                onChange={(e) => setPastMedicalHistory(e.target.value)}
+                                disabled={workspaceData.encounter.isLocked}
+                                placeholder="Previous hospitalizations, surgeries, asthma, HTN, DM..."
+                                className="h-8 text-xs bg-background"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Current Medications & Drug History</Label>
+                              <Input
+                                value={drugHistory}
+                                onChange={(e) => setDrugHistory(e.target.value)}
+                                disabled={workspaceData.encounter.isLocked}
+                                placeholder="Antihypertensives, oral hypoglycemics, OTC meds..."
+                                className="h-8 text-xs bg-background"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold text-rose-600">Allergies & Adverse Drug Reactions</Label>
+                              <Input
+                                value={allergiesNotes}
+                                onChange={(e) => setAllergiesNotes(e.target.value)}
+                                disabled={workspaceData.encounter.isLocked}
+                                placeholder="Penicillin, Sulfa drugs, NSAIDs, Food allergens..."
+                                className="h-8 text-xs bg-background"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Review of Systems (ROS)</Label>
+                              <Input
+                                value={reviewOfSystems}
+                                onChange={(e) => setReviewOfSystems(e.target.value)}
+                                disabled={workspaceData.encounter.isLocked}
+                                placeholder="Cough, dyspnea, nausea, bowel habit, weight loss..."
+                                className="h-8 text-xs bg-background"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* 2. Objective: Physical Examination */}
-                  <div className="space-y-1 pt-2 border-t border-border/70">
-                    <Label htmlFor="exam-findings" className="text-xs font-bold">
-                      2. Physical Examination Findings
-                    </Label>
+                  <div className="space-y-2 pt-2 border-t border-border/70">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="exam-findings" className="text-xs font-bold">
+                        2. General Physical Examination Findings
+                      </Label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleToggleVoice("exam")}
+                        className={`h-6 text-[11px] px-1.5 gap-1 ${
+                          activeVoiceField === "exam" && isListening
+                            ? "bg-rose-500/20 text-rose-600 animate-pulse font-bold"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {activeVoiceField === "exam" && isListening ? <MicOff className="size-3" /> : <Mic className="size-3" />}
+                        {activeVoiceField === "exam" && isListening ? "Dictating..." : "Voice Dictate"}
+                      </Button>
+                    </div>
                     <Textarea
                       id="exam-findings"
                       value={examination}
                       onChange={(e) => setExamination(e.target.value)}
-                      placeholder="General state, chest clear, heart sounds S1S2, abdomen soft non-tender, neurological intact..."
-                      rows={3}
+                      disabled={workspaceData.encounter.isLocked}
+                      placeholder="General state, pallor, icterus, cyanosis, clubbing, pedal edema, lymphadenopathy..."
+                      rows={2}
                       className="text-xs resize-none"
                     />
+
+                    {/* Systematic Exam Collapsible */}
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsSystematicExamOpen((prev) => !prev)}
+                        className="flex w-full items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/70 transition-colors"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Stethoscope className="size-3.5 text-teal-600" />
+                          Systematic Physical Examination (CVS, Resp, GI, CNS, Musculo)
+                        </span>
+                        {isSystematicExamOpen ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                      </button>
+
+                      {isSystematicExamOpen && (
+                        <div className="mt-2 space-y-2.5 rounded-xl border border-border bg-muted/20 p-3.5 text-xs">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Cardiovascular System (CVS)</Label>
+                              <Input
+                                value={examCardio}
+                                onChange={(e) => setExamCardio(e.target.value)}
+                                disabled={workspaceData.encounter.isLocked}
+                                placeholder="Heart sounds S1 S2, no murmurs, JVP not elevated"
+                                className="h-8 text-xs bg-background"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Respiratory System</Label>
+                              <Input
+                                value={examResp}
+                                onChange={(e) => setExamResp(e.target.value)}
+                                disabled={workspaceData.encounter.isLocked}
+                                placeholder="Vesicular breath sounds bilaterally, chest clear"
+                                className="h-8 text-xs bg-background"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Abdomen & Gastrointestinal (GI)</Label>
+                              <Input
+                                value={examGi}
+                                onChange={(e) => setExamGi(e.target.value)}
+                                disabled={workspaceData.encounter.isLocked}
+                                placeholder="Soft, non-tender, no hepatosplenomegaly, bowel sounds active"
+                                className="h-8 text-xs bg-background"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Central Nervous System (CNS)</Label>
+                              <Input
+                                value={examCns}
+                                onChange={(e) => setExamCns(e.target.value)}
+                                disabled={workspaceData.encounter.isLocked}
+                                placeholder="Alert, GCS 15/15, pupils equal and reactive, no focal neurological deficit"
+                                className="h-8 text-xs bg-background"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-semibold">Musculoskeletal & Locomotor</Label>
+                            <Input
+                              value={examMusculo}
+                              onChange={(e) => setExamMusculo(e.target.value)}
+                              disabled={workspaceData.encounter.isLocked}
+                              placeholder="Full range of joint movements, normal tone and power 5/5"
+                              className="h-8 text-xs bg-background"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* 3. Assessment: Diagnosis & ICD-10 Search */}
@@ -904,53 +1367,57 @@ function ConsultationsPage() {
                               {d.code}
                             </span>
                             <span>{d.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedDiagnoses((prev) => prev.filter((x) => x.code !== d.code))}
-                              className="ml-1 text-muted-foreground hover:text-foreground"
-                            >
-                              ✕
-                            </button>
+                            {!workspaceData.encounter.isLocked && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedDiagnoses((prev) => prev.filter((x) => x.code !== d.code))}
+                                className="ml-1 text-muted-foreground hover:text-foreground"
+                              >
+                                ✕
+                              </button>
+                            )}
                           </span>
                         ))}
                       </div>
                     )}
 
                     {/* ICD-10 Auto-Suggest Search Input */}
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        value={diagnosisQuery}
-                        onChange={(e) => setDiagnosisQuery(e.target.value)}
-                        placeholder="Search standard ICD-10 catalog (e.g. malaria, hypertension, asthma, B50.9)..."
-                        className="h-9 pl-9 text-xs"
-                      />
+                    {!workspaceData.encounter.isLocked && (
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={diagnosisQuery}
+                          onChange={(e) => setDiagnosisQuery(e.target.value)}
+                          placeholder="Search standard ICD-10 catalog (e.g. malaria, hypertension, asthma, B50.9)..."
+                          className="h-9 pl-9 text-xs"
+                        />
 
-                      {/* Dropdown Suggestions */}
-                      {diagnosisSuggestions.length > 0 && (
-                        <div className="absolute z-20 mt-1 w-full rounded-xl border border-border bg-card p-1 shadow-lg">
-                          {diagnosisSuggestions.map((item) => (
-                            <button
-                              key={item.code}
-                              type="button"
-                              onClick={() => {
-                                setSelectedDiagnoses((prev) => [...prev, item]);
-                                setDiagnosisQuery("");
-                              }}
-                              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
-                            >
-                              <div>
-                                <span className="font-semibold text-foreground">{item.name}</span>
-                                <span className="ml-2 text-[10px] text-muted-foreground">({item.category})</span>
-                              </div>
-                              <span className="font-mono text-[10px] font-bold text-teal-600 bg-teal-500/10 px-1.5 py-0.5 rounded">
-                                {item.code}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                        {/* Dropdown Suggestions */}
+                        {diagnosisSuggestions.length > 0 && (
+                          <div className="absolute z-20 mt-1 w-full rounded-xl border border-border bg-card p-1 shadow-lg">
+                            {diagnosisSuggestions.map((item) => (
+                              <button
+                                key={item.code}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedDiagnoses((prev) => [...prev, item]);
+                                  setDiagnosisQuery("");
+                                }}
+                                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
+                              >
+                                <div>
+                                  <span className="font-semibold text-foreground">{item.name}</span>
+                                  <span className="ml-2 text-[10px] text-muted-foreground">({item.category})</span>
+                                </div>
+                                <span className="font-mono text-[10px] font-bold text-teal-600 bg-teal-500/10 px-1.5 py-0.5 rounded">
+                                  {item.code}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Custom Diagnosis Input (if not choosing from catalog) */}
                     <div className="space-y-1">
@@ -958,6 +1425,7 @@ function ConsultationsPage() {
                       <Input
                         value={customDiagnosis}
                         onChange={(e) => setCustomDiagnosis(e.target.value)}
+                        disabled={workspaceData.encounter.isLocked}
                         placeholder="Custom or unlisted clinical diagnosis"
                         className="h-8 text-xs font-medium"
                       />
@@ -966,13 +1434,30 @@ function ConsultationsPage() {
 
                   {/* 4. Plan & Orders */}
                   <div className="space-y-1 pt-2 border-t border-border/70">
-                    <Label htmlFor="plan" className="text-xs font-bold">
-                      4. Management Plan & Notes
-                    </Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="plan" className="text-xs font-bold">
+                        4. Management Plan & Patient Instructions
+                      </Label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleToggleVoice("plan")}
+                        className={`h-6 text-[11px] px-1.5 gap-1 ${
+                          activeVoiceField === "plan" && isListening
+                            ? "bg-rose-500/20 text-rose-600 animate-pulse font-bold"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {activeVoiceField === "plan" && isListening ? <MicOff className="size-3" /> : <Mic className="size-3" />}
+                        {activeVoiceField === "plan" && isListening ? "Dictating..." : "Voice Dictate"}
+                      </Button>
+                    </div>
                     <Textarea
                       id="plan"
                       value={planAndOrders}
                       onChange={(e) => setPlanAndOrders(e.target.value)}
+                      disabled={workspaceData.encounter.isLocked}
                       placeholder="Clinical management instructions, dietary advice, follow-up timeline..."
                       rows={2}
                       className="text-xs resize-none"
@@ -991,24 +1476,93 @@ function ConsultationsPage() {
                       id="psych-notes"
                       value={psychiatricNotes}
                       onChange={(e) => setPsychiatricNotes(e.target.value)}
+                      disabled={workspaceData.encounter.isLocked}
                       placeholder="Sensitive mental health or psychiatric assessment notes..."
                       rows={2}
                       className="text-xs resize-none border-destructive/30 bg-destructive/5"
                     />
                   </div>
 
-                  {/* Save SOAP Action Button */}
-                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
-                    <Button
-                      onClick={handleSaveConsultation}
-                      disabled={isPending}
-                      variant="outline"
-                      size="sm"
-                      className="gap-2 font-semibold border-teal-600/40 text-teal-700 dark:text-teal-300"
-                    >
-                      {isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck className="size-4" />}
-                      Save SOAP Progress Notes
-                    </Button>
+                  {/* 6. Immutable Clinical Amendments & Addenda Ledger */}
+                  {workspaceData.amendments && workspaceData.amendments.length > 0 && (
+                    <div className="space-y-2 pt-2 border-t border-border/70">
+                      <div className="flex items-center gap-2">
+                        <History className="size-4 text-amber-600" />
+                        <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">
+                          Signed Clinical Addenda & Amendments ({workspaceData.amendments.length})
+                        </h4>
+                      </div>
+
+                      <div className="space-y-2">
+                        {workspaceData.amendments.map((am) => (
+                          <div
+                            key={am.id}
+                            className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs space-y-1"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-amber-900 dark:text-amber-200 capitalize">
+                                [{am.amendmentType.toUpperCase()}] • {new Date(am.createdAt).toLocaleString("en-GB")}
+                              </span>
+                              <span className="font-mono text-[10px] text-muted-foreground">
+                                Hash: {am.digitalSignatureHash || "Verified"}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground font-semibold">
+                              Author: {am.authorName} ({am.authorLicense}) • Reason: {am.amendmentReason}
+                            </p>
+                            <p className="text-foreground whitespace-pre-line pt-1">
+                              {am.amendedNotes}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons Bar: Save / Sign & Lock / Add Amendment */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border">
+                    <div className="flex items-center gap-2">
+                      {workspaceData.currentStaffLicenseNumber && (
+                        <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
+                          <ShieldCheck className="size-3.5 text-teal-600" />
+                          MDCN: {workspaceData.currentStaffLicenseNumber}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {workspaceData.encounter.isLocked ? (
+                        <Button
+                          onClick={() => setIsAmendmentModalOpen(true)}
+                          size="sm"
+                          className="gap-1.5 font-semibold bg-amber-600 hover:bg-amber-700 text-white"
+                        >
+                          <CornerDownRight className="size-4" /> Add Clinical Addendum
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            onClick={handleSaveConsultation}
+                            disabled={isPending}
+                            variant="outline"
+                            size="sm"
+                            className="gap-2 font-semibold border-teal-600/40 text-teal-700 dark:text-teal-300"
+                          >
+                            {isPending ? <Loader2 className="size-4 animate-spin" /> : <FileCheck className="size-4" />}
+                            Save Progress Notes
+                          </Button>
+
+                          <Button
+                            onClick={handleSignAndLock}
+                            disabled={isPending}
+                            size="sm"
+                            className="gap-2 font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-sm"
+                          >
+                            <ShieldCheck className="size-4" /> Sign & Lock Record
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1762,6 +2316,243 @@ function ConsultationsPage() {
               radiologistLicense: "MDCN/RAD/99824",
               technicianName: activeReportStudy.technicianName || undefined,
               imageUrl: activeReportStudy.imageUrl || undefined,
+            }}
+          />
+        </PrintableDocumentModal>
+      )}
+
+      {/* Add Clinical Note Amendment / Addendum Modal */}
+      <Dialog open={isAmendmentModalOpen} onOpenChange={setIsAmendmentModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground font-display">
+              <CornerDownRight className="size-5 text-amber-600" />
+              Add Official Clinical Addendum
+            </DialogTitle>
+            <DialogDescription>
+              Record an immutable amendment or addendum to this locked clinical encounter. Note cannot be erased or overwritten.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            <div className="space-y-1.5">
+              <Label className="font-semibold">Amendment Classification</Label>
+              <Select
+                value={amendmentType}
+                onValueChange={(val: any) => setAmendmentType(val)}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="addendum" className="text-xs">Clinical Addendum (Additional Findings / Follow-up Note)</SelectItem>
+                  <SelectItem value="correction" className="text-xs">Clinical Correction (Error Correction with Clinical Reason)</SelectItem>
+                  <SelectItem value="late_entry" className="text-xs">Late Entry (Delayed Documentation)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="font-semibold">Clinical Justification / Reason for Amendment</Label>
+              <Input
+                value={amendmentReason}
+                onChange={(e) => setAmendmentReason(e.target.value)}
+                placeholder="e.g. Received supplementary lab results; amending antimicrobial regimen"
+                className="h-9 text-xs"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="font-semibold">Addendum Notes & Clinical Observations</Label>
+              <Textarea
+                value={amendedNotes}
+                onChange={(e) => setAmendedNotes(e.target.value)}
+                placeholder="Type the formal addendum content to be appended to the patient's permanent record..."
+                rows={4}
+                className="text-xs resize-none"
+              />
+            </div>
+
+            <div className="rounded-lg bg-muted/40 p-2.5 border border-border/80 text-[11px] text-muted-foreground flex items-center gap-2">
+              <ShieldCheck className="size-4 text-teal-600 shrink-0" />
+              <span>
+                This entry will be cryptographically attributed to your MDCN practitioner ID and permanently appended to the encounter audit history.
+              </span>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAmendmentModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleAddAmendment}
+              disabled={isPending || !amendedNotes.trim() || !amendmentReason.trim()}
+              className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold"
+            >
+              {isPending ? <Loader2 className="size-4 animate-spin" /> : <CornerDownRight className="size-4" />}
+              Append Official Addendum
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Printable Certificate of Medical Fitness */}
+      {workspaceData && (
+        <PrintableDocumentModal
+          open={isPrintFitnessOpen}
+          onOpenChange={setIsPrintFitnessOpen}
+          title="Certificate of Medical Fitness"
+          documentRefCode={`FIT-${workspaceData.encounter.id.slice(0, 8).toUpperCase()}`}
+        >
+          <MedicalFitnessDocument
+            hospital={{
+              name: "HospNest Accredited Medical Complex",
+              address: "Department of Clinical Health & Occupational Medicine",
+              state: "Nigeria",
+              contactPhone: "+234 800 000 9999",
+              licenseNumber: "FMOH-FIT-0091",
+            }}
+            patient={{
+              fullName: workspaceData.patient.fullName,
+              nin: workspaceData.patient.nin,
+              age: workspaceData.patient.age,
+              gender: workspaceData.patient.gender,
+            }}
+            fitness={{
+              certificateNumber: `FIT-${workspaceData.encounter.id.slice(0, 8).toUpperCase()}`,
+              examinationDate: workspaceData.encounter.createdAt,
+              purpose: fitnessPurpose,
+              heightCm: workspaceData.latestVitals?.heightCm || 174,
+              weightKg: workspaceData.latestVitals?.weightKg || 70,
+              bloodPressure: workspaceData.latestVitals
+                ? `${workspaceData.latestVitals.systolicBp}/${workspaceData.latestVitals.diastolicBp} mmHg`
+                : "120/80 mmHg",
+              pulseRate: workspaceData.latestVitals?.pulseRate || 72,
+              visualAcuity: { rightEye: "6/6", leftEye: "6/6" },
+              cardiovascularFindings: examCardio || "Normal heart sounds S1 S2. No murmurs.",
+              respiratoryFindings: examResp || "Clear breath sounds bilaterally.",
+              abdomenHerniaFindings: examGi || "Soft, non-tender. No organomegaly or hernia.",
+              cnsFindings: examCns || "Alert, conscious, full locomotor reflexes.",
+              fitnessStatus: fitnessStatus,
+              examiningPhysician: workspaceData.encounter.practitionerName
+                ? `Dr. ${workspaceData.encounter.practitionerName}`
+                : "Dr. Medical Examiner",
+              physicianRank: workspaceData.encounter.practitionerRank || "Medical Officer",
+              physicianLicenseNumber: workspaceData.encounter.practitionerLicenseNumber || "MDCN/R/99214",
+              digitalSignatureHash: workspaceData.encounter.digitalSignatureHash || undefined,
+            }}
+          />
+        </PrintableDocumentModal>
+      )}
+
+      {/* Printable Official Medical Referral Letter */}
+      {workspaceData && (
+        <PrintableDocumentModal
+          open={isPrintReferralOpen}
+          onOpenChange={setIsPrintReferralOpen}
+          title="Clinical Referral & Transfer Letter"
+          documentRefCode={`REF-${workspaceData.encounter.id.slice(0, 8).toUpperCase()}`}
+        >
+          <ReferralLetterDocument
+            hospital={{
+              name: "HospNest Healthcare Facility",
+              address: "Clinical Department & Referral Directorate",
+              state: "Nigeria",
+              contactPhone: "+234 800 000 9999",
+              licenseNumber: "FMOH-REF-0012",
+            }}
+            patient={{
+              fullName: workspaceData.patient.fullName,
+              nin: workspaceData.patient.nin,
+              age: workspaceData.patient.age,
+              gender: workspaceData.patient.gender,
+              bloodGroup: workspaceData.patient.bloodGroup,
+            }}
+            referral={{
+              referralNumber: `REF-${workspaceData.encounter.id.slice(0, 8).toUpperCase()}`,
+              referralDate: workspaceData.encounter.createdAt,
+              referralType: referralType,
+              receivingFacility: referralDestination,
+              receivingSpecialty: referralSpecialty,
+              reasonForReferral: referralReason,
+              clinicalSummaryAndHistory: [
+                `Chief Complaint: ${presentingComplaint || workspaceData.encounter.chiefComplaint || "Clinical evaluation"}`,
+                hpi ? `HPI: ${hpi}` : null,
+                pastMedicalHistory ? `Past Medical Hx: ${pastMedicalHistory}` : null,
+                drugHistory ? `Current Medications: ${drugHistory}` : null,
+                examination ? `Physical Exam: ${examination}` : null,
+                `Working Diagnosis: ${customDiagnosis || workspaceData.encounter.diagnosis || "Under evaluation"}`,
+              ].filter(Boolean).join("\n\n"),
+              vitalSignsSummary: workspaceData.latestVitals ? {
+                bp: `${workspaceData.latestVitals.systolicBp}/${workspaceData.latestVitals.diastolicBp}`,
+                pulse: workspaceData.latestVitals.pulseRate || undefined,
+                temp: workspaceData.latestVitals.bodyTemperature || undefined,
+                spo2: workspaceData.latestVitals.spo2 || undefined,
+                respiratoryRate: workspaceData.latestVitals.respiratoryRate || undefined,
+              } : undefined,
+              investigationsSummary: workspaceData.activeLabOrders.length > 0
+                ? workspaceData.activeLabOrders.map((l) => `${l.testName} (${l.status})`).join("; ")
+                : "Awaiting referral center diagnostic workup.",
+              treatmentGivenSoFar: workspaceData.activePrescriptions.length > 0
+                ? workspaceData.activePrescriptions.map((p) => `${p.drugName} ${p.dosage} ${p.frequency}`).join("; ")
+                : "Initial clinical evaluation completed.",
+              referringDoctorName: workspaceData.encounter.practitionerName
+                ? `Dr. ${workspaceData.encounter.practitionerName}`
+                : "Dr. Referring Physician",
+              referringDoctorRank: workspaceData.encounter.practitionerRank || "Medical Officer",
+              referringDoctorLicenseNumber: workspaceData.encounter.practitionerLicenseNumber || "MDCN/R/99214",
+              digitalSignatureHash: workspaceData.encounter.digitalSignatureHash || undefined,
+            }}
+          />
+        </PrintableDocumentModal>
+      )}
+
+      {/* Printable Medical Sick Leave / Excused Duty Note */}
+      {workspaceData && (
+        <PrintableDocumentModal
+          open={isPrintSickLeaveOpen}
+          onOpenChange={setIsPrintSickLeaveOpen}
+          title="Medical Excused Duty Certificate"
+          documentRefCode={`MED-${workspaceData.encounter.id.slice(0, 8).toUpperCase()}`}
+        >
+          <SickLeaveDocument
+            hospital={{
+              name: "HospNest Clinical Health Complex",
+              address: "Occupational Medicine & Employee Health Services",
+              state: "Nigeria",
+              contactPhone: "+234 800 000 9999",
+              licenseNumber: "FMOH-MED-039",
+            }}
+            patient={{
+              fullName: workspaceData.patient.fullName,
+              nin: workspaceData.patient.nin,
+              age: workspaceData.patient.age,
+              gender: workspaceData.patient.gender,
+            }}
+            sickLeave={{
+              certificateNumber: `MED-${workspaceData.encounter.id.slice(0, 8).toUpperCase()}`,
+              issueDate: workspaceData.encounter.createdAt,
+              startDate: sickLeaveStartDate,
+              endDate: new Date(new Date(sickLeaveStartDate).getTime() + (parseInt(sickLeaveDuration, 10) || 3) * 86400000).toISOString().slice(0, 10),
+              durationDays: parseInt(sickLeaveDuration, 10) || 3,
+              resumeWorkDate: new Date(new Date(sickLeaveStartDate).getTime() + ((parseInt(sickLeaveDuration, 10) || 3) + 1) * 86400000).toISOString().slice(0, 10),
+              diagnosisCategory: customDiagnosis || workspaceData.encounter.diagnosis || "Acute Febrile Illness & Physical Exhaustion",
+              clinicalJustificationSummary: presentingComplaint || "Patient requires clinical rest and home recovery.",
+              excusedDutyType: sickLeaveType,
+              attendingPhysician: workspaceData.encounter.practitionerName
+                ? `Dr. ${workspaceData.encounter.practitionerName}`
+                : "Dr. Attending Medical Officer",
+              physicianRank: workspaceData.encounter.practitionerRank || "Medical Officer",
+              physicianLicenseNumber: workspaceData.encounter.practitionerLicenseNumber || "MDCN/R/99214",
+              digitalSignatureHash: workspaceData.encounter.digitalSignatureHash || undefined,
             }}
           />
         </PrintableDocumentModal>
