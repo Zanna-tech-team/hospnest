@@ -418,17 +418,29 @@ export const saveRadiologyReport = createServerFn({ method: "POST" })
  * Creates an imaging request order from consultation or triage.
  */
 export const orderImagingStudy = createServerFn({ method: "POST" })
-  .validator((d: {
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
     hospitalId: string;
     patientId: string;
-    encounterId?: string | null;
+    encounterId?: string | null | undefined;
     modality: ImagingModality;
     bodyPart: string;
     clinicalIndication: string;
-    priority?: "routine" | "urgent" | "stat";
+    priority?: "routine" | "urgent" | "stat" | undefined;
   }) => d)
-  .handler(async ({ data: input }) => {
-    const { supabase, supabaseAdmin, userId, role } = await requireSupabaseAuth();
+  .handler(async ({ context, data: input }) => {
+    const { supabase, userId } = context;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: roleRow } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("hospital_id", input.hospitalId)
+      .eq("is_active", true)
+      .maybeSingle();
+    const role = (roleRow?.role as StaffRole) || "doctor";
+
 
     const { data: staffRow } = await supabaseAdmin
       .from("staff")
