@@ -560,11 +560,11 @@ function TriageQueuePage() {
               </div>
               <News2ScoreBadge
                 vitals={{
-                  systolicBp: systolic ? parseFloat(systolic) : undefined,
-                  pulseRate: pulse ? parseInt(pulse, 10) : undefined,
-                  bodyTemperature: temp ? parseFloat(temp) : undefined,
-                  respiratoryRate: respRate ? parseInt(respRate, 10) : undefined,
-                  spo2: spo2 ? parseFloat(spo2) : undefined,
+                  systolicBp: systolic ? parseFloat(systolic) : null,
+                  pulseRate: pulse ? parseInt(pulse, 10) : null,
+                  bodyTemperature: temp ? parseFloat(temp) : null,
+                  respiratoryRate: respRate ? parseInt(respRate, 10) : null,
+                  spo2: spo2 ? parseFloat(spo2) : null,
                 }}
                 showDetails
               />

@@ -66,7 +66,7 @@ type RadiologyTab = "requests" | "worklist" | "reports";
 
 function RadiologyDepartmentPage() {
   const { activeHospitalId, shellData } = useAppShell();
-  const currentHospital = shellData?.hospitals?.find((h) => h.id === activeHospitalId);
+  const currentHospital = shellData?.workplaces?.find((w) => w.hospitalId === activeHospitalId);
   const queryClient = useQueryClient();
 
   const getWorklistFn = useServerFn(getRadiologyDepartmentWorklist);
@@ -92,7 +92,7 @@ function RadiologyDepartmentPage() {
     queryFn: () =>
       getWorklistFn({
         data: {
-          hospitalId: activeHospitalId || undefined,
+          ...(activeHospitalId ? { hospitalId: activeHospitalId } : {}),
           modalityFilter: modalityFilter,
         },
       }),
