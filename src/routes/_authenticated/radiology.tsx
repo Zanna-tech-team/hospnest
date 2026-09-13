@@ -66,7 +66,7 @@ type RadiologyTab = "requests" | "worklist" | "reports";
 
 function RadiologyDepartmentPage() {
   const { activeHospitalId, shellData } = useAppShell();
-  const currentHospital = shellData?.hospitals.find((h) => h.id === activeHospitalId);
+  const currentHospital = shellData?.hospitals?.find((h) => h.id === activeHospitalId);
   const queryClient = useQueryClient();
 
   const getWorklistFn = useServerFn(getRadiologyDepartmentWorklist);
