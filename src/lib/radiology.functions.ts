@@ -606,7 +606,7 @@ export const getRadiologyDepartmentWorklist = createServerFn({ method: "GET" })
       createdAt: row.created_at,
     });
 
-    const allStudies = (rows || []).map(mapStudy);
+    const allStudies: RadiologyStudyItem[] = (rows || []).map((r: any) => mapStudy(r));
 
     const requests = allStudies.filter((s) => s.status === "scheduled" || !s.imageUrl);
     const worklist = allStudies.filter((s) => s.status === "acquired" && Boolean(s.imageUrl));
