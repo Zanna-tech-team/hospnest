@@ -430,7 +430,8 @@ export const orderImagingStudy = createServerFn({ method: "POST" })
   }) => d)
   .handler(async ({ context, data: input }) => {
     const { supabase, userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
 
     const { data: roleRow } = await supabase
       .from("user_roles")
@@ -504,7 +505,8 @@ export const getRadiologyDepartmentWorklist = createServerFn({ method: "GET" })
   }) => d)
   .handler(async ({ context, data: input }) => {
     const { userId } = context;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin: _adminClient } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin: any = _adminClient;
 
     let targetHospitalId = input.hospitalId;
     if (!targetHospitalId) {
