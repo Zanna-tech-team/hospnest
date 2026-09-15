@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -255,49 +255,49 @@ export function AudioRecorderModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-xl p-6 sm:p-8 rounded-3xl">
-        <DialogHeader className="space-y-2 text-center items-center">
-          <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-            <Sparkles className="h-3.5 w-3.5" />
+      <DialogContent className="w-[95vw] sm:w-full max-w-xl max-h-[90dvh] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl">
+        <DialogHeader className="space-y-1.5 sm:space-y-2 text-center items-center">
+          <div className="inline-flex items-center gap-1.5 sm:gap-2 rounded-full bg-emerald-500/10 px-2.5 py-0.5 sm:px-3 sm:py-1 text-[11px] sm:text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+            <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
             <span>Intron Sahara CodeSwitch AI</span>
           </div>
-          <DialogTitle className="text-2xl font-bold tracking-tight text-foreground font-display">
+          <DialogTitle className="text-xl sm:text-2xl font-bold tracking-tight text-foreground font-display">
             {title || "HospNest VoiceCare"}
           </DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground max-w-md">
+          <DialogDescription className="text-xs sm:text-sm text-muted-foreground max-w-md px-1">
             {description || "Speak naturally in Hausa, Yoruba, Igbo, Nigerian Pidgin, or English. HospNest understands your intent and takes real hospital action."}
           </DialogDescription>
         </DialogHeader>
 
         {/* Consent / Privacy Tag */}
-        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground/80 bg-muted/40 py-1.5 px-3 rounded-xl">
-          <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-          <span>Patient-controlled voice consent & role-based privacy active</span>
+        <div className="flex items-center justify-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-muted-foreground/80 bg-muted/40 py-1 px-2.5 sm:py-1.5 sm:px-3 rounded-xl text-center">
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+          <span className="line-clamp-2 sm:line-clamp-none">Patient-controlled voice consent & role-based privacy active</span>
         </div>
 
         {/* Main Interactive Mic Interface */}
         {!isTypingMode ? (
-          <div className="flex flex-col items-center justify-center py-6 space-y-6">
+          <div className="flex flex-col items-center justify-center py-3 sm:py-6 space-y-4 sm:space-y-6">
             {state === "idle" && (
-              <div className="flex flex-col items-center space-y-4">
+              <div className="flex flex-col items-center space-y-3 sm:space-y-4">
                 <button
                   type="button"
                   onClick={startRecording}
-                  className="group relative flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-xl shadow-emerald-500/25 transition-all hover:scale-105 active:scale-95 focus:outline-none focus:ring-4 focus:ring-emerald-500/30"
+                  className="group relative flex h-24 w-24 sm:h-28 sm:w-28 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-xl shadow-emerald-500/25 transition-all hover:scale-105 active:scale-95 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 touch-manipulation"
                 >
                   <span className="absolute -inset-1 rounded-full bg-emerald-500/20 blur-md group-hover:bg-emerald-500/30 transition-all" />
-                  <Mic className="h-12 w-12 transition-transform group-hover:scale-110" />
+                  <Mic className="h-10 w-10 sm:h-12 sm:w-12 transition-transform group-hover:scale-110" />
                 </button>
-                <div className="text-center space-y-1">
-                  <p className="font-semibold text-foreground text-base">Tap to speak naturally</p>
-                  <p className="text-xs text-muted-foreground">Hausa, Pidgin, Yoruba, Igbo & English supported</p>
+                <div className="text-center space-y-0.5 sm:space-y-1">
+                  <p className="font-semibold text-foreground text-sm sm:text-base">Tap to speak naturally</p>
+                  <p className="text-[11px] sm:text-xs text-muted-foreground">Hausa, Pidgin, Yoruba, Igbo & English supported</p>
                 </div>
               </div>
             )}
 
             {state === "recording" && (
-              <div className="flex flex-col items-center space-y-4">
-                <div className="relative flex h-28 w-28 items-center justify-center">
+              <div className="flex flex-col items-center space-y-3 sm:space-y-4">
+                <div className="relative flex h-24 w-24 sm:h-28 sm:w-28 items-center justify-center">
                   <span
                     className="absolute inset-0 rounded-full bg-rose-500/20 animate-ping"
                     style={{ animationDuration: "1.5s" }}
@@ -305,9 +305,9 @@ export function AudioRecorderModal({
                   <button
                     type="button"
                     onClick={stopRecording}
-                    className="relative flex h-24 w-24 items-center justify-center rounded-full bg-rose-600 text-white shadow-xl shadow-rose-500/30 hover:bg-rose-700 transition-all focus:outline-none"
+                    className="relative flex h-20 w-20 sm:h-24 sm:w-24 items-center justify-center rounded-full bg-rose-600 text-white shadow-xl shadow-rose-500/30 hover:bg-rose-700 transition-all focus:outline-none touch-manipulation"
                   >
-                    <Square className="h-8 w-8 fill-current" />
+                    <Square className="h-6 w-6 sm:h-8 sm:w-8 fill-current" />
                   </button>
                 </div>
 

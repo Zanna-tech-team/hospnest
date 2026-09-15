@@ -91,7 +91,7 @@ print(f"Target Slots: {sample['expected_entities']}")
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:w-full max-w-3xl max-h-[90dvh] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6 rounded-2xl sm:rounded-3xl">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[10px]">

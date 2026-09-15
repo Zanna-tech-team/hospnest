@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,16 +56,16 @@ export function VoiceCheckInModal({
   return (
     <>
       <Dialog open={isOpen && !isRecorderOpen} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="max-w-xl p-6 sm:p-8 rounded-3xl">
-          <DialogHeader className="space-y-2">
-            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs font-semibold uppercase tracking-wider">
-              <Sparkles className="h-4 w-4" />
+        <DialogContent className="w-[95vw] sm:w-full max-w-xl max-h-[90dvh] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl">
+          <DialogHeader className="space-y-1.5 sm:space-y-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-emerald-600 dark:text-emerald-400 text-[11px] sm:text-xs font-semibold uppercase tracking-wider">
+              <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               <span>Front Desk Assistant</span>
             </div>
-            <DialogTitle className="text-2xl font-bold font-display text-foreground">
+            <DialogTitle className="text-xl sm:text-2xl font-bold font-display text-foreground">
               Voice-Assisted Patient Check-In
             </DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground">
+            <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
               Patient can state their arrival. Desk officer reviews matching scheduled appointments and confirms identity.
             </DialogDescription>
           </DialogHeader>
