@@ -1,6 +1,43 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { defaultSpeechProvider, benchmarkSpeechProviders, detectAfricanCodeSwitchLanguage } from "./speech-provider";
+
+async function getOptionalVoiceAuthUser(): Promise<{ userId: string | null; email: string | null }> {
+  try {
+    const { getRequest } = await import("@tanstack/react-start/server");
+    const request = getRequest();
+    const authHeader = request?.headers?.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return { userId: null, email: null };
+    }
+    const token = authHeader.replace("Bearer ", "");
+    if (!token || token.split(".").length !== 3) {
+      return { userId: null, email: null };
+    }
+
+    const SUPABASE_URL = process.env["SUPABASE_URL"];
+    const SUPABASE_PUBLISHABLE_KEY = process.env["SUPABASE_PUBLISHABLE_KEY"];
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+      return { userId: null, email: null };
+    }
+
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data } = await supabase.auth.getClaims(token);
+    if (data?.claims?.sub) {
+      return {
+        userId: data.claims.sub,
+        email: (data.claims.email as string) || null,
+      };
+    }
+  } catch {
+    // Non-fatal optional auth extraction
+  }
+  return { userId: null, email: null };
+}
 
 export interface StructuredAppointmentIntent {
   isAppointmentIntent: boolean;
@@ -305,8 +342,8 @@ export const processVoiceCareSpeech = createServerFn({ method: "POST" })
     }),
   )
   .handler(async ({ data: input }) => {
-    const auth = await requireSupabaseAuth();
-    const userId = auth?.user?.id || "public-voice-user";
+    const authUser = await getOptionalVoiceAuthUser();
+    const userId = authUser.userId;
 
     let transcript = "";
     let confidence = 0.94;
@@ -358,7 +395,7 @@ export const processVoiceCareSpeech = createServerFn({ method: "POST" })
     // Persist to audit store
     const auditEntry: VoiceCareAuditEntry = {
       id: `vc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      userId,
+      userId: userId || "public-voice-user",
       patientId: input.patientId,
       actionType: input.context === "appointment_booking" ? "APPOINTMENT_VOICE_INTAKE" :
                   input.context === "clinical_note" ? "CLINICAL_VOICE_NOTE" :
@@ -379,8 +416,9 @@ export const processVoiceCareSpeech = createServerFn({ method: "POST" })
         await supabaseAdmin.from("voicecare_sessions").insert({
           user_id: userId || null,
           patient_id: input.patientId || null,
+          hospital_id: input.hospitalId || null,
           session_type: input.context || "appointment_booking",
-          target_language_code: input.targetLanguageCode || detectedLanguage || "pcm",
+          target_language_code: detectedLanguage || "pcm",
           detected_language: detectedLanguageLabel,
           transcript,
           confidence,
@@ -447,8 +485,8 @@ export const sendPatientClinicianVoiceMessage = createServerFn({ method: "POST" 
     }) => input,
   )
   .handler(async ({ data: input }) => {
-    const auth = await requireSupabaseAuth();
-    const userId = auth?.user?.id || "system";
+    const authUser = await getOptionalVoiceAuthUser();
+    const userId = authUser.userId || "anonymous-sender";
 
     const msg = {
       id: `vmsg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,

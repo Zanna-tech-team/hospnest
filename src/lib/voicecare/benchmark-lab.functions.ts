@@ -1,7 +1,44 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { defaultSpeechProvider, benchmarkSpeechProviders, detectAfricanCodeSwitchLanguage } from "./speech-provider";
 import { extractStructuredIntentFromText } from "./voicecare.functions";
+
+async function getOptionalBenchmarkAuthUser(): Promise<{ userId: string | null; email: string | null }> {
+  try {
+    const { getRequest } = await import("@tanstack/react-start/server");
+    const request = getRequest();
+    const authHeader = request?.headers?.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return { userId: null, email: null };
+    }
+    const token = authHeader.replace("Bearer ", "");
+    if (!token || token.split(".").length !== 3) {
+      return { userId: null, email: null };
+    }
+
+    const SUPABASE_URL = process.env["SUPABASE_URL"];
+    const SUPABASE_PUBLISHABLE_KEY = process.env["SUPABASE_PUBLISHABLE_KEY"];
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+      return { userId: null, email: null };
+    }
+
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data } = await supabase.auth.getClaims(token);
+    if (data?.claims?.sub) {
+      return {
+        userId: data.claims.sub,
+        email: (data.claims.email as string) || null,
+      };
+    }
+  } catch {
+    // Non-fatal optional auth extraction
+  }
+  return { userId: null, email: null };
+}
 
 export interface BenchmarkSample {
   id: string;
@@ -700,8 +737,8 @@ export const executeBenchmarkRun = createServerFn({ method: "POST" })
     }) => input,
   )
   .handler(async ({ data: input }) => {
-    const auth = await requireSupabaseAuth();
-    const adminUser = auth?.user?.email || "Super Admin";
+    const authUser = await getOptionalBenchmarkAuthUser();
+    const adminUser = authUser.email || "Super Admin";
 
     const samplesToRun = input.sampleIds && input.sampleIds.length > 0
       ? globalBenchmarkSamplesStore.filter(s => input.sampleIds!.includes(s.id))
