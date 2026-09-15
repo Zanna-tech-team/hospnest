@@ -1,24 +1,20 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Activity,
   AlertOctagon,
   AlertTriangle,
   ArrowRightLeft,
-  Bed,
   Bell,
-  Check,
   CheckCheck,
-  Clock,
   ExternalLink,
-  Flame,
-  Info,
+  FlaskConical,
   Package,
   RefreshCw,
   Scan,
-  ShieldAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +24,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-  getHospitalLiveNotifications,
+  getUserNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
   type HospitalNotificationItem,
 } from "@/lib/notifications.functions";
 
@@ -38,17 +36,43 @@ interface NotificationCenterProps {
 
 export function NotificationCenter({ hospitalId }: NotificationCenterProps) {
   const navigate = useNavigate();
-  const getNotificationsFn = useServerFn(getHospitalLiveNotifications);
+  const queryClient = useQueryClient();
+  const getNotificationsFn = useServerFn(getUserNotifications);
+  const markReadFn = useServerFn(markNotificationAsRead);
+  const markAllReadFn = useServerFn(markAllNotificationsAsRead);
+
   const [isOpen, setIsOpen] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<"all" | "critical" | "operations">("all");
 
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["hospital-notifications", hospitalId],
+    queryKey: ["user-live-notifications", hospitalId],
     queryFn: () => getNotificationsFn({ data: { hospitalId } }),
-    enabled: Boolean(hospitalId),
-    refetchInterval: 15000, // Poll every 15s for live updates
+    refetchInterval: 10000,
   });
+
+  // Supabase Realtime listener for immediate notifications (Prompt 40)
+  useEffect(() => {
+    const channel = supabase
+      .channel("realtime-notifications-channel")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["user-live-notifications"] });
+          refetch();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient, refetch]);
 
   const notifications = data?.notifications || [];
   const unreadList = notifications.filter((n) => !readIds.has(n.id) && !n.isRead);
@@ -61,13 +85,24 @@ export function NotificationCenter({ hospitalId }: NotificationCenterProps) {
     return true;
   });
 
-  const handleMarkAsRead = (id: string) => {
+  const handleMarkAsRead = async (id: string) => {
     setReadIds((prev) => new Set(prev).add(id));
+    try {
+      await markReadFn({ data: { notificationId: id } });
+    } catch (e) {
+      console.warn("Mark read err:", e);
+    }
   };
 
-  const handleMarkAllAsRead = () => {
+  const handleMarkAllAsRead = async () => {
     const allIds = notifications.map((n) => n.id);
     setReadIds(new Set(allIds));
+    try {
+      await markAllReadFn();
+      queryClient.invalidateQueries({ queryKey: ["user-live-notifications"] });
+    } catch (e) {
+      console.warn("Mark all read err:", e);
+    }
   };
 
   const handleNotificationClick = (item: HospitalNotificationItem) => {
@@ -77,16 +112,21 @@ export function NotificationCenter({ hospitalId }: NotificationCenterProps) {
   };
 
   const getCategoryIcon = (category: string, severity: string) => {
-    if (severity === "critical") return <AlertOctagon className="size-4 text-destructive" />;
+    if (severity === "critical") return <AlertOctagon className="size-4 text-destructive shrink-0" />;
     switch (category) {
+      case "lab_critical":
+        return <AlertTriangle className="size-4 text-rose-500 shrink-0 animate-bounce" />;
+      case "lab_completed":
+        return <FlaskConical className="size-4 text-teal-500 shrink-0" />;
       case "stat_imaging":
-        return <Scan className="size-4 text-cyan-500" />;
+      case "radiology_critical":
+        return <Scan className="size-4 text-cyan-500 shrink-0" />;
       case "low_stock":
-        return <Package className="size-4 text-rose-500" />;
+        return <Package className="size-4 text-rose-500 shrink-0" />;
       case "transfer":
-        return <ArrowRightLeft className="size-4 text-amber-500" />;
+        return <ArrowRightLeft className="size-4 text-amber-500 shrink-0" />;
       default:
-        return <Activity className="size-4 text-teal-500" />;
+        return <Activity className="size-4 text-teal-500 shrink-0" />;
     }
   };
 

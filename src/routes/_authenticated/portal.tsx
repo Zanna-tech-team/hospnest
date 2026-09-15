@@ -6,6 +6,9 @@ import {
   getPatientPortalDashboardData,
   bookPatientAppointment,
   updatePatientSelfProfile,
+  getPatientPrivacySettings,
+  updateGlobalSharingConsent,
+  savePatientHospitalConsents,
   type PatientPortalDashboardResponse,
   type PatientPortalAppointment,
   type PatientPortalEncounter,
@@ -13,6 +16,7 @@ import {
   type PatientPortalPrescription,
   type PatientPortalInvoice,
 } from "@/lib/patient-portal.functions";
+import { Switch } from "@/components/ui/switch";
 import {
   Activity,
   AlertCircle,
@@ -46,6 +50,9 @@ import {
   User,
   UserCheck,
   Pencil,
+  Mic,
+  Volume2,
+  Globe2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +77,9 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { AudioRecorderModal } from "@/components/voicecare/AudioRecorderModal";
+import { VoiceBookingCard } from "@/components/voicecare/VoiceBookingCard";
+import { VoiceCommunicationWidget } from "@/components/voicecare/VoiceCommunicationWidget";
 
 export const Route = createFileRoute("/_authenticated/portal")({
   component: PatientPortalPage,
@@ -108,10 +118,18 @@ export function PatientPortalPage() {
   const getDashboardFn = useServerFn(getPatientPortalDashboardData);
   const bookApptFn = useServerFn(bookPatientAppointment);
   const updateProfileFn = useServerFn(updatePatientSelfProfile);
+  const getPrivacyFn = useServerFn(getPatientPrivacySettings);
+  const updateGlobalSharingFn = useServerFn(updateGlobalSharingConsent);
+  const saveHospitalConsentsFn = useServerFn(savePatientHospitalConsents);
 
   const [activeTab, setActiveTab] = useState<
-    "overview" | "visits" | "labs" | "prescriptions" | "invoices" | "profile"
+    "overview" | "visits" | "labs" | "prescriptions" | "invoices" | "profile" | "privacy" | "voicecare"
   >("overview");
+
+  // VoiceCare Modal & Booking States
+  const [isVoiceRecorderOpen, setIsVoiceRecorderOpen] = useState(false);
+  const [voiceExtractedBooking, setVoiceExtractedBooking] = useState<any | null>(null);
+  const [bookingMode, setBookingMode] = useState<"standard" | "voice">("standard");
 
   // Booking Modal State
   const [bookingOpen, setBookingOpen] = useState(false);
@@ -133,9 +151,73 @@ export function PatientPortalPage() {
   // Print Invoice / Receipt View State
   const [viewingInvoice, setViewingInvoice] = useState<PatientPortalInvoice | null>(null);
 
+  // Per-hospital privacy settings state
+  const [hospitalConsentState, setHospitalConsentState] = useState<
+    Record<
+      string,
+      {
+        isSharingActive: boolean;
+        allowLabs: boolean;
+        allowPrescriptions: boolean;
+        allowImaging: boolean;
+        allowClinicalNotes: boolean;
+        allowMaternity: boolean;
+        allowSurgeries: boolean;
+        allowPsychiatricNotes: boolean;
+        allowSexualHealthNotes: boolean;
+      }
+    >
+  >({});
+
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<PatientPortalDashboardResponse>({
     queryKey: ["patient-portal-dashboard"],
     queryFn: () => getDashboardFn(),
+  });
+
+  const {
+    data: privacyData,
+    isLoading: isPrivacyLoading,
+    refetch: refetchPrivacy,
+  } = useQuery({
+    queryKey: ["patient-privacy-settings"],
+    queryFn: () => getPrivacyFn(),
+  });
+
+  const updateGlobalMutation = useMutation({
+    mutationFn: async (newValue: boolean) => {
+      return updateGlobalSharingFn({ data: { isGlobalShare: newValue } });
+    },
+    onSuccess: () => {
+      toast.success("Global health record sharing preference updated.");
+      queryClient.invalidateQueries({ queryKey: ["patient-privacy-settings"] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Failed to update global record sharing preference");
+    },
+  });
+
+  const saveHospitalConsentMutation = useMutation({
+    mutationFn: async (payload: {
+      hospitalId: string;
+      isSharingActive: boolean;
+      allowLabs: boolean;
+      allowPrescriptions: boolean;
+      allowImaging: boolean;
+      allowClinicalNotes: boolean;
+      allowMaternity?: boolean;
+      allowSurgeries?: boolean;
+      allowPsychiatricNotes?: boolean;
+      allowSexualHealthNotes?: boolean;
+    }) => {
+      return saveHospitalConsentsFn({ data: payload });
+    },
+    onSuccess: () => {
+      toast.success("Hospital privacy permissions saved successfully.");
+      queryClient.invalidateQueries({ queryKey: ["patient-privacy-settings"] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Failed to save hospital privacy permissions");
+    },
   });
 
   const bookMutation = useMutation({
@@ -471,10 +553,78 @@ export function PatientPortalPage() {
               <User className="h-4 w-4 mr-1.5" />
               My Profile
             </TabsTrigger>
+            <TabsTrigger
+              value="privacy"
+              className="rounded-xl text-xs sm:text-sm font-semibold py-2 px-3 sm:px-4"
+            >
+              <ShieldCheck className="h-4 w-4 mr-1.5 text-teal-600" />
+              Privacy & Sharing
+            </TabsTrigger>
+            <TabsTrigger
+              value="voicecare"
+              className="rounded-xl text-xs sm:text-sm font-semibold py-2 px-3 sm:px-4 text-emerald-700 dark:text-emerald-300 font-bold"
+            >
+              <Mic className="h-4 w-4 mr-1.5 text-emerald-600 animate-pulse" />
+              VoiceCare AI
+            </TabsTrigger>
           </TabsList>
 
           {/* TAB 1: OVERVIEW */}
           <TabsContent value="overview" className="space-y-6">
+            {/* VoiceCare Entry Banner */}
+            <Card className="rounded-3xl border-2 border-emerald-500/40 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-card p-6 shadow-sm overflow-hidden">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                <div className="space-y-2 max-w-xl">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>HospNest VoiceCare • African Code-Switching AI</span>
+                  </div>
+                  <h2 className="text-2xl font-bold font-display text-foreground">
+                    Speak Naturally to Book or Ask
+                  </h2>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    No need to navigate complex forms. Speak in Hausa, Nigerian Pidgin, Yoruba, Igbo, or English. HospNest understands your dates, times, and medical complaints to book real appointments.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <Badge variant="outline" className="text-[10px] bg-background/80">Hausa + English</Badge>
+                    <Badge variant="outline" className="text-[10px] bg-background/80">Pidgin + English</Badge>
+                    <Badge variant="outline" className="text-[10px] bg-background/80">Yoruba + English</Badge>
+                    <Badge variant="outline" className="text-[10px] bg-background/80">Igbo + English</Badge>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-center sm:items-end gap-2.5 shrink-0">
+                  <Button
+                    type="button"
+                    onClick={() => setIsVoiceRecorderOpen(true)}
+                    className="h-14 px-8 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-500/25 gap-3 group"
+                  >
+                    <Mic className="h-5 w-5 transition-transform group-hover:scale-125 animate-pulse" />
+                    <span>Speak Naturally</span>
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground">Tap mic to speak your booking or symptoms</span>
+                </div>
+              </div>
+            </Card>
+
+            {/* Extracted Voice Booking Review Card if active */}
+            {voiceExtractedBooking && (
+              <VoiceBookingCard
+                intent={voiceExtractedBooking.appointmentIntent}
+                transcript={voiceExtractedBooking.transcript}
+                detectedLanguageLabel={voiceExtractedBooking.detectedLanguageLabel}
+                auditId={voiceExtractedBooking.auditId}
+                hospitalId={bookHospitalId || availableHospitals[0]?.id || ""}
+                hospitalName={availableHospitals.find((h) => h.id === bookHospitalId)?.name || availableHospitals[0]?.name}
+                onConfirmed={() => {
+                  setVoiceExtractedBooking(null);
+                  refetch();
+                }}
+                onSpeakAgain={() => setIsVoiceRecorderOpen(true)}
+                onCancel={() => setVoiceExtractedBooking(null)}
+              />
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Left 2 Cols: Upcoming visits & active prescriptions */}
               <div className="lg:col-span-2 space-y-6">
@@ -1140,10 +1290,415 @@ export function PatientPortalPage() {
               </Card>
             </div>
           </TabsContent>
+
+          {/* TAB 7: PRIVACY & RECORD SHARING (Prompt 43) */}
+          <TabsContent value="privacy" className="space-y-6">
+            {/* Global Master Consent Switch */}
+            <Card className="border-border overflow-hidden shadow-soft">
+              <div className="bg-gradient-to-r from-teal-500/10 via-emerald-500/10 to-transparent p-6 border-b border-border">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
+                        <ShieldCheck className="h-5 w-5" />
+                      </div>
+                      <CardTitle className="text-lg font-bold text-foreground">
+                        Global Health Record Sharing
+                      </CardTitle>
+                    </div>
+                    <CardDescription className="text-xs text-muted-foreground max-w-2xl mt-1">
+                      Control whether verified healthcare providers across the HospNest network can seamlessly access your longitudinal clinical records, allergies, and test history during consultations.
+                    </CardDescription>
+                  </div>
+
+                  <div className="flex items-center gap-3 bg-background/80 backdrop-blur-xs border border-border p-3 rounded-2xl shadow-xs shrink-0">
+                    <div className="text-right">
+                      <p className="text-xs font-bold text-foreground">
+                        {privacyData?.isGlobalShare ? "Sharing Enabled" : "Sharing Disabled"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {privacyData?.isGlobalShare ? "Interoperable network-wide" : "Siloed to issuing hospital"}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={privacyData?.isGlobalShare ?? true}
+                      disabled={updateGlobalMutation.isPending || isPrivacyLoading}
+                      onCheckedChange={(val) => updateGlobalMutation.mutate(val)}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-border/60 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5 font-medium text-foreground">
+                    <Shield className="h-3.5 w-3.5 text-teal-600" />
+                    NDPR 2019 & Medical Confidentiality Compliant
+                  </span>
+                  <span>•</span>
+                  <span>Patient data is cryptographically protected and never sold</span>
+                  <span>•</span>
+                  <span>Emergency trauma access is governed by audited break-glass overrides</span>
+                </div>
+              </div>
+            </Card>
+
+            {/* Hospital-by-Hospital Granular Sharing Permissions */}
+            <Card className="border-border shadow-soft">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base font-bold text-foreground">
+                      Hospital-by-Hospital Sharing Permissions
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Customize exactly what data each hospital facility and doctor can view from your records
+                    </CardDescription>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => refetchPrivacy()}
+                    disabled={isPrivacyLoading}
+                    className="text-xs"
+                  >
+                    <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isPrivacyLoading ? "animate-spin" : ""}`} />
+                    Refresh
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {(!privacyData?.hospitals || privacyData.hospitals.length === 0) ? (
+                  <div className="rounded-2xl border border-dashed border-border p-8 text-center">
+                    <Hospital className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
+                    <p className="text-sm font-medium text-foreground">No hospitals connected yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Once you visit or book with a verified hospital, its privacy controls will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4">
+                    {privacyData.hospitals.map((h) => {
+                      const localState = hospitalConsentState[h.hospitalId] ?? {
+                        isSharingActive: h.isSharingActive,
+                        allowLabs: h.allowLabs,
+                        allowPrescriptions: h.allowPrescriptions,
+                        allowImaging: h.allowImaging,
+                        allowClinicalNotes: h.allowClinicalNotes,
+                        allowMaternity: h.allowMaternity,
+                        allowSurgeries: h.allowSurgeries,
+                        allowPsychiatricNotes: h.allowPsychiatricNotes,
+                        allowSexualHealthNotes: h.allowSexualHealthNotes,
+                      };
+
+                      const updateLocalState = (field: string, val: boolean) => {
+                        setHospitalConsentState((prev) => ({
+                          ...prev,
+                          [h.hospitalId]: {
+                            ...localState,
+                            [field]: val,
+                          },
+                        }));
+                      };
+
+                      return (
+                        <div
+                          key={h.hospitalId}
+                          className={`rounded-2xl border transition-all p-5 ${
+                            localState.isSharingActive
+                              ? "border-border bg-card/80 shadow-xs"
+                              : "border-border/60 bg-muted/20 opacity-85"
+                          }`}
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-border/60">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center shrink-0">
+                                <Hospital className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold text-sm text-foreground">{h.hospitalName}</h4>
+                                  <Badge variant="outline" className="text-[10px]">
+                                    {h.state}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {localState.isSharingActive
+                                    ? "Access permitted according to selected categories below"
+                                    : "Access revoked — records hidden from this hospital"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-semibold text-muted-foreground">
+                                {localState.isSharingActive ? "Sharing Active" : "Access Blocked"}
+                              </span>
+                              <Switch
+                                checked={localState.isSharingActive}
+                                onCheckedChange={(val) => updateLocalState("isSharingActive", val)}
+                              />
+                            </div>
+                          </div>
+
+                          {localState.isSharingActive && (
+                            <div className="pt-4 space-y-4">
+                              <div>
+                                <p className="text-xs font-bold text-foreground mb-2.5">
+                                  Allowed Record Categories:
+                                </p>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-background/60 text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                    <Switch
+                                      className="scale-75"
+                                      checked={localState.allowClinicalNotes}
+                                      onCheckedChange={(val) => updateLocalState("allowClinicalNotes", val)}
+                                    />
+                                    <span>Consultations & Notes</span>
+                                  </label>
+
+                                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-background/60 text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                    <Switch
+                                      className="scale-75"
+                                      checked={localState.allowLabs}
+                                      onCheckedChange={(val) => updateLocalState("allowLabs", val)}
+                                    />
+                                    <span>Lab Test Results</span>
+                                  </label>
+
+                                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-background/60 text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                    <Switch
+                                      className="scale-75"
+                                      checked={localState.allowImaging}
+                                      onCheckedChange={(val) => updateLocalState("allowImaging", val)}
+                                    />
+                                    <span>Imaging & Radiology</span>
+                                  </label>
+
+                                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-background/60 text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                    <Switch
+                                      className="scale-75"
+                                      checked={localState.allowPrescriptions}
+                                      onCheckedChange={(val) => updateLocalState("allowPrescriptions", val)}
+                                    />
+                                    <span>Medications & Rx</span>
+                                  </label>
+
+                                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-background/60 text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                    <Switch
+                                      className="scale-75"
+                                      checked={localState.allowMaternity}
+                                      onCheckedChange={(val) => updateLocalState("allowMaternity", val)}
+                                    />
+                                    <span>Maternity & Antenatal</span>
+                                  </label>
+
+                                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-background/60 text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                    <Switch
+                                      className="scale-75"
+                                      checked={localState.allowSurgeries}
+                                      onCheckedChange={(val) => updateLocalState("allowSurgeries", val)}
+                                    />
+                                    <span>Surgeries & Procedures</span>
+                                  </label>
+                                </div>
+                              </div>
+
+                              {/* Sensitive Categories Section */}
+                              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-3">
+                                <div className="flex items-center gap-2">
+                                  <Lock className="h-4 w-4 text-amber-600" />
+                                  <div>
+                                    <p className="text-xs font-bold text-foreground">
+                                      Sensitive Health Records (Explicit Opt-In Required)
+                                    </p>
+                                    <p className="text-[11px] text-muted-foreground">
+                                      By default, psychiatric and sexual health records remain hidden unless explicitly unlocked.
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                                  <label className="flex items-center justify-between p-2.5 rounded-lg border border-amber-500/20 bg-background/80 text-xs font-medium cursor-pointer">
+                                    <span className="text-foreground">Psychiatric & Mental Health Notes</span>
+                                    <Switch
+                                      className="scale-75"
+                                      checked={localState.allowPsychiatricNotes}
+                                      onCheckedChange={(val) => updateLocalState("allowPsychiatricNotes", val)}
+                                    />
+                                  </label>
+
+                                  <label className="flex items-center justify-between p-2.5 rounded-lg border border-amber-500/20 bg-background/80 text-xs font-medium cursor-pointer">
+                                    <span className="text-foreground">Sexual & Reproductive Health</span>
+                                    <Switch
+                                      className="scale-75"
+                                      checked={localState.allowSexualHealthNotes}
+                                      onCheckedChange={(val) => updateLocalState("allowSexualHealthNotes", val)}
+                                    />
+                                  </label>
+                                </div>
+                              </div>
+
+                              <div className="flex justify-end pt-1">
+                                <Button
+                                  size="sm"
+                                  disabled={saveHospitalConsentMutation.isPending}
+                                  onClick={() => {
+                                    saveHospitalConsentMutation.mutate({
+                                      hospitalId: h.hospitalId,
+                                      ...localState,
+                                    });
+                                  }}
+                                  className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs"
+                                >
+                                  {saveHospitalConsentMutation.isPending ? "Saving..." : "Save Hospital Permissions"}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Access Transparency & Audit Trail */}
+            <Card className="border-border shadow-soft">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="h-5 w-5 text-teal-600" />
+                    <div>
+                      <CardTitle className="text-base font-bold text-foreground">
+                        Access Transparency & Audit Trail
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Real-time audit log of all clinical staff accesses, record reviews, and emergency break-glass overrides
+                      </CardDescription>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {(!privacyData?.accessLogs || privacyData.accessLogs.length === 0) ? (
+                  <div className="rounded-2xl border border-dashed border-border p-8 text-center">
+                    <FileCheck2 className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
+                    <p className="text-sm font-medium text-foreground">No access logs recorded yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Every time a practitioner views your records, an immutable log entry will be displayed here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {privacyData.accessLogs.map((log: any) => (
+                      <div
+                        key={log.id}
+                        className={`rounded-xl border p-4 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                          log.isBreakGlass
+                            ? "border-rose-500/40 bg-rose-500/10 text-rose-950 dark:text-rose-200"
+                            : "border-border bg-card/60"
+                        }`}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {log.isBreakGlass ? (
+                              <Badge className="bg-rose-600 text-white font-bold flex items-center gap-1 text-[10px]">
+                                <AlertTriangle className="h-3 w-3" />
+                                EMERGENCY BREAK-GLASS OVERRIDE
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] font-semibold uppercase">
+                                {log.action || "READ"}
+                              </Badge>
+                            )}
+
+                            <span className="font-bold text-foreground">{log.hospitalName}</span>
+                            <span className="text-muted-foreground">• Role: <span className="font-medium text-foreground uppercase">{log.role}</span></span>
+                          </div>
+
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Justification: <span className="italic text-foreground">{log.justification}</span>
+                          </p>
+                        </div>
+
+                        <div className="shrink-0 text-[11px] font-mono text-muted-foreground sm:text-right">
+                          {formatDateTime(log.timestamp)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TAB 8: VOICECARE AI & CLINICIAN VOICE MESSAGING */}
+          <TabsContent value="voicecare" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-6">
+                <Card className="rounded-3xl border border-emerald-500/30 bg-card shadow-sm p-6 space-y-4">
+                  <div className="flex items-center gap-2 text-emerald-600 font-semibold text-xs uppercase tracking-wider">
+                    <Sparkles className="h-4 w-4" />
+                    <span>Intron Sahara Voice Assistant</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-foreground font-display">
+                    Voice-First Medical Assistance
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Speak in your preferred Nigerian dialect (Hausa, Pidgin, Yoruba, Igbo) or English. You can book an appointment, describe symptoms, or ask health questions.
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={() => setIsVoiceRecorderOpen(true)}
+                    className="h-12 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs gap-2"
+                  >
+                    <Mic className="h-4 w-4" />
+                    Speak Naturally to VoiceCare
+                  </Button>
+                </Card>
+
+                {/* Patient ↔ Clinician Voice Messaging */}
+                <VoiceCommunicationWidget
+                  patientId={patient.id}
+                  patientName={patient.fullName}
+                  currentUserRole="patient"
+                  currentUserName={patient.fullName}
+                  hospitalId={bookHospitalId || availableHospitals[0]?.id}
+                />
+              </div>
+
+              <div className="space-y-6">
+                <Card className="rounded-3xl border border-border bg-card p-5 space-y-3">
+                  <div className="flex items-center gap-2 font-bold text-foreground text-sm">
+                    <Globe2 className="h-4 w-4 text-emerald-600" />
+                    Supported Dialects
+                  </div>
+                  <ul className="text-xs text-muted-foreground space-y-2">
+                    <li className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px]">Hausa + English</Badge>
+                      <span>Ina son ganin likita...</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px]">Pidgin + English</Badge>
+                      <span>Abeg I want see doctor...</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px]">Yoruba + English</Badge>
+                      <span>Mo fe ri dokita...</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px]">Igbo + English</Badge>
+                      <span>Achoro m ihu dokinta...</span>
+                    </li>
+                  </ul>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
 
-      {/* MODAL: Book Online Appointment (Prompt 18) */}
+      {/* MODAL: Book Online Appointment (Prompt 18 & Prompt 39 & VoiceCare) */}
       <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -1152,9 +1707,35 @@ export function PatientPortalPage() {
               Book Hospital Appointment
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Schedule a clinic consultation. Front desk will confirm your queue slot on arrival.
+              Choose standard booking form or speak naturally with VoiceCare.
             </DialogDescription>
           </DialogHeader>
+
+          {/* Dual Choice: Standard vs Voice Booking */}
+          <div className="grid grid-cols-2 gap-2 p-1 bg-muted/60 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setBookingMode("standard")}
+              className={`py-2 text-xs font-semibold rounded-xl transition-all ${
+                bookingMode === "standard"
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Standard Booking
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setBookingOpen(false);
+                setIsVoiceRecorderOpen(true);
+              }}
+              className="py-2 text-xs font-semibold rounded-xl text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 flex items-center justify-center gap-1"
+            >
+              <Mic className="h-3.5 w-3.5 text-emerald-600" />
+              Voice Booking
+            </button>
+          </div>
 
           <form
             onSubmit={(e) => {
@@ -1492,6 +2073,22 @@ export function PatientPortalPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* VoiceCare Interactive Audio Recorder Modal */}
+      <AudioRecorderModal
+        isOpen={isVoiceRecorderOpen}
+        onClose={() => setIsVoiceRecorderOpen(false)}
+        context="appointment_booking"
+        title="VoiceCare Appointment Booking"
+        description="Speak your preferred appointment date, time, hospital, or symptoms naturally in your local dialect."
+        patientId={patient.id}
+        hospitalId={bookHospitalId || availableHospitals[0]?.id}
+        onProcessed={(res) => {
+          setVoiceExtractedBooking(res);
+          setActiveTab("overview");
+          toast.success("Speech processed! Review your booking details below.");
+        }}
+      />
     </div>
   );
 }

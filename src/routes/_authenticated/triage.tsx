@@ -19,7 +19,11 @@ import {
   User,
   Users,
   Zap,
+  Mic,
+  Sparkles,
 } from "lucide-react";
+
+import { VoiceTriageAssistantModal } from "@/components/voicecare/VoiceTriageAssistantModal";
 import { useAppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,6 +87,7 @@ function TriageQueuePage() {
   const [painScore, setPainScore] = useState<string>("0");
   const [priority, setPriority] = useState<"emergency" | "urgent" | "normal">("normal");
   const [triageNotes, setTriageNotes] = useState<string>("");
+  const [isVoiceTriageOpen, setIsVoiceTriageOpen] = useState(false);
 
   const {
     data: triageData,
@@ -731,9 +736,21 @@ function TriageQueuePage() {
 
             {/* Triage Nurse Notes */}
             <div className="space-y-1">
-              <Label htmlFor="triage-notes" className="text-xs">
-                Clinical Assessment Notes <span className="text-muted-foreground">(optional observations)</span>
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="triage-notes" className="text-xs">
+                  Clinical Assessment Notes <span className="text-muted-foreground">(optional observations)</span>
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsVoiceTriageOpen(true)}
+                  className="h-6 text-xs text-emerald-600 hover:text-emerald-700 gap-1 px-2"
+                >
+                  <Mic className="h-3 w-3 text-emerald-600 animate-pulse" />
+                  Voice Triage Assistant (Sahara)
+                </Button>
+              </div>
               <Textarea
                 id="triage-notes"
                 value={triageNotes}
@@ -770,6 +787,19 @@ function TriageQueuePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Voice Triage Assistant Modal (Intron Sahara) */}
+      <VoiceTriageAssistantModal
+        isOpen={isVoiceTriageOpen}
+        onClose={() => setIsVoiceTriageOpen(false)}
+        onApplyTriage={(res) => {
+          setTriageNotes((prev) => `${prev ? `${prev}\n` : ""}[VoiceCare Triage]: ${res.complaint}`.trim());
+          if (res.isUrgent) {
+            setPriority("urgent");
+            toast.warning("Urgent indicator detected — priority adjusted to Urgent.");
+          }
+        }}
+      />
     </div>
   );
 }

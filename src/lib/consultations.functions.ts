@@ -111,7 +111,21 @@ export type EncounterLabOrderItem = {
   testName: string;
   testCode: string | null;
   status: string;
+  urgency: string;
+  clinicalIndication: string | null;
   sampleType: string | null;
+  resultValue: string | null;
+  units: string | null;
+  referenceRange: string | null;
+  isOutOfRange: boolean;
+  isCritical: boolean;
+  interpretation: string | null;
+  attachedFileUrl: string | null;
+  technicianName: string | null;
+  completedAt: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedByName: string | null;
+  acknowledgementComment: string | null;
   notes: string | null;
   createdAt: string;
 };
@@ -180,6 +194,13 @@ export type ConsultationWorkspaceData = {
     signedBy: string | null;
     digitalSignatureHash: string | null;
     isLocked: boolean;
+    aiSummary?: string | null;
+    aiPatientSummary?: string | null;
+    aiKeyFindings?: string[] | null;
+    aiNextSteps?: string[] | null;
+    aiDifferentialDiagnoses?: any[] | null;
+    aiRedFlags?: string[] | null;
+    aiGeneratedAt?: string | null;
   };
   patient: {
     id: string;
@@ -491,6 +512,7 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
         id, created_at, encounter_status, chief_complaint, diagnosis, icd10_codes, clinical_notes, psychiatric_notes,
         past_medical_history, drug_history, allergies_notes, review_of_systems, physical_exam_systematic,
         signed_at, signed_by, digital_signature_hash, is_locked,
+        ai_summary, ai_patient_summary, ai_key_findings, ai_next_steps, ai_differential_diagnoses, ai_red_flags, ai_generated_at,
         is_break_glass, practitioner_id, patient_id,
         practitioner:practitioner_id(full_name, cadre_rank, license_number),
         nurse:nurse_id(full_name),
@@ -592,7 +614,10 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
     const { data: existingLabsRaw } = await supabase
       .from("lab_orders")
       .select(`
-        id, test_id, status, sample_type, created_at,
+        id, test_id, status, urgency, clinical_indication, sample_type, result_value,
+        units, reference_range, is_out_of_range, is_critical, interpretation,
+        attached_file_url, technician_name, completed_at, acknowledged_at,
+        acknowledged_by_name, acknowledgement_comment, created_at,
         test:test_id(
           price,
           test_catalog:test_catalog_id(name, code)
@@ -607,7 +632,21 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
       testName: (l.test as any)?.test_catalog?.name || "Lab Investigation",
       testCode: (l.test as any)?.test_catalog?.code || null,
       status: l.status,
+      urgency: l.urgency || "routine",
+      clinicalIndication: l.clinical_indication || null,
       sampleType: l.sample_type,
+      resultValue: l.result_value || null,
+      units: l.units || null,
+      referenceRange: l.reference_range || null,
+      isOutOfRange: Boolean(l.is_out_of_range),
+      isCritical: Boolean(l.is_critical),
+      interpretation: l.interpretation || null,
+      attachedFileUrl: l.attached_file_url || null,
+      technicianName: l.technician_name || null,
+      completedAt: l.completed_at || null,
+      acknowledgedAt: l.acknowledged_at || null,
+      acknowledgedByName: l.acknowledged_by_name || null,
+      acknowledgementComment: l.acknowledgement_comment || null,
       notes: null,
       createdAt: l.created_at,
     }));
@@ -682,6 +721,13 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
         signedBy: enc.signed_by || null,
         digitalSignatureHash: enc.digital_signature_hash || null,
         isLocked: Boolean(enc.is_locked),
+        aiSummary: (enc as any).ai_summary || null,
+        aiPatientSummary: (enc as any).ai_patient_summary || null,
+        aiKeyFindings: Array.isArray((enc as any).ai_key_findings) ? (enc as any).ai_key_findings : null,
+        aiNextSteps: Array.isArray((enc as any).ai_next_steps) ? (enc as any).ai_next_steps : null,
+        aiDifferentialDiagnoses: Array.isArray((enc as any).ai_differential_diagnoses) ? (enc as any).ai_differential_diagnoses : null,
+        aiRedFlags: Array.isArray((enc as any).ai_red_flags) ? (enc as any).ai_red_flags : null,
+        aiGeneratedAt: (enc as any).ai_generated_at || null,
       },
       patient: {
         id: patientData.id,
@@ -1151,6 +1197,8 @@ export const orderLabTest = createServerFn({ method: "POST" })
       hospitalTestId: string;
       sampleType?: string | undefined;
       clinicalNotes?: string | undefined;
+      urgency?: "routine" | "urgent" | "stat" | undefined;
+      clinicalIndication?: string | undefined;
     }) => {
       if (!input.encounterId || !input.patientId || !input.hospitalTestId) {
         throw new Error("Missing required lab order information.");
@@ -1162,6 +1210,8 @@ export const orderLabTest = createServerFn({ method: "POST" })
         hospitalTestId: String(input.hospitalTestId).trim(),
         sampleType: input.sampleType ? String(input.sampleType).trim() : "Blood",
         clinicalNotes: input.clinicalNotes ? String(input.clinicalNotes).trim() : undefined,
+        urgency: input.urgency || "routine",
+        clinicalIndication: input.clinicalIndication ? String(input.clinicalIndication).trim() : input.clinicalNotes ? String(input.clinicalNotes).trim() : "Routine Investigation",
       };
     },
   )
@@ -1200,6 +1250,8 @@ export const orderLabTest = createServerFn({ method: "POST" })
         test_id: input.hospitalTestId,
         sample_type: input.sampleType,
         ordered_by: staffRow?.id || null,
+        urgency: input.urgency,
+        clinical_indication: input.clinicalIndication,
         status: "ordered",
       })
       .select("id")

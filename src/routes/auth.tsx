@@ -5,14 +5,32 @@ import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { claimStaffInvitation } from "@/lib/team.functions";
 import {
+  selfRegisterNewPatientAccount,
   verifyAndRegisterPatientAccount,
   getAuthUserRoleRedirect,
 } from "@/lib/patient-portal.functions";
+import { PatientOnboardingModal } from "@/components/auth/PatientOnboardingModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ShieldCheck, UserCheck, Stethoscope, HeartPulse, Sparkles, Building2 } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  ShieldCheck,
+  Building2,
+  HeartPulse,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+  UserPlus,
+} from "lucide-react";
 import { toast } from "sonner";
 import logo from "@/assets/hospnest-logo.png.asset.json";
 
@@ -53,7 +71,8 @@ function AuthPage() {
   const initialEmail = search.email || "";
 
   const claimFn = useServerFn(claimStaffInvitation);
-  const registerPatientFn = useServerFn(verifyAndRegisterPatientAccount);
+  const selfRegisterPatientFn = useServerFn(selfRegisterNewPatientAccount);
+  const verifyPatientFn = useServerFn(verifyAndRegisterPatientAccount);
   const getRoleRedirectFn = useServerFn(getAuthUserRoleRedirect);
 
   const [authRoleTab, setAuthRoleTab] = useState<"staff" | "patient">(
@@ -63,6 +82,7 @@ function AuthPage() {
     inviteToken ? "signup" : "signin"
   );
   const [patientMode, setPatientMode] = useState<"signin" | "register">("signin");
+  const [patientRegType, setPatientRegType] = useState<"new_patient" | "existing_record">("new_patient");
 
   // Staff form fields
   const [email, setEmail] = useState(initialEmail);
@@ -73,10 +93,28 @@ function AuthPage() {
   const [patientFirstName, setPatientFirstName] = useState("");
   const [patientLastName, setPatientLastName] = useState("");
   const [patientDob, setPatientDob] = useState("");
+  const [patientGender, setPatientGender] = useState("other");
+  const [patientPhone, setPatientPhone] = useState("");
   const [patientEmail, setPatientEmail] = useState("");
   const [patientPassword, setPatientPassword] = useState("");
 
+  // Optional Medical Profile
+  const [showOptionalFields, setShowOptionalFields] = useState(false);
+  const [bloodGroup, setBloodGroup] = useState("");
+  const [genotype, setGenotype] = useState("");
+  const [allergiesText, setAllergiesText] = useState("");
+  const [chronicConditionsText, setChronicConditionsText] = useState("");
+  const [emergencyName, setEmergencyName] = useState("");
+  const [emergencyPhone, setEmergencyPhone] = useState("");
+  const [emergencyRelation, setEmergencyRelation] = useState("");
+
+  const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Onboarding Wizard Modal
+  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
+  const [registeredPatientName, setRegisteredPatientName] = useState("");
+  const [registeredPatientEmail, setRegisteredPatientEmail] = useState("");
 
   const resolveRedirect = async () => {
     if (customNext) {
@@ -110,6 +148,7 @@ function AuthPage() {
   async function handleStaffSubmit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
+    setFormError(null);
     try {
       if (staffMode === "signup") {
         const { error } = await supabase.auth.signUp({
@@ -136,8 +175,10 @@ function AuthPage() {
         }
         await resolveRedirect();
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Sign in failed");
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : "Sign in failed";
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -146,28 +187,86 @@ function AuthPage() {
   async function handlePatientSubmit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
+    setFormError(null);
+
     try {
       if (patientMode === "register") {
-        // Prompt 16: Verify NIN, First/Last Name, DOB, link auth user, assign patient role
-        const result = await registerPatientFn({
-          data: {
-            nin: patientNin.trim(),
-            firstName: patientFirstName.trim(),
-            lastName: patientLastName.trim(),
-            dateOfBirth: patientDob,
+        const cleanNin = patientNin.trim().replace(/\D/g, "");
+        if (cleanNin.length !== 11) {
+          throw new Error("Please enter a valid 11-digit NIN.");
+        }
+
+        if (patientRegType === "new_patient") {
+          const allergiesArr = allergiesText
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const chronicArr = chronicConditionsText
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+
+          const result = await selfRegisterPatientFn({
+            data: {
+              nin: cleanNin,
+              firstName: patientFirstName.trim(),
+              lastName: patientLastName.trim(),
+              dateOfBirth: patientDob,
+              gender: patientGender,
+              phone: patientPhone.trim(),
+              email: patientEmail.trim(),
+              password: patientPassword,
+              bloodGroup: bloodGroup || undefined,
+              genotype: genotype || undefined,
+              allergies: allergiesArr,
+              chronicConditions: chronicArr,
+              emergencyContactName: emergencyName.trim() || undefined,
+              emergencyContactPhone: emergencyPhone.trim() || undefined,
+              emergencyContactRelation: emergencyRelation.trim() || undefined,
+            },
+          });
+
+          if (!result?.success) {
+            setFormError(result?.error || "Registration failed. Please check your information.");
+            toast.error(result?.error || "Registration failed.");
+            return;
+          }
+
+          toast.success("Account created successfully!");
+
+          const { error: signInErr } = await supabase.auth.signInWithPassword({
             email: patientEmail.trim(),
             password: patientPassword,
-          },
-        });
+          });
 
-        if (!result?.success) {
-          toast.error(result?.error || "We could not verify your details. Please try again.");
-          return;
-        }
-        {
+          if (signInErr) {
+            toast.info("Account registered. Please sign in with your password.");
+            setPatientMode("signin");
+            return;
+          }
+
+          setRegisteredPatientName(`${patientFirstName} ${patientLastName}`);
+          setRegisteredPatientEmail(patientEmail.trim());
+          setIsOnboardingModalOpen(true);
+        } else {
+          const result = await verifyPatientFn({
+            data: {
+              nin: cleanNin,
+              firstName: patientFirstName.trim(),
+              lastName: patientLastName.trim(),
+              dateOfBirth: patientDob,
+              email: patientEmail.trim(),
+              password: patientPassword,
+            },
+          });
+
+          if (!result?.success) {
+            setFormError(result?.error || "We could not verify your hospital record. You can choose 'I am a new patient' to register directly.");
+            toast.error(result?.error || "Verification failed.");
+            return;
+          }
 
           toast.success("Identity verified! Signing into your patient portal...");
-          // Sign in with the newly registered credentials
           const { error: signInErr } = await supabase.auth.signInWithPassword({
             email: patientEmail.trim(),
             password: patientPassword,
@@ -176,16 +275,17 @@ function AuthPage() {
           navigate({ to: "/portal" });
         }
       } else {
-        // Patient sign in
         const { error } = await supabase.auth.signInWithPassword({
-          email: patientEmail,
+          email: patientEmail.trim(),
           password: patientPassword,
         });
         if (error) throw error;
         navigate({ to: "/portal" });
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Verification or sign-in failed");
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : "Verification or sign-in failed";
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -231,11 +331,13 @@ function AuthPage() {
           </div>
         </div>
 
-        {/* Role Segment Tabs */}
         <div className="mt-6">
           <Tabs
             value={authRoleTab}
-            onValueChange={(val) => setAuthRoleTab(val as "staff" | "patient")}
+            onValueChange={(val) => {
+              setAuthRoleTab(val as "staff" | "patient");
+              setFormError(null);
+            }}
             className="w-full"
           >
             <TabsList className="grid w-full grid-cols-2 p-1 bg-muted/70 rounded-xl">
@@ -255,7 +357,13 @@ function AuthPage() {
               </TabsTrigger>
             </TabsList>
 
-            {/* STAFF TAB CONTENT */}
+            {formError && (
+              <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive flex items-start gap-2 animate-in fade-in duration-200">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{formError}</span>
+              </div>
+            )}
+
             <TabsContent value="staff" className="mt-5 space-y-4">
               <div>
                 <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground">
@@ -297,7 +405,11 @@ function AuthPage() {
                     onChange={(e) => setPassword(e.target.value)}
                   />
                 </div>
-                <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-950" disabled={busy}>
+                <Button
+                  type="submit"
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-950"
+                  disabled={busy}
+                >
                   {inviteToken
                     ? "Activate Account & Join Hospital"
                     : staffMode === "signin"
@@ -317,7 +429,10 @@ function AuthPage() {
               <button
                 type="button"
                 className="mt-4 w-full text-xs text-muted-foreground underline-offset-4 hover:underline text-center"
-                onClick={() => setStaffMode(staffMode === "signin" ? "signup" : "signin")}
+                onClick={() => {
+                  setStaffMode(staffMode === "signin" ? "signup" : "signin");
+                  setFormError(null);
+                }}
               >
                 {staffMode === "signin"
                   ? "Need to register staff credentials? Create account"
@@ -325,17 +440,14 @@ function AuthPage() {
               </button>
             </TabsContent>
 
-            {/* PATIENT TAB CONTENT */}
             <TabsContent value="patient" className="mt-5 space-y-4">
               <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground">
-                    {patientMode === "register" ? "Verify NIN & Create Account" : "Patient Portal Sign In"}
-                  </h1>
-                </div>
+                <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground">
+                  {patientMode === "register" ? "Patient Self-Service Registration" : "Patient Portal Sign In"}
+                </h1>
                 <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
                   {patientMode === "register"
-                    ? "Enter your 11-digit NIN and legal name as registered at the hospital."
+                    ? "Create your universal digital healthcare passport or link your existing records."
                     : "Access your visit records, lab results, prescriptions, and online appointments."}
                 </p>
               </div>
@@ -343,11 +455,45 @@ function AuthPage() {
               <form onSubmit={handlePatientSubmit} className="mt-4 space-y-3.5">
                 {patientMode === "register" && (
                   <>
-                    <div className="rounded-xl border border-teal-500/20 bg-teal-500/5 p-3 text-xs text-teal-800 dark:text-teal-200 flex items-start gap-2">
-                      <Sparkles className="h-4 w-4 shrink-0 mt-0.5 text-teal-600 dark:text-teal-400" />
-                      <span>
-                        Self-service registration instantly links your verified medical identity across participating national hospitals.
-                      </span>
+                    <div className="rounded-2xl border border-teal-500/30 bg-teal-50/50 dark:bg-teal-950/20 p-3.5 space-y-2">
+                      <Label className="text-xs font-semibold text-teal-900 dark:text-teal-200">
+                        Registration Path
+                      </Label>
+                      <RadioGroup
+                        value={patientRegType}
+                        onValueChange={(val) => {
+                          setPatientRegType(val as "new_patient" | "existing_record");
+                          setFormError(null);
+                        }}
+                        className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+                      >
+                        <div
+                          className={`flex items-center space-x-2 rounded-xl border p-2.5 cursor-pointer transition-colors ${
+                            patientRegType === "new_patient"
+                              ? "border-teal-600 bg-white dark:bg-teal-900/40 shadow-xs"
+                              : "border-border/60 bg-transparent hover:bg-white/40"
+                          }`}
+                          onClick={() => setPatientRegType("new_patient")}
+                        >
+                          <RadioGroupItem value="new_patient" id="opt-new" />
+                          <Label htmlFor="opt-new" className="text-xs font-medium cursor-pointer">
+                            I'm a new patient
+                          </Label>
+                        </div>
+                        <div
+                          className={`flex items-center space-x-2 rounded-xl border p-2.5 cursor-pointer transition-colors ${
+                            patientRegType === "existing_record"
+                              ? "border-teal-600 bg-white dark:bg-teal-900/40 shadow-xs"
+                              : "border-border/60 bg-transparent hover:bg-white/40"
+                          }`}
+                          onClick={() => setPatientRegType("existing_record")}
+                        >
+                          <RadioGroupItem value="existing_record" id="opt-existing" />
+                          <Label htmlFor="opt-existing" className="text-xs font-medium cursor-pointer">
+                            I have hospital records
+                          </Label>
+                        </div>
+                      </RadioGroup>
                     </div>
 
                     <div className="space-y-1.5">
@@ -388,16 +534,137 @@ function AuthPage() {
                       </div>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <Label htmlFor="patient-dob">Date of Birth</Label>
-                      <Input
-                        id="patient-dob"
-                        type="date"
-                        required
-                        value={patientDob}
-                        onChange={(e) => setPatientDob(e.target.value)}
-                      />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="patient-dob">Date of Birth</Label>
+                        <Input
+                          id="patient-dob"
+                          type="date"
+                          required
+                          value={patientDob}
+                          onChange={(e) => setPatientDob(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="patient-gender">Gender</Label>
+                        <Select value={patientGender} onValueChange={(val) => setPatientGender(val)}>
+                          <SelectTrigger id="patient-gender">
+                            <SelectValue placeholder="Gender" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="male">Male</SelectItem>
+                            <SelectItem value="female">Female</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
+
+                    {patientRegType === "new_patient" && (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="patient-phone">Phone Number</Label>
+                        <Input
+                          id="patient-phone"
+                          type="tel"
+                          placeholder="08012345678"
+                          value={patientPhone}
+                          onChange={(e) => setPatientPhone(e.target.value)}
+                        />
+                      </div>
+                    )}
+
+                    {/* Optional Health Profile */}
+                    {patientRegType === "new_patient" && (
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowOptionalFields(!showOptionalFields)}
+                          className="flex items-center gap-1.5 text-xs font-semibold text-teal-700 dark:text-teal-400 hover:underline"
+                        >
+                          {showOptionalFields ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                          <span>Optional Health & Emergency Contact Info</span>
+                        </button>
+
+                        {showOptionalFields && (
+                          <div className="mt-2.5 rounded-2xl border border-border/80 bg-muted/30 p-3.5 space-y-3 animate-in fade-in">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <Label htmlFor="blood-group" className="text-xs">Blood Group</Label>
+                                <Select value={bloodGroup} onValueChange={(val) => setBloodGroup(val)}>
+                                  <SelectTrigger id="blood-group" className="h-8 text-xs">
+                                    <SelectValue placeholder="Select" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bg) => (
+                                      <SelectItem key={bg} value={bg}>{bg}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1">
+                                <Label htmlFor="genotype" className="text-xs">Genotype</Label>
+                                <Select value={genotype} onValueChange={(val) => setGenotype(val)}>
+                                  <SelectTrigger id="genotype" className="h-8 text-xs">
+                                    <SelectValue placeholder="Select" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {["AA", "AS", "SS", "AC", "SC"].map((gt) => (
+                                      <SelectItem key={gt} value={gt}>{gt}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1">
+                              <Label htmlFor="allergies" className="text-xs">Known Allergies</Label>
+                              <Input
+                                id="allergies"
+                                placeholder="e.g. Penicillin, Peanuts (comma separated)"
+                                className="h-8 text-xs"
+                                value={allergiesText}
+                                onChange={(e) => setAllergiesText(e.target.value)}
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <Label htmlFor="chronic" className="text-xs">Chronic Conditions</Label>
+                              <Input
+                                id="chronic"
+                                placeholder="e.g. Hypertension, Asthma (comma separated)"
+                                className="h-8 text-xs"
+                                value={chronicConditionsText}
+                                onChange={(e) => setChronicConditionsText(e.target.value)}
+                              />
+                            </div>
+
+                            <div className="pt-2 border-t space-y-2">
+                              <Label className="text-xs font-semibold text-foreground">Emergency Contact</Label>
+                              <div className="grid grid-cols-2 gap-2">
+                                <Input
+                                  placeholder="Full Name"
+                                  className="h-8 text-xs"
+                                  value={emergencyName}
+                                  onChange={(e) => setEmergencyName(e.target.value)}
+                                />
+                                <Input
+                                  placeholder="Phone Number"
+                                  className="h-8 text-xs"
+                                  value={emergencyPhone}
+                                  onChange={(e) => setEmergencyPhone(e.target.value)}
+                                />
+                              </div>
+                              <Input
+                                placeholder="Relationship (e.g. Spouse, Sibling)"
+                                className="h-8 text-xs"
+                                value={emergencyRelation}
+                                onChange={(e) => setEmergencyRelation(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -435,8 +702,8 @@ function AuthPage() {
                 >
                   {patientMode === "register" ? (
                     <span className="flex items-center justify-center gap-2">
-                      <UserCheck className="h-4 w-4" />
-                      Verify Identity & Create Account
+                      <UserPlus className="h-4 w-4" />
+                      {patientRegType === "new_patient" ? "Create Account & Choose Hospital" : "Verify NIN & Link Hospital Account"}
                     </span>
                   ) : (
                     "Sign In to Patient Portal"
@@ -447,16 +714,33 @@ function AuthPage() {
               <button
                 type="button"
                 className="mt-4 w-full text-xs text-teal-700 dark:text-teal-400 font-medium underline-offset-4 hover:underline text-center"
-                onClick={() => setPatientMode(patientMode === "signin" ? "register" : "signin")}
+                onClick={() => {
+                  setPatientMode(patientMode === "signin" ? "register" : "signin");
+                  setFormError(null);
+                }}
               >
                 {patientMode === "signin"
-                  ? "First time here? Verify your NIN to activate account"
-                  : "Already activated your account? Sign in"}
+                  ? "New here or need to register? Create self-service account"
+                  : "Already registered? Sign in"}
               </button>
             </TabsContent>
           </Tabs>
         </div>
       </div>
+
+      <PatientOnboardingModal
+        isOpen={isOnboardingModalOpen}
+        onClose={() => {
+          setIsOnboardingModalOpen(false);
+          navigate({ to: "/portal" });
+        }}
+        patientName={registeredPatientName}
+        patientEmail={registeredPatientEmail}
+        onFinished={() => {
+          setIsOnboardingModalOpen(false);
+          navigate({ to: "/portal" });
+        }}
+      />
     </main>
   );
 }

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -14,11 +15,14 @@ import {
   ArrowUpRight,
   BarChart3,
   Bed,
+  Bell,
   Calendar,
   CheckCircle2,
+  ChevronRight,
   Clock,
   CreditCard,
   DoorOpen,
+  Eye,
   FileCheck2,
   FileSpreadsheet,
   FileText,
@@ -27,10 +31,12 @@ import {
   HeartPulse,
   Hospital,
   IdCard,
+  Inbox,
   Layers,
   Package,
   Pill,
   Plus,
+  Radio,
   Receipt,
   RefreshCw,
   ShieldAlert,
@@ -38,6 +44,7 @@ import {
   Sparkles,
   Stethoscope,
   TrendingUp,
+  User,
   UserCheck,
   UserPlus,
   Users,
@@ -45,6 +52,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LabResultReviewModal } from "@/components/clinical-docs/LabResultReviewModal";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -83,6 +92,10 @@ const DEPT_COLORS = ["#0d9488", "#3b82f6", "#8b5cf6", "#f59e0b", "#ec4899", "#10
 export function DashboardPage() {
   const { activeHospitalId } = useAppShell();
   const getDashboardDataFn = useServerFn(getRoleDashboardData);
+
+  const [activeQueueTab, setActiveQueueTab] = useState<"waiting_doctor" | "waiting_triage" | "in_consultation" | "diagnostic_hold" | "pharmacy_hold">("waiting_doctor");
+  const [activeReviewLabOrder, setActiveReviewLabOrder] = useState<any | null>(null);
+  const [selectedLabPatient, setSelectedLabPatient] = useState<{ id: string; name: string } | null>(null);
 
   const { data, isLoading, refetch, isRefetching } = useQuery<RoleDashboardResult>({
     queryKey: ["role-dashboard-data", activeHospitalId],
@@ -189,7 +202,7 @@ export function DashboardPage() {
       {/* ---------------------------------------------------- */}
       {role === "doctor" && data?.doctorData && (
         <div className="space-y-6">
-          {/* Doctor KPIs */}
+          {/* Doctor Top KPI Strip */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card className="shadow-soft border-border">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -228,16 +241,16 @@ export function DashboardPage() {
             <Card className="shadow-soft border-border">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  My Inpatients
+                  Diagnostic Holds
                 </CardTitle>
-                <Bed className="size-4 text-primary" />
+                <FlaskConical className="size-4 text-amber-600" />
               </CardHeader>
               <CardContent>
                 <div className="font-display text-3xl font-bold text-foreground">
-                  {data.doctorData.supervisedInpatientsCount}
+                  {data.doctorData.labStatusSummary.pendingResults}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Admitted under your clinical supervision
+                  Lab investigations awaiting processing
                 </p>
               </CardContent>
             </Card>
@@ -245,66 +258,153 @@ export function DashboardPage() {
             <Card className="shadow-soft border-border">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Ready Lab Results
+                  Critical Lab Alerts
                 </CardTitle>
-                <FlaskConical className="size-4 text-purple-600" />
+                <AlertTriangle className="size-4 text-rose-600" />
               </CardHeader>
               <CardContent>
-                <div className="font-display text-3xl font-bold text-foreground">
-                  {data.doctorData.completedLabResultsCount}
+                <div className="font-display text-3xl font-bold text-rose-600 dark:text-rose-400">
+                  {data.doctorData.criticalLabAlerts.length}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Investigations returned from diagnostic lab
+                  {data.doctorData.labStatusSummary.completedToday} total results completed today
                 </p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Doctor Main Grid: Waiting Patients & Supervised Inpatients */}
+          {/* Appointment Metrics & Hourly Traffic Strip */}
           <div className="grid gap-6 lg:grid-cols-12">
-            {/* Waiting Queue Worklist */}
-            <div className="space-y-4 lg:col-span-7">
-              <Card className="shadow-soft border-border">
-                <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-3">
-                  <div>
-                    <CardTitle className="text-base font-bold text-foreground">
-                      Awaiting Patients Worklist
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      Patients in triage and consultation queue ready for clinical review.
-                    </CardDescription>
+            <Card className="shadow-soft border-border lg:col-span-4">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <Calendar className="size-4 text-teal-600" />
+                  Today's Appointment Metrics
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Clinic volume & intake conversion rate.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl border border-border bg-muted/30 p-2.5">
+                    <span className="text-[10px] uppercase font-semibold text-muted-foreground block">Total Booked</span>
+                    <span className="font-display text-xl font-bold text-foreground">{data.doctorData.appointmentMetrics.todayTotal}</span>
                   </div>
-                  <Button asChild size="sm" variant="ghost" className="gap-1 text-xs">
-                    <Link to="/consultations">
-                      View All <ArrowRight className="size-3" />
-                    </Link>
-                  </Button>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {data.doctorData.waitingQueue.length === 0 ? (
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2.5">
+                    <span className="text-[10px] uppercase font-semibold text-emerald-800 dark:text-emerald-300 block">Completed</span>
+                    <span className="font-display text-xl font-bold text-emerald-700 dark:text-emerald-400">{data.doctorData.appointmentMetrics.completed}</span>
+                  </div>
+                  <div className="rounded-xl border border-teal-500/20 bg-teal-500/10 p-2.5">
+                    <span className="text-[10px] uppercase font-semibold text-teal-800 dark:text-teal-300 block">Checked In</span>
+                    <span className="font-display text-xl font-bold text-teal-700 dark:text-teal-400">{data.doctorData.appointmentMetrics.checkedIn}</span>
+                  </div>
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-2.5">
+                    <span className="text-[10px] uppercase font-semibold text-amber-800 dark:text-amber-300 block">Pending / Wait</span>
+                    <span className="font-display text-xl font-bold text-amber-700 dark:text-amber-400">{data.doctorData.appointmentMetrics.pending}</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Self-Service Online: <strong className="text-foreground">{data.doctorData.appointmentMetrics.externalOnlineBookings}</strong></span>
+                  <span>No-Show Rate: <strong className={data.doctorData.appointmentMetrics.noShowRate > 15 ? "text-rose-600" : "text-foreground"}>{data.doctorData.appointmentMetrics.noShowRate}%</strong></span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-soft border-border lg:col-span-8">
+              <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <TrendingUp className="size-4 text-teal-600" />
+                    Hourly Appointment & Patient Inflow
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Distribution of patient arrivals and consultation times across the clinic day.
+                  </CardDescription>
+                </div>
+                <Badge variant="outline" className="text-[10px] font-mono">Clinic Hours 08:00 – 17:00</Badge>
+              </CardHeader>
+              <CardContent className="h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.doctorData.appointmentMetrics.hourlyTraffic}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                    <XAxis dataKey="hour" tick={{ fontSize: 10 }} />
+                    <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#0d9488" radius={[4, 4, 0, 0]} name="Patients" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Patient Assignment Queues Section */}
+          <Card className="shadow-soft border-border">
+            <CardHeader className="border-b border-border pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                    <Layers className="size-4 text-teal-600" />
+                    Live Patient Flow & Assignment Queues
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Real-time status of patients across triage, consultation, diagnostic holds, and pharmacy.
+                  </CardDescription>
+                </div>
+                <Button asChild size="sm" className="h-7 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold">
+                  <Link to="/consultations">
+                    Open Consultations Workspace <ArrowRight className="size-3 ml-1" />
+                  </Link>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 space-y-4">
+              <Tabs
+                value={activeQueueTab}
+                onValueChange={(val: any) => setActiveQueueTab(val)}
+                className="w-full"
+              >
+                <TabsList className="grid grid-cols-2 sm:grid-cols-5 h-auto p-1 bg-muted/60">
+                  <TabsTrigger value="waiting_doctor" className="text-xs py-1.5">
+                    🩺 Awaiting Doctor ({data.doctorData.patientAssignmentQueues.waitingDoctor.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="waiting_triage" className="text-xs py-1.5">
+                    🌡️ Waiting Triage ({data.doctorData.patientAssignmentQueues.waitingTriage.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="in_consultation" className="text-xs py-1.5">
+                    👨‍⚕️ In Consultation ({data.doctorData.patientAssignmentQueues.inConsultation.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="diagnostic_hold" className="text-xs py-1.5">
+                    🔬 Diagnostic Hold ({data.doctorData.patientAssignmentQueues.diagnosticHold.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="pharmacy_hold" className="text-xs py-1.5">
+                    💊 Pharmacy Hold ({data.doctorData.patientAssignmentQueues.pharmacyHold.length})
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* Tab 1: Waiting Doctor */}
+                <TabsContent value="waiting_doctor" className="pt-3">
+                  {data.doctorData.patientAssignmentQueues.waitingDoctor.length === 0 ? (
                     <div className="p-8 text-center text-xs text-muted-foreground">
                       <CheckCircle2 className="mx-auto size-8 text-emerald-500/70" />
-                      <p className="mt-2 font-medium">No patients waiting in consultation queue.</p>
+                      <p className="mt-2 font-medium">No patients currently waiting for doctor assignment.</p>
                     </div>
                   ) : (
                     <div className="divide-y divide-border">
-                      {data.doctorData.waitingQueue.map((item) => (
-                        <div key={item.encounterId} className="flex items-center justify-between p-3.5 hover:bg-muted/30 text-xs">
+                      {data.doctorData.patientAssignmentQueues.waitingDoctor.map((item) => (
+                        <div key={item.encounterId} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 hover:bg-muted/30 text-xs gap-2">
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-foreground">{item.patientName}</span>
-                              <span className="rounded bg-secondary px-1.5 py-0.2 text-[10px]">
-                                {item.age} • {item.gender}
-                              </span>
+                              <span className="text-muted-foreground font-mono text-[11px]">NIN: {item.nin}</span>
                               {item.vitals?.isUrgent && (
-                                <span className="rounded-full bg-rose-500/15 px-1.5 py-0.2 font-mono text-[10px] font-bold text-rose-700 dark:text-rose-300 flex items-center gap-0.5">
-                                  <ShieldAlert className="size-3" /> Alert
-                                </span>
+                                <Badge className="bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30 text-[9px] font-bold">
+                                  Urgent Vitals
+                                </Badge>
                               )}
                             </div>
-                            <p className="text-muted-foreground">
-                              Complaint: {item.chiefComplaint || "Routine consultation"}
-                            </p>
+                            <p className="text-muted-foreground">Complaint: {item.chiefComplaint || "General consultation"}</p>
                             {item.vitals && (
                               <div className="flex gap-2 font-mono text-[11px] text-muted-foreground">
                                 <span>Temp: {item.vitals.temperature ?? "--"}°C</span>
@@ -313,31 +413,240 @@ export function DashboardPage() {
                               </div>
                             )}
                           </div>
-                          <Button asChild size="sm" className="h-7 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold">
-                            <Link to="/consultations">
-                              Consult
-                            </Link>
+                          <Button asChild size="sm" className="h-7 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold shrink-0">
+                            <Link to="/consultations">Consult Now</Link>
                           </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* Tab 2: Waiting Triage */}
+                <TabsContent value="waiting_triage" className="pt-3">
+                  {data.doctorData.patientAssignmentQueues.waitingTriage.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-muted-foreground">
+                      No patients waiting in triage intake.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {data.doctorData.patientAssignmentQueues.waitingTriage.map((item) => (
+                        <div key={item.encounterId} className="flex items-center justify-between p-3 hover:bg-muted/30 text-xs">
+                          <div>
+                            <span className="font-bold text-foreground">{item.patientName}</span>
+                            <span className="text-muted-foreground font-mono text-[11px] ml-2">NIN: {item.nin}</span>
+                            <p className="text-muted-foreground mt-0.5">Complaint: {item.chiefComplaint || "Routine"}</p>
+                          </div>
+                          <Badge variant="outline" className="text-[10px]">Awaiting Vitals</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* Tab 3: In Consultation */}
+                <TabsContent value="in_consultation" className="pt-3">
+                  {data.doctorData.patientAssignmentQueues.inConsultation.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-muted-foreground">
+                      No active consultations currently in progress.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {data.doctorData.patientAssignmentQueues.inConsultation.map((item) => (
+                        <div key={item.encounterId} className="flex items-center justify-between p-3 hover:bg-muted/30 text-xs">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-foreground">{item.patientName}</span>
+                              {item.isMine && (
+                                <Badge className="bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/30 text-[9px] font-bold">
+                                  Your Patient
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-muted-foreground text-[11px]">Attended by {item.doctorName} • Started {new Date(item.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                          </div>
+                          <Button asChild size="sm" variant="outline" className="h-7 text-xs border-border">
+                            <Link to="/consultations">View File</Link>
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* Tab 4: Diagnostic Hold */}
+                <TabsContent value="diagnostic_hold" className="pt-3">
+                  {data.doctorData.patientAssignmentQueues.diagnosticHold.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-muted-foreground">
+                      No patients currently on diagnostic hold.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {data.doctorData.patientAssignmentQueues.diagnosticHold.map((item) => (
+                        <div key={item.orderId} className="flex items-center justify-between p-3 hover:bg-muted/30 text-xs">
+                          <div>
+                            <span className="font-bold text-foreground">{item.patientName}</span>
+                            <span className="text-muted-foreground ml-2">Investigation: <strong className="text-foreground">{item.testName}</strong></span>
+                            <p className="text-muted-foreground text-[11px] mt-0.5">Ordered {new Date(item.orderedAt).toLocaleTimeString()}</p>
+                          </div>
+                          <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 text-[10px] uppercase font-mono">
+                            {item.status.replace("_", " ")}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* Tab 5: Pharmacy Hold */}
+                <TabsContent value="pharmacy_hold" className="pt-3">
+                  {data.doctorData.patientAssignmentQueues.pharmacyHold.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-muted-foreground">
+                      No patients currently waiting at pharmacy.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {data.doctorData.patientAssignmentQueues.pharmacyHold.map((item) => (
+                        <div key={item.prescriptionId} className="flex items-center justify-between p-3 hover:bg-muted/30 text-xs">
+                          <div>
+                            <span className="font-bold text-foreground">{item.patientName}</span>
+                            <p className="text-muted-foreground text-[11px] mt-0.5">{item.drugsCount} prescription item(s) • Sent {new Date(item.orderedAt).toLocaleTimeString()}</p>
+                          </div>
+                          <Badge variant="outline" className="text-[10px]">Awaiting Dispense</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+
+          {/* Critical Lab Results & Live Notifications Section */}
+          <div className="grid gap-6 lg:grid-cols-12">
+            {/* Critical Lab Alert Feed */}
+            <Card className="shadow-soft border-border lg:col-span-7">
+              <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-3">
+                <div>
+                  <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                    <FlaskConical className="size-4 text-purple-600" />
+                    Critical & Abnormal Lab Results Feed
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Returned laboratory investigations requiring physician review and acknowledgment.
+                  </CardDescription>
+                </div>
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  {data.doctorData.criticalLabAlerts.length} Critical
+                </Badge>
+              </CardHeader>
+              <CardContent className="p-0">
+                {data.doctorData.criticalLabAlerts.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-muted-foreground">
+                    <CheckCircle2 className="mx-auto size-8 text-emerald-500/70" />
+                    <p className="mt-2 font-medium">No critical panic values or abnormal lab alerts flagged today.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border max-h-96 overflow-y-auto">
+                    {data.doctorData.criticalLabAlerts.map((alert) => (
+                      <div key={alert.orderId} className={`p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${alert.isCritical ? "bg-rose-500/5" : "hover:bg-muted/30"}`}>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-foreground">{alert.patientName}</span>
+                            <span className="text-muted-foreground font-mono text-[10px]">NIN: {alert.nin}</span>
+                            {alert.isCritical && (
+                              <Badge className="bg-rose-600 text-white text-[9px] font-bold animate-pulse">
+                                CRITICAL PANIC
+                              </Badge>
+                            )}
+                            {alert.acknowledgedAt && (
+                              <Badge variant="outline" className="text-[9px] text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                                Acknowledged
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-foreground font-semibold">
+                            {alert.testName}: <span className="font-mono text-rose-600 dark:text-rose-400 font-bold">{alert.resultValue} {alert.units}</span>
+                            {alert.referenceRange ? ` (Ref: ${alert.referenceRange})` : ""}
+                          </p>
+                          <span className="text-[10px] text-muted-foreground block">
+                            Verified by {alert.technicianName} • {new Date(alert.completedAt).toLocaleTimeString()}
+                          </span>
+                        </div>
+
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setActiveReviewLabOrder({
+                              id: alert.orderId,
+                              testName: alert.testName,
+                              resultValue: alert.resultValue,
+                              units: alert.units,
+                              referenceRange: alert.referenceRange,
+                              isCritical: alert.isCritical,
+                              isOutOfRange: alert.isOutOfRange,
+                              technicianName: alert.technicianName,
+                              completedAt: alert.completedAt,
+                              acknowledgedAt: alert.acknowledgedAt,
+                              acknowledgedByName: alert.acknowledgedByName,
+                            });
+                            setSelectedLabPatient({ id: alert.patientId, name: alert.patientName });
+                          }}
+                          className="h-7 text-xs bg-purple-600 hover:bg-purple-700 text-white font-semibold shrink-0 gap-1"
+                        >
+                          <Eye className="size-3" /> Review Report
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Doctor Notifications & Inpatients */}
+            <div className="space-y-4 lg:col-span-5">
+              {/* Doctor Notifications */}
+              <Card className="shadow-soft border-border">
+                <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-3">
+                  <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <Bell className="size-4 text-teal-600" />
+                    Doctor Clinical Alerts & Notifications
+                  </CardTitle>
+                  <span className="text-[10px] font-mono text-muted-foreground">{data.doctorData.notifications.length} total</span>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {data.doctorData.notifications.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-muted-foreground italic">
+                      No unread doctor alerts.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border max-h-56 overflow-y-auto">
+                      {data.doctorData.notifications.map((n) => (
+                        <div key={n.id} className={`p-3 text-xs space-y-0.5 ${!n.isRead ? "bg-teal-500/5 font-medium" : ""}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-foreground">{n.title}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono">{new Date(n.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                          <p className="text-muted-foreground text-[11px]">{n.message}</p>
+                          {n.patientName && (
+                            <span className="text-[10px] text-teal-700 dark:text-teal-400 font-semibold block">Patient: {n.patientName}</span>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
                 </CardContent>
               </Card>
-            </div>
 
-            {/* Inpatients & Quick Tools */}
-            <div className="space-y-4 lg:col-span-5">
-              {/* Supervised Inpatients */}
+              {/* Inpatients Supervised */}
               <Card className="shadow-soft border-border">
                 <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-3">
-                  <CardTitle className="text-base font-bold text-foreground">
-                    Inpatients Supervised ({data.doctorData.inpatients.length})
+                  <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <Bed className="size-4 text-primary" />
+                    Supervised Inpatients ({data.doctorData.inpatients.length})
                   </CardTitle>
-                  <Button asChild size="sm" variant="ghost" className="gap-1 text-xs">
-                    <Link to="/wards">
-                      Ward Matrix <ArrowRight className="size-3" />
-                    </Link>
+                  <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
+                    <Link to="/wards">Wards</Link>
                   </Button>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -346,9 +655,9 @@ export function DashboardPage() {
                       No active inpatients currently assigned to your profile.
                     </div>
                   ) : (
-                    <div className="divide-y divide-border">
+                    <div className="divide-y divide-border max-h-48 overflow-y-auto">
                       {data.doctorData.inpatients.map((adm) => (
-                        <div key={adm.admissionId} className="p-3 hover:bg-muted/30 text-xs flex items-center justify-between">
+                        <div key={adm.admissionId} className="p-2.5 hover:bg-muted/30 text-xs flex items-center justify-between">
                           <div>
                             <span className="font-bold text-foreground">{adm.patientName}</span>
                             <p className="text-[11px] text-muted-foreground">
@@ -364,39 +673,22 @@ export function DashboardPage() {
                   )}
                 </CardContent>
               </Card>
-
-              {/* Quick Clinical Tool Shortcuts */}
-              <Card className="shadow-soft border-border bg-gradient-to-br from-teal-500/5 via-card to-card">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
-                    <Sparkles className="size-4 text-purple-600" /> Clinical Action Shortcuts
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid grid-cols-2 gap-2 text-xs">
-                  <Button asChild variant="outline" size="sm" className="h-9 justify-start gap-1.5 border-border">
-                    <Link to="/consultations">
-                      <Stethoscope className="size-3.5 text-teal-600" /> Start SOAP Note
-                    </Link>
-                  </Button>
-                  <Button asChild variant="outline" size="sm" className="h-9 justify-start gap-1.5 border-border">
-                    <Link to="/wards">
-                      <Bed className="size-3.5 text-primary" /> Ward Round
-                    </Link>
-                  </Button>
-                  <Button asChild variant="outline" size="sm" className="h-9 justify-start gap-1.5 border-border">
-                    <Link to="/transfers">
-                      <ArrowRight className="size-3.5 text-amber-600" /> Patient Transfer
-                    </Link>
-                  </Button>
-                  <Button asChild variant="outline" size="sm" className="h-9 justify-start gap-1.5 border-border">
-                    <Link to="/patients">
-                      <Users className="size-3.5 text-blue-600" /> Patient 360
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
             </div>
           </div>
+
+          {/* Modal for Doctor Closed-Loop Lab Review */}
+          {activeReviewLabOrder && (
+            <LabResultReviewModal
+              isOpen={Boolean(activeReviewLabOrder)}
+              onClose={() => setActiveReviewLabOrder(null)}
+              order={activeReviewLabOrder}
+              patientId={selectedLabPatient?.id || ""}
+              patientName={selectedLabPatient?.name || "Patient"}
+              onAcknowledged={() => {
+                refetch();
+              }}
+            />
+          )}
         </div>
       )}
 
@@ -905,6 +1197,191 @@ export function DashboardPage() {
             </Card>
           </div>
 
+          {/* Appointment Metrics & Hourly Traffic Chart Strip for Hospital Admin */}
+          {data.adminData.appointmentStats && (
+            <div className="grid gap-6 lg:grid-cols-12">
+              <Card className="shadow-soft border-border lg:col-span-4">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <Calendar className="size-4 text-teal-600" />
+                    Appointment Operations & Conversion
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Intake metrics, online directory reservations & attendance rates.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-border bg-muted/30 p-2.5">
+                      <span className="text-[10px] uppercase font-semibold text-muted-foreground block">Today's Bookings</span>
+                      <span className="font-display text-xl font-bold text-foreground">{data.adminData.appointmentStats.todayTotal}</span>
+                    </div>
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2.5">
+                      <span className="text-[10px] uppercase font-semibold text-emerald-800 dark:text-emerald-300 block">Completed</span>
+                      <span className="font-display text-xl font-bold text-emerald-700 dark:text-emerald-400">{data.adminData.appointmentStats.completed}</span>
+                    </div>
+                    <div className="rounded-xl border border-teal-500/20 bg-teal-500/10 p-2.5">
+                      <span className="text-[10px] uppercase font-semibold text-teal-800 dark:text-teal-300 block">Checked In</span>
+                      <span className="font-display text-xl font-bold text-teal-700 dark:text-teal-400">{data.adminData.appointmentStats.checkedIn}</span>
+                    </div>
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-2.5">
+                      <span className="text-[10px] uppercase font-semibold text-amber-800 dark:text-amber-300 block">Pending / Wait</span>
+                      <span className="font-display text-xl font-bold text-amber-700 dark:text-amber-400">{data.adminData.appointmentStats.pending}</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Online Self-Service: <strong className="text-foreground">{data.adminData.appointmentStats.externalOnlineBookings}</strong></span>
+                    <span>No-Show Rate: <strong className={data.adminData.appointmentStats.noShowRate > 15 ? "text-rose-600" : "text-foreground"}>{data.adminData.appointmentStats.noShowRate}%</strong></span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-soft border-border lg:col-span-8">
+                <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                      <TrendingUp className="size-4 text-teal-600" />
+                      Hourly Clinic Patient Traffic Distribution
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Today's patient arrival density across clinical operating hours.
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-mono">08:00 – 17:00</Badge>
+                </CardHeader>
+                <CardContent className="h-44">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.adminData.appointmentStats.hourlyTraffic}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                      <XAxis dataKey="hour" tick={{ fontSize: 10 }} />
+                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                      <Tooltip />
+                      <Bar dataKey="count" fill="#0d9488" radius={[4, 4, 0, 0]} name="Patients" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Patient Flow & Department Queues Strip */}
+          {data.adminData.patientFlowQueues && (
+            <Card className="shadow-soft border-border">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <Layers className="size-4 text-teal-600" />
+                  Live Patient Flow & Queue Bottleneck Monitor
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Active patient volume stationed across hospital checkpoints.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center text-xs">
+                  <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-1">
+                    <span className="text-[10px] uppercase font-semibold text-muted-foreground block">Waiting Triage</span>
+                    <span className="font-display text-2xl font-bold text-foreground">{data.adminData.patientFlowQueues.waitingTriageCount}</span>
+                    <span className="text-[10px] text-muted-foreground block">At front lobby</span>
+                  </div>
+                  <div className="rounded-xl border border-teal-500/30 bg-teal-500/10 p-3 space-y-1">
+                    <span className="text-[10px] uppercase font-semibold text-teal-800 dark:text-teal-300 block">Waiting Doctor</span>
+                    <span className="font-display text-2xl font-bold text-teal-700 dark:text-teal-400">{data.adminData.patientFlowQueues.waitingDoctorCount}</span>
+                    <span className="text-[10px] text-teal-700 dark:text-teal-300 block">Triaged & ready</span>
+                  </div>
+                  <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-1">
+                    <span className="text-[10px] uppercase font-semibold text-muted-foreground block">In Consultation</span>
+                    <span className="font-display text-2xl font-bold text-foreground">{data.adminData.patientFlowQueues.inConsultationCount}</span>
+                    <span className="text-[10px] text-muted-foreground block">With physician</span>
+                  </div>
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-1">
+                    <span className="text-[10px] uppercase font-semibold text-amber-800 dark:text-amber-300 block">Diagnostic Hold</span>
+                    <span className="font-display text-2xl font-bold text-amber-700 dark:text-amber-400">{data.adminData.patientFlowQueues.diagnosticHoldCount}</span>
+                    <span className="text-[10px] text-amber-700 dark:text-amber-300 block">Lab / Imaging</span>
+                  </div>
+                  <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-3 space-y-1">
+                    <span className="text-[10px] uppercase font-semibold text-purple-800 dark:text-purple-300 block">Pharmacy Hold</span>
+                    <span className="font-display text-2xl font-bold text-purple-700 dark:text-purple-400">{data.adminData.patientFlowQueues.pharmacyHoldCount}</span>
+                    <span className="text-[10px] text-purple-700 dark:text-purple-300 block">Prescription fill</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Diagnostic Turnaround Summary */}
+          {data.adminData.diagnosticTurnaround && (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card className="shadow-soft border-border">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Lab Orders Today
+                  </CardTitle>
+                  <FlaskConical className="size-4 text-purple-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="font-display text-2xl font-bold text-foreground">
+                    {data.adminData.diagnosticTurnaround.labOrdersToday}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {data.adminData.diagnosticTurnaround.labPending} pending • {data.adminData.diagnosticTurnaround.labCritical} critical
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-soft border-border">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Critical Lab Panic Values
+                  </CardTitle>
+                  <AlertTriangle className="size-4 text-rose-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="font-display text-2xl font-bold text-rose-600 dark:text-rose-400">
+                    {data.adminData.diagnosticTurnaround.labCritical}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Flagged for urgent doctor review
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-soft border-border">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Radiology Studies Today
+                  </CardTitle>
+                  <Radio className="size-4 text-blue-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="font-display text-2xl font-bold text-foreground">
+                    {data.adminData.diagnosticTurnaround.radiologyStudiesToday}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    X-ray, Ultrasound, CT scans ordered
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-soft border-border">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Radiology Pending
+                  </CardTitle>
+                  <Clock className="size-4 text-amber-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="font-display text-2xl font-bold text-foreground">
+                    {data.adminData.diagnosticTurnaround.radiologyPending}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Awaiting scan acquisition or reporting
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* Charts Row */}
           <div className="grid gap-6 lg:grid-cols-12">
             <Card className="shadow-soft border-border lg:col-span-8">
@@ -966,6 +1443,358 @@ export function DashboardPage() {
                       <Tooltip />
                     </PieChart>
                   </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* 6. FRONT DESK DASHBOARD VIEW */}
+      {/* ---------------------------------------------------- */}
+      {role === "front_desk" && data?.frontDeskData && (
+        <div className="space-y-6">
+          {/* Front Desk KPI Cards */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card className="shadow-soft border-border">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Today's Appointments
+                </CardTitle>
+                <Calendar className="size-4 text-teal-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="font-display text-3xl font-bold text-foreground">
+                  {data.frontDeskData.todayAppointmentsCount}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {data.frontDeskData.onlineBookingsCount} booked directly online
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-soft border-border">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Online Self-Service Bookings
+                </CardTitle>
+                <Sparkles className="size-4 text-emerald-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="font-display text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {data.frontDeskData.onlineBookingsCount}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  From HospNest verified directory
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-soft border-border">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Waiting in Intake / Triage
+                </CardTitle>
+                <Clock className="size-4 text-amber-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="font-display text-3xl font-bold text-foreground">
+                  {data.frontDeskData.checkedInTodayCount}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Patients currently awaiting routing
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-soft border-border">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Bed Availability
+                </CardTitle>
+                <Bed className="size-4 text-sky-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="font-display text-3xl font-bold text-foreground">
+                  {data.frontDeskData.availableBedsCount} <span className="text-sm font-normal text-muted-foreground">/ {data.frontDeskData.totalBedsCount}</span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Open inpatient beds ready for admission
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Appointments & Live Triage Layout */}
+          <div className="grid gap-6 lg:grid-cols-12">
+            {/* Today's Appointments & Online Direct Bookings */}
+            <Card className="shadow-soft border-border lg:col-span-8">
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <div>
+                  <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                    <Calendar className="size-4 text-teal-600" />
+                    Today's Schedule & Online Bookings
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Scheduled clinic appointments and verified online reservations.
+                  </CardDescription>
+                </div>
+                <Button asChild size="sm" className="h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold">
+                  <Link to="/front-desk">Open Front Desk</Link>
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                {data.frontDeskData.todayAppointments.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-muted-foreground italic">
+                    No scheduled appointments for today yet.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border max-h-96 overflow-y-auto">
+                    {data.frontDeskData.todayAppointments.map((appt) => (
+                      <div key={appt.id} className="p-3.5 text-xs flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-foreground text-sm">{appt.patientName}</span>
+                            {appt.isExternalBooking && (
+                              <Badge className="bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/30 text-[9px] font-bold">
+                                Online Direct Booking
+                              </Badge>
+                            )}
+                            <Badge variant="outline" className="text-[10px] capitalize">
+                              {appt.status}
+                            </Badge>
+                          </div>
+                          <p className="text-muted-foreground text-[11px]">
+                            Time: <strong className="font-mono text-foreground">{appt.appointmentTime}</strong>
+                            {appt.doctorName ? ` • Physician: ${appt.doctorName}` : ""}
+                            {appt.bookingReference ? ` • Ref: ${appt.bookingReference}` : ""}
+                          </p>
+                        </div>
+
+                        <Button asChild size="sm" variant="outline" className="h-7 text-xs border-teal-500/30 text-teal-700 dark:text-teal-300 font-semibold">
+                          <Link to="/front-desk">Intake & Check-In</Link>
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Live Triage & Intake Queue */}
+            <Card className="shadow-soft border-border lg:col-span-4">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                  <Clock className="size-4 text-amber-600" />
+                  Live Intake Queue ({data.frontDeskData.liveTriageQueue.length})
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Patients currently waiting in front lobby.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                {data.frontDeskData.liveTriageQueue.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-muted-foreground italic">
+                    Lobby is currently clear.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border max-h-96 overflow-y-auto">
+                    {data.frontDeskData.liveTriageQueue.map((item) => (
+                      <div key={item.encounterId} className="p-3 text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <span className="size-6 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 font-mono font-bold flex items-center justify-center text-[10px]">
+                            #{item.queueNumber || "—"}
+                          </span>
+                          <div>
+                            <span className="font-bold text-foreground block">{item.patientName}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              Checked in: {new Date(item.checkedInAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                        </div>
+
+                        <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                          {item.status.replace("_", " ")}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* 7. PATIENT PORTAL DASHBOARD VIEW */}
+      {/* ---------------------------------------------------- */}
+      {role === "patient" && data?.patientData && (
+        <div className="space-y-6">
+          {/* Patient Welcome Banner */}
+          <div className="rounded-3xl border border-teal-500/30 bg-teal-500/10 p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <span className="rounded-full bg-teal-600 text-white px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                Patient Self-Service Portal
+              </span>
+              <h2 className="font-display text-2xl font-bold text-foreground">
+                Your Personal Health Record & Care Workspace
+              </h2>
+              <p className="text-xs text-muted-foreground max-w-xl">
+                Track your upcoming hospital appointments, digital prescriptions, verified lab investigations, and manage your cross-hospital data privacy.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button asChild size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs gap-1.5 shadow-sm">
+                <Link to="/portal">Manage Privacy & Records</Link>
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Upcoming Appointments */}
+            <Card className="shadow-soft border-border">
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <Calendar className="size-4 text-teal-600" />
+                  Upcoming Appointments ({data.patientData.upcomingAppointments.length})
+                </CardTitle>
+                <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
+                  <Link to="/portal">View All</Link>
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                {data.patientData.upcomingAppointments.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-muted-foreground italic">
+                    No scheduled appointments. You can book an appointment at any verified hospital.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {data.patientData.upcomingAppointments.map((a) => (
+                      <div key={a.id} className="p-3.5 text-xs flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <span className="font-bold text-foreground block">{a.hospitalName}</span>
+                          <p className="text-muted-foreground text-[11px]">
+                            {new Date(a.appointmentDate).toLocaleDateString("en-GB", { dateStyle: "medium" })} at {a.appointmentTime}
+                            {a.bookingReference ? ` • Ref: #${a.bookingReference}` : ""}
+                          </p>
+                        </div>
+                        <Badge className="bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/30 text-[10px]">
+                          {a.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Active Prescriptions */}
+            <Card className="shadow-soft border-border">
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <Pill className="size-4 text-emerald-600" />
+                  Active Prescriptions & Dosages
+                </CardTitle>
+                <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
+                  <Link to="/portal">Pharmacy</Link>
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                {data.patientData.activePrescriptions.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-muted-foreground italic">
+                    No active prescriptions on file.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {data.patientData.activePrescriptions.map((rx) => (
+                      <div key={rx.id} className="p-3.5 text-xs flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <span className="font-bold text-foreground block">{rx.drugName}</span>
+                          <p className="text-muted-foreground text-[11px]">
+                            {rx.dosage} • {rx.frequency} ({rx.duration})
+                          </p>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {new Date(rx.prescribedDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Verified Diagnostic Lab Reports */}
+            <Card className="shadow-soft border-border">
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <FlaskConical className="size-4 text-teal-600" />
+                  Diagnostic Lab Results
+                </CardTitle>
+                <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
+                  <Link to="/portal">All Reports</Link>
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                {data.patientData.completedLabReports.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-muted-foreground italic">
+                    No completed diagnostic reports on record.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {data.patientData.completedLabReports.map((lab) => (
+                      <div key={lab.id} className="p-3.5 text-xs flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-foreground block">{lab.testName}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {new Date(lab.date).toLocaleDateString("en-GB", { dateStyle: "medium" })}
+                          </span>
+                        </div>
+                        <Badge className={lab.isCritical ? "bg-rose-600 text-white" : "bg-emerald-600 text-white"}>
+                          {lab.resultSummary || "Verified"}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Recent Hospital Encounters */}
+            <Card className="shadow-soft border-border">
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <Stethoscope className="size-4 text-primary" />
+                  Clinical Encounters & Doctor Notes
+                </CardTitle>
+                <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
+                  <Link to="/portal">History</Link>
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                {data.patientData.recentEncounters.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-muted-foreground italic">
+                    No past clinical encounters recorded.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {data.patientData.recentEncounters.map((enc) => (
+                      <div key={enc.id} className="p-3.5 text-xs flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <span className="font-bold text-foreground block">{enc.hospitalName}</span>
+                          <p className="text-muted-foreground text-[11px]">
+                            Diagnosis: <strong>{enc.diagnosis}</strong> • {enc.doctorName}
+                          </p>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">
+                          {new Date(enc.visitDate).toLocaleDateString("en-GB", { dateStyle: "medium" })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </CardContent>
             </Card>

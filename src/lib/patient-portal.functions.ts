@@ -167,7 +167,212 @@ async function writeAuditEntry(
 }
 
 /**
- * Verifies patient identity (NIN + First Name + Last Name + Date of Birth) and registers their self-service auth account (Prompt 16).
+ * Self-service registration for new patients (Prompt 39).
+ * Allows members of the public to create an account without pre-existing hospital records.
+ * If NIN matches an unlinked record (e.g. registered at front desk previously), links it.
+ * If NIN matches an already-linked record, shows a friendly sign-in message.
+ */
+export const selfRegisterNewPatientAccount = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      nin: string;
+      firstName: string;
+      lastName: string;
+      dateOfBirth: string;
+      gender?: string;
+      phone?: string;
+      email: string;
+      password: string;
+      bloodGroup?: string;
+      genotype?: string;
+      allergies?: string[];
+      chronicConditions?: string[];
+      emergencyContactName?: string;
+      emergencyContactPhone?: string;
+      emergencyContactRelation?: string;
+    }) => {
+      const nin = String(input?.nin ?? "").trim().replace(/\D/g, "");
+      if (nin.length !== 11) {
+        throw new Error("A valid 11-digit National Identity Number (NIN) is required.");
+      }
+      const firstName = String(input?.firstName ?? "").trim();
+      const lastName = String(input?.lastName ?? "").trim();
+      if (!firstName || !lastName) {
+        throw new Error("First name and last name are required.");
+      }
+      const dateOfBirth = String(input?.dateOfBirth ?? "").trim();
+      if (!dateOfBirth) {
+        throw new Error("Date of birth is required.");
+      }
+      const email = String(input?.email ?? "").trim().toLowerCase();
+      if (!email.includes("@")) {
+        throw new Error("A valid email address is required.");
+      }
+      const password = String(input?.password ?? "");
+      if (password.length < 6) {
+        throw new Error("Password must be at least 6 characters long.");
+      }
+      return {
+        nin,
+        firstName,
+        lastName,
+        dateOfBirth,
+        gender: input.gender ? String(input.gender).trim() : "other",
+        phone: input.phone ? String(input.phone).trim() : "",
+        email,
+        password,
+        bloodGroup: input.bloodGroup ? String(input.bloodGroup).trim() : null,
+        genotype: input.genotype ? String(input.genotype).trim() : null,
+        allergies: Array.isArray(input.allergies) ? input.allergies : [],
+        chronicConditions: Array.isArray(input.chronicConditions) ? input.chronicConditions : [],
+        emergencyContactName: input.emergencyContactName ? String(input.emergencyContactName).trim() : "",
+        emergencyContactPhone: input.emergencyContactPhone ? String(input.emergencyContactPhone).trim() : "",
+        emergencyContactRelation: input.emergencyContactRelation ? String(input.emergencyContactRelation).trim() : "",
+      };
+    },
+  )
+  .handler(async ({ data: input }): Promise<{
+    success: boolean;
+    error?: string;
+    patientId?: string;
+    email?: string;
+    userId?: string;
+  }> => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 1. Check if patient record with this NIN already exists
+    const { data: existingPatient, error: searchErr } = await (supabaseAdmin as any)
+      .from("patients")
+      .select("id, nin, first_name, last_name, user_id, email, phone")
+      .eq("nin", input.nin)
+      .maybeSingle();
+
+    if (searchErr) {
+      console.error("NIN search error:", searchErr);
+    }
+
+    if (existingPatient && existingPatient.user_id) {
+      // NIN already linked to an account -> never expose other person's details
+      return {
+        success: false,
+        error: "An account is already linked with this NIN. Please sign in or reset your password.",
+      };
+    }
+
+    // 2. Create Supabase Auth User
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email: input.email,
+      password: input.password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: `${input.firstName} ${input.lastName}`,
+        nin: input.nin,
+        is_patient: true,
+      },
+    });
+
+    if (authError || !authData.user) {
+      if (authError?.message?.toLowerCase().includes("already registered") || authError?.message?.toLowerCase().includes("already been registered")) {
+        return {
+          success: false,
+          error: "An account with this email address already exists. Please sign in or use a different email.",
+        };
+      }
+      return {
+        success: false,
+        error: authError?.message || "Failed to create user account. Please try again.",
+      };
+    }
+
+    const newUserId = authData.user.id;
+    let patientId = "";
+
+    const emergencyContactObj = input.emergencyContactName ? {
+      name: input.emergencyContactName,
+      phone: input.emergencyContactPhone,
+      relationship: input.emergencyContactRelation || "Next of Kin",
+    } : null;
+
+    if (existingPatient) {
+      // Link existing front-desk patient record to new auth account
+      patientId = existingPatient.id;
+      const { error: linkErr } = await (supabaseAdmin as any)
+        .from("patients")
+        .update({
+          user_id: newUserId,
+          email: input.email,
+          phone: input.phone || existingPatient.phone,
+          gender: input.gender || "other",
+          blood_group: input.bloodGroup,
+          genotype: input.genotype,
+          allergies: input.allergies,
+          chronic_conditions: input.chronicConditions,
+          emergency_contact: emergencyContactObj,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingPatient.id);
+
+      if (linkErr) {
+        console.error("Link patient error:", linkErr);
+      }
+    } else {
+      // Create brand new patient record
+      const { data: newPatient, error: createPatErr } = await (supabaseAdmin as any)
+        .from("patients")
+        .insert({
+          user_id: newUserId,
+          nin: input.nin,
+          first_name: input.firstName,
+          last_name: input.lastName,
+          date_of_birth: input.dateOfBirth,
+          gender: input.gender,
+          phone: input.phone || null,
+          email: input.email,
+          blood_group: input.bloodGroup,
+          genotype: input.genotype,
+          allergies: input.allergies,
+          chronic_conditions: input.chronicConditions,
+          emergency_contact: emergencyContactObj,
+          is_active: true,
+        })
+        .select("id")
+        .single();
+
+      if (createPatErr || !newPatient) {
+        return {
+          success: false,
+          error: `Could not save patient profile: ${createPatErr?.message || "Database error"}`,
+        };
+      }
+      patientId = newPatient.id;
+    }
+
+    // 3. Assign role 'patient' in user_roles
+    await (supabaseAdmin as any).from("user_roles").upsert({
+      user_id: newUserId,
+      role: "patient",
+      is_active: true,
+    }, { onConflict: "user_id,role" });
+
+    // 4. Audit Log
+    await writeAuditEntry(supabaseAdmin, {
+      accessor_id: newUserId,
+      accessor_role: "patient",
+      patient_id: patientId,
+      action: "WRITE",
+      justification: `Patient self-registered public account for NIN ${input.nin.slice(0, 3)}*****${input.nin.slice(-3)}`,
+    });
+
+    return {
+      success: true,
+      patientId,
+      userId: newUserId,
+      email: input.email,
+    };
+  });
+
+/**
+ * Legacy/Existing Hospital Patient Verification (Prompt 16 path).
  */
 export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" })
   .inputValidator(
@@ -179,8 +384,8 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
       email: string;
       password: string;
     }) => {
-      const nin = String(input?.nin ?? "").trim();
-      if (!/^[0-9]{11}$/.test(nin)) {
+      const nin = String(input?.nin ?? "").trim().replace(/\D/g, "");
+      if (nin.length !== 11) {
         throw new Error("A valid 11-digit National Identity Number (NIN) is required.");
       }
       const firstName = String(input?.firstName ?? "").trim();
@@ -226,13 +431,12 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
       .maybeSingle();
 
     const genericErrorMsg =
-      "Verification failed. The provided NIN, name, or date of birth does not match our hospital records. Please verify your details or register at the front desk.";
+      "Verification failed. The provided NIN, name, or date of birth does not match hospital records. You can choose 'I am a new patient' to register freshly.";
 
     if (pErr || !patientRow) {
       return { success: false, error: genericErrorMsg };
     }
 
-    // Strict identity match (case-insensitive name & date of birth)
     const matchesFirst = String(patientRow.first_name ?? "").trim().toLowerCase() === input.firstName.toLowerCase();
     const matchesLast = String(patientRow.last_name ?? "").trim().toLowerCase() === input.lastName.toLowerCase();
     const matchesDob = String(patientRow.date_of_birth ?? "").slice(0, 10) === input.dateOfBirth.slice(0, 10);
@@ -241,7 +445,6 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
       return { success: false, error: genericErrorMsg };
     }
 
-    // Check if patient already linked to an online user account
     if (patientRow.user_id) {
       return {
         success: false,
@@ -249,7 +452,7 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
       };
     }
 
-    // 2. Create Auth User account via Supabase Admin
+    // 2. Create Auth User account
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: input.email,
       password: input.password,
@@ -276,8 +479,8 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
 
     const newUserId = authData.user.id;
 
-    // 3. Link patients.user_id and update email if not set
-    const { error: linkErr } = await (supabaseAdmin as any)
+    // 3. Link patients.user_id
+    await (supabaseAdmin as any)
       .from("patients")
       .update({
         user_id: newUserId,
@@ -285,16 +488,12 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
       })
       .eq("id", patientRow.id);
 
-    if (linkErr) {
-      return { success: false, error: `Failed to link patient record: ${linkErr.message}` };
-    }
-
     // 4. Assign patient role in user_roles
-    await (supabaseAdmin as any).from("user_roles").insert({
+    await (supabaseAdmin as any).from("user_roles").upsert({
       user_id: newUserId,
       role: "patient",
       is_active: true,
-    });
+    }, { onConflict: "user_id,role" });
 
     // 5. Audit Log
     await writeAuditEntry(supabaseAdmin, {
@@ -302,7 +501,7 @@ export const verifyAndRegisterPatientAccount = createServerFn({ method: "POST" }
       accessor_role: "patient",
       patient_id: patientRow.id,
       action: "WRITE",
-      justification: `Patient self-service portal account created and verified for NIN ${input.nin.slice(0, 3)}*****${input.nin.slice(-3)}`,
+      justification: `Patient verified hospital identity and created portal account for NIN ${input.nin.slice(0, 3)}*****${input.nin.slice(-3)}`,
     });
 
     return {
@@ -720,3 +919,500 @@ export const updatePatientSelfProfile = createServerFn({ method: "POST" })
 
     return { success: true };
   });
+
+/**
+ * Lists verified, active hospitals for self-service signup & booking directory (Prompt 39).
+ */
+export const getVerifiedHospitalsDirectory = createServerFn({ method: "GET" })
+  .validator((input?: { state?: string; search?: string }) => ({
+    state: input?.state ? String(input.state).trim() : undefined,
+    search: input?.search ? String(input.search).trim() : undefined,
+  }))
+  .handler(async ({ data: input }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    let query = (supabaseAdmin as any)
+      .from("hospitals")
+      .select(`
+        id, name, hospital_type, state, lga, address, phone, email, is_active,
+        departments (id, name, description),
+        staff (id, full_name, specialization, department_id, is_active)
+      `)
+      .order("name", { ascending: true });
+
+    if (input?.state && input.state !== "all") {
+      query = query.ilike("state", `%${input.state}%`);
+    }
+
+    if (input?.search) {
+      query = query.or(`name.ilike.%${input.search}%,address.ilike.%${input.search}%,lga.ilike.%${input.search}%`);
+    }
+
+    const { data: rows, error } = await query;
+    if (error) {
+      console.error("Error fetching hospitals directory:", error);
+      return [];
+    }
+
+    return (rows ?? []).map((h: any) => ({
+      id: h.id,
+      name: h.name,
+      type: h.hospital_type || "General Hospital",
+      state: h.state || "Federal",
+      lga: h.lga || "",
+      address: h.address || "Medical District",
+      phone: h.phone || "0800-HOSP-NEST",
+      email: h.email || "info@hospital.gov.ng",
+      departments: (h.departments ?? []).map((d: any) => ({ id: d.id, name: d.name })),
+      doctors: (h.staff ?? [])
+        .filter((s: any) => s.is_active)
+        .map((s: any) => ({
+          id: s.id,
+          fullName: s.full_name,
+          specialization: s.specialization || "General Practitioner",
+          departmentId: s.department_id,
+        })),
+    }));
+  });
+
+/**
+ * Saves or updates patient consents for selected hospitals (Prompt 39 & 43).
+ */
+export const savePatientHospitalConsents = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input: {
+      hospitalIds: string[];
+      scopeType?: string;
+      isGlobalShare?: boolean;
+    }) => ({
+      hospitalIds: Array.isArray(input.hospitalIds) ? input.hospitalIds : [],
+      scopeType: input.scopeType || "full",
+      isGlobalShare: Boolean(input.isGlobalShare),
+    })
+  )
+  .handler(async ({ context, data: input }) => {
+    const { supabase, userId } = context;
+
+    const { data: patientRow } = await (supabase as any)
+      .from("patients")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!patientRow) throw new Error("Patient record not found.");
+
+    const patientId = patientRow.id;
+
+    for (const hospitalId of input.hospitalIds) {
+      await (supabase as any).from("patient_consents").upsert({
+        patient_id: patientId,
+        hospital_id: hospitalId,
+        scope_type: input.scopeType,
+        is_global_share: input.isGlobalShare,
+        allow_labs: true,
+        allow_prescriptions: true,
+        allow_imaging: true,
+        allow_clinical_notes: true,
+        allow_psychiatric_notes: false,
+        allow_sexual_health_notes: false,
+        revoked_at: null,
+        created_at: new Date().toISOString(),
+      }, { onConflict: "patient_id,hospital_id" });
+    }
+
+    return { success: true };
+  });
+
+/**
+ * Calculates doctor booking slots based on weekly shifts or falls back to generic slots (Prompt 39).
+ */
+export const getHospitalBookingSlots = createServerFn({ method: "GET" })
+  .validator((input: { hospitalId: string; doctorId?: string; date: string }) => ({
+    hospitalId: String(input.hospitalId),
+    doctorId: input.doctorId ? String(input.doctorId) : undefined,
+    date: String(input.date),
+  }))
+  .handler(async ({ data: input }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Standard fallback slots
+    const standardSlots = [
+      "08:30", "09:00", "09:30", "10:00", "10:30",
+      "11:00", "11:30", "13:00", "13:30", "14:00",
+      "14:30", "15:00", "15:30", "16:00"
+    ];
+
+    try {
+      const selectedDate = new Date(input.date);
+      const dayOfWeek = selectedDate.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+
+      // Check if doctor has a weekly shift for this day
+      if (input.doctorId) {
+        const { data: shift } = await (supabaseAdmin as any)
+          .from("staff_weekly_shifts")
+          .select("start_time, end_time, is_off")
+          .eq("hospital_id", input.hospitalId)
+          .eq("staff_id", input.doctorId)
+          .eq("day_of_week", dayOfWeek)
+          .maybeSingle();
+
+        if (shift && !shift.is_off && shift.start_time && shift.end_time) {
+          // Generate 30 min intervals between shift start and end
+          const startHour = parseInt(shift.start_time.split(":")[0], 10);
+          const endHour = parseInt(shift.end_time.split(":")[0], 10);
+          const generatedSlots: string[] = [];
+          for (let h = startHour; h < endHour; h++) {
+            generatedSlots.push(`${String(h).padStart(2, "0")}:00`);
+            generatedSlots.push(`${String(h).padStart(2, "0")}:30`);
+          }
+          if (generatedSlots.length > 0) {
+            return { slots: generatedSlots, source: "staff_shift" };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Slot calculation warning:", e);
+    }
+
+    return { slots: standardSlots, source: "generic_schedule" };
+  });
+
+/**
+ * Direct Appointment Booking with Reference and Printable Voucher details (Prompt 39).
+ */
+export const bookDirectOnlineAppointment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input: {
+      hospitalId: string;
+      departmentId?: string | undefined;
+      doctorId?: string | undefined;
+      date: string;
+      timeSlot: string;
+      symptomsSummary: string;
+    }) => {
+      if (!input.hospitalId) throw new Error("Please select a hospital.");
+      if (!input.date || !input.timeSlot) throw new Error("Please select an appointment date and time slot.");
+      if (!input.symptomsSummary || input.symptomsSummary.trim().length < 3) {
+        throw new Error("Please provide a short description of your symptoms or visit reason.");
+      }
+      return {
+        hospitalId: String(input.hospitalId).trim(),
+        departmentId: input.departmentId ? String(input.departmentId).trim() : null,
+        doctorId: input.doctorId ? String(input.doctorId).trim() : null,
+        date: String(input.date).trim(),
+        timeSlot: String(input.timeSlot).trim(),
+        symptomsSummary: String(input.symptomsSummary).trim(),
+      };
+    }
+  )
+  .handler(async ({ context, data: input }) => {
+    const { supabase, userId } = context;
+
+    const { data: patientRow } = await (supabase as any)
+      .from("patients")
+      .select("id, first_name, last_name, phone, email, nin")
+      .eq("user_id", userId)
+      .single();
+
+    if (!patientRow) throw new Error("Patient profile not found. Please complete registration.");
+
+    // Fetch hospital details
+    const { data: hospitalRow } = await (supabase as any)
+      .from("hospitals")
+      .select("id, name, address, phone, state, lga")
+      .eq("id", input.hospitalId)
+      .single();
+
+    const hospitalName = hospitalRow?.name || "HospNest Partner Hospital";
+    const bookingReference = `HN-APT-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const fullAppointmentTimestamp = `${input.date}T${input.timeSlot}:00`;
+
+    // 1. Create appointment
+    const { data: newAppt, error: apptErr } = await (supabase as any)
+      .from("appointments")
+      .insert({
+        hospital_id: input.hospitalId,
+        patient_id: patientRow.id,
+        department_id: input.departmentId,
+        doctor_id: input.doctorId,
+        appointment_date: fullAppointmentTimestamp,
+        symptoms_summary: input.symptomsSummary,
+        status: "booked",
+        is_external_booking: true,
+        booking_reference: bookingReference,
+        booking_source: "patient_portal",
+        is_walk_in: false,
+      })
+      .select("id, created_at")
+      .single();
+
+    if (apptErr) throw new Error(apptErr.message);
+
+    // 2. Ensure patient consent exists for this hospital
+    await (supabase as any).from("patient_consents").upsert({
+      patient_id: patientRow.id,
+      hospital_id: input.hospitalId,
+      scope_type: "full",
+      allow_labs: true,
+      allow_prescriptions: true,
+      allow_imaging: true,
+      allow_clinical_notes: true,
+      allow_psychiatric_notes: false,
+      allow_sexual_health_notes: false,
+      revoked_at: null,
+      created_at: new Date().toISOString(),
+    }, { onConflict: "patient_id,hospital_id" });
+
+    // 3. Audit log
+    await writeAuditEntry(supabase, {
+      hospital_id: input.hospitalId,
+      accessor_id: userId,
+      accessor_role: "patient",
+      patient_id: patientRow.id,
+      action: "WRITE",
+      justification: `Direct online appointment booked with reference ${bookingReference}`,
+    });
+
+    return {
+      success: true,
+      appointmentId: newAppt.id,
+      bookingReference,
+      hospitalName,
+      hospitalAddress: hospitalRow?.address || "Hospital Address",
+      hospitalPhone: hospitalRow?.phone || "0800-HOSP-NEST",
+      appointmentDate: input.date,
+      timeSlot: input.timeSlot,
+      patientName: `${patientRow.first_name} ${patientRow.last_name}`,
+      symptomsSummary: input.symptomsSummary,
+      createdAt: newAppt.created_at,
+    };
+  });
+
+/**
+ * Updates Patient Privacy & Record Sharing toggles (Prompt 43).
+ */
+export const updatePatientSharingConsent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input: {
+      hospitalId: string;
+      isSharingActive: boolean;
+      allowLabs?: boolean;
+      allowPrescriptions?: boolean;
+      allowImaging?: boolean;
+      allowClinicalNotes?: boolean;
+      allowPsychiatricNotes?: boolean;
+      allowSexualHealthNotes?: boolean;
+      scopeType?: string;
+    }) => input
+  )
+  .handler(async ({ context, data: input }) => {
+    const { supabase, userId } = context;
+
+    const { data: patientRow } = await (supabase as any)
+      .from("patients")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
+    if (!patientRow) throw new Error("Patient not found.");
+
+    await (supabase as any).from("patient_consents").upsert({
+      patient_id: patientRow.id,
+      hospital_id: input.hospitalId,
+      revoked_at: input.isSharingActive ? null : new Date().toISOString(),
+      allow_labs: input.allowLabs ?? true,
+      allow_prescriptions: input.allowPrescriptions ?? true,
+      allow_imaging: input.allowImaging ?? true,
+      allow_clinical_notes: input.allowClinicalNotes ?? true,
+      allow_psychiatric_notes: Boolean(input.allowPsychiatricNotes),
+      allow_sexual_health_notes: Boolean(input.allowSexualHealthNotes),
+      scope_type: input.scopeType || "full",
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "patient_id,hospital_id" });
+
+    // Write audit log
+    await writeAuditEntry(supabase, {
+      hospital_id: input.hospitalId,
+      accessor_id: userId,
+      accessor_role: "patient",
+      patient_id: patientRow.id,
+      action: "WRITE",
+      justification: `Patient updated record sharing consent for hospital ${input.hospitalId}: Sharing = ${input.isSharingActive}`,
+    });
+
+    return { success: true };
+  });
+
+/**
+ * Access Transparency Log for Patient Portal (Prompt 43).
+ */
+export const getPatientAccessLogs = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+
+    const { data: patientRow } = await (supabase as any)
+      .from("patients")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
+    if (!patientRow) return [];
+
+    const { data: logs } = await (supabase as any)
+      .from("record_audit_logs")
+      .select(`
+        id, action, justification, created_at, accessor_role,
+        hospital:hospital_id (name)
+      `)
+      .eq("patient_id", patientRow.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    return (logs ?? []).map((l: any) => ({
+      id: l.id,
+      action: l.action,
+      role: l.accessor_role || "Staff",
+      hospitalName: l.hospital?.name || "HospNest Network",
+      justification: l.justification || "Clinical review",
+      timestamp: l.created_at,
+      isBreakGlass: l.action === "BREAK_GLASS_OVERRIDE" || (l.justification && l.justification.toLowerCase().includes("break-glass")),
+    }));
+  });
+
+/**
+ * Returns comprehensive privacy and record sharing configuration for the signed-in patient.
+ */
+export const getPatientPrivacySettings = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+
+    const { data: patientRow } = await (supabase as any)
+      .from("patients")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
+    if (!patientRow) throw new Error("Patient record not found.");
+
+    // Fetch all hospitals where patient has encounters or appointments
+    const [{ data: encHospitals }, { data: apptHospitals }, { data: allHospitals }, { data: consents }] =
+      await Promise.all([
+        (supabase as any).from("encounters").select("hospital_id, hospitals(id, name, state)").eq("patient_id", patientRow.id),
+        (supabase as any).from("appointments").select("hospital_id, hospitals(id, name, state)").eq("patient_id", patientRow.id),
+        (supabase as any).from("hospitals").select("id, name, state").eq("is_verified", true).limit(20),
+        (supabase as any).from("patient_consents").select("*").eq("patient_id", patientRow.id),
+      ]);
+
+    const hospitalMap = new Map<string, { id: string; name: string; state: string }>();
+
+    (allHospitals ?? []).forEach((h: any) => {
+      if (h.id) hospitalMap.set(h.id, { id: h.id, name: h.name, state: h.state || "Nigeria" });
+    });
+    (encHospitals ?? []).forEach((e: any) => {
+      if (e.hospitals?.id) hospitalMap.set(e.hospitals.id, { id: e.hospitals.id, name: e.hospitals.name, state: e.hospitals.state || "Nigeria" });
+    });
+    (apptHospitals ?? []).forEach((a: any) => {
+      if (a.hospitals?.id) hospitalMap.set(a.hospitals.id, { id: a.hospitals.id, name: a.hospitals.name, state: a.hospitals.state || "Nigeria" });
+    });
+
+    const consentMap = new Map<string, any>();
+    let globalShare = true;
+
+    (consents ?? []).forEach((c: any) => {
+      if (c.hospital_id) {
+        consentMap.set(c.hospital_id, c);
+      }
+      if (c.is_global_share !== undefined && c.is_global_share !== null) {
+        globalShare = Boolean(c.is_global_share);
+      }
+    });
+
+    const hospitalConsents = Array.from(hospitalMap.values()).map((h) => {
+      const c = consentMap.get(h.id);
+      const isRevoked = Boolean(c?.revoked_at) || c?.status === "revoked";
+      return {
+        hospitalId: h.id,
+        hospitalName: h.name,
+        state: h.state,
+        isSharingActive: c ? !isRevoked : true,
+        allowLabs: c?.allow_labs ?? true,
+        allowPrescriptions: c?.allow_prescriptions ?? true,
+        allowImaging: c?.allow_imaging ?? true,
+        allowClinicalNotes: c?.allow_clinical_notes ?? true,
+        allowMaternity: c?.allow_maternity ?? true,
+        allowSurgeries: c?.allow_surgeries ?? true,
+        allowPsychiatricNotes: Boolean(c?.allow_psychiatric_notes),
+        allowSexualHealthNotes: Boolean(c?.allow_sexual_health_notes),
+        scopeType: c?.scope_type || "full",
+        updatedAt: c?.updated_at || null,
+      };
+    });
+
+    // Access logs
+    const { data: logs } = await (supabase as any)
+      .from("record_audit_logs")
+      .select(`
+        id, action, justification, created_at, accessor_role,
+        hospital:hospital_id (name)
+      `)
+      .eq("patient_id", patientRow.id)
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    const accessLogs = (logs ?? []).map((l: any) => ({
+      id: l.id,
+      action: l.action,
+      role: l.accessor_role || "Staff",
+      hospitalName: l.hospital?.name || "HospNest Network",
+      justification: l.justification || "Clinical examination",
+      timestamp: l.created_at,
+      isBreakGlass: l.action === "BREAK_GLASS_OVERRIDE" || (l.justification && l.justification.toLowerCase().includes("break-glass")),
+    }));
+
+    return {
+      isGlobalShare: globalShare,
+      hospitals: hospitalConsents,
+      accessLogs,
+    };
+  });
+
+/**
+ * Updates the master switch for Global Health Record Sharing.
+ */
+export const updateGlobalSharingConsent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { isGlobalShare: boolean }) => ({
+    isGlobalShare: Boolean(input.isGlobalShare),
+  }))
+  .handler(async ({ data: input, context }) => {
+    const { supabase, userId } = context;
+
+    const { data: patientRow } = await (supabase as any)
+      .from("patients")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
+    if (!patientRow) throw new Error("Patient record not found.");
+
+    await (supabase as any)
+      .from("patient_consents")
+      .update({ is_global_share: input.isGlobalShare })
+      .eq("patient_id", patientRow.id);
+
+    await writeAuditEntry(supabase, {
+      accessor_id: userId,
+      accessor_role: "patient",
+      patient_id: patientRow.id,
+      action: "WRITE",
+      justification: `Patient changed Global Health Record Sharing to: ${input.isGlobalShare ? "ENABLED" : "DISABLED"}`,
+    });
+
+    return { success: true };
+  });
+

@@ -16,7 +16,10 @@ import {
   CheckCircle2,
   RefreshCw,
   Sparkles,
+  Mic,
 } from "lucide-react";
+
+import { VoiceCheckInModal } from "@/components/voicecare/VoiceCheckInModal";
 
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -136,6 +139,7 @@ function FrontDesk() {
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [consent, setConsent] = useState(false);
   const [openedVisit, setOpenedVisit] = useState<{ id: string; queue: number | null } | null>(null);
+  const [isVoiceCheckInOpen, setIsVoiceCheckInOpen] = useState(false);
 
   // Scheduled Appointments Query
   const {
@@ -293,21 +297,34 @@ function FrontDesk() {
       ) : (
         <div className="mt-6">
           <Tabs value={tab} onValueChange={(v) => setTab(v as "walkin" | "scheduled")}>
-            <TabsList className="bg-muted p-1 rounded-xl">
-              <TabsTrigger value="walkin" className="rounded-lg text-xs sm:text-sm font-semibold">
-                <IdCard className="h-4 w-4 mr-1.5" />
-                NIN Intake & Walk-ins
-              </TabsTrigger>
-              <TabsTrigger value="scheduled" className="rounded-lg text-xs sm:text-sm font-semibold relative">
-                <CalendarCheck className="h-4 w-4 mr-1.5" />
-                Scheduled Bookings
-                {bookedCount > 0 && (
-                  <Badge variant="destructive" className="ml-2 px-1.5 py-0 text-[10px] h-4">
-                    {bookedCount}
-                  </Badge>
-                )}
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+              <TabsList className="bg-muted p-1 rounded-xl">
+                <TabsTrigger value="walkin" className="rounded-lg text-xs sm:text-sm font-semibold">
+                  <IdCard className="h-4 w-4 mr-1.5" />
+                  NIN Intake & Walk-ins
+                </TabsTrigger>
+                <TabsTrigger value="scheduled" className="rounded-lg text-xs sm:text-sm font-semibold relative">
+                  <CalendarCheck className="h-4 w-4 mr-1.5" />
+                  Scheduled Bookings
+                  {bookedCount > 0 && (
+                    <Badge variant="destructive" className="ml-2 px-1.5 py-0 text-[10px] h-4">
+                      {bookedCount}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setIsVoiceCheckInOpen(true)}
+                className="gap-1.5 bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 text-xs font-bold rounded-xl shadow-xs"
+              >
+                <Mic className="h-3.5 w-3.5 text-emerald-600 animate-pulse" />
+                Voice Check-In Assistant (Sahara)
+              </Button>
+            </div>
 
             {/* TAB 1: NIN INTAKE & WALK-INS */}
             <TabsContent value="walkin" className="mt-6 space-y-6">
@@ -567,6 +584,16 @@ function FrontDesk() {
                               <Badge variant="outline" className="text-xs font-mono">
                                 NIN: {p?.nin}
                               </Badge>
+                              {appt.is_external_booking && (
+                                <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30 text-[10px] uppercase font-bold">
+                                  🌐 Online booking
+                                </Badge>
+                              )}
+                              {appt.booking_reference && (
+                                <Badge variant="outline" className="text-[10px] font-mono text-muted-foreground">
+                                  Ref: {appt.booking_reference}
+                                </Badge>
+                              )}
                               {appt.departments?.name && (
                                 <Badge variant="secondary" className="text-[10px]">
                                   {appt.departments.name}
@@ -639,6 +666,14 @@ function FrontDesk() {
           </Tabs>
         </div>
       )}
+
+      {/* Voice-Assisted Check-In Assistant (Intron Sahara) */}
+      <VoiceCheckInModal
+        isOpen={isVoiceCheckInOpen}
+        onClose={() => setIsVoiceCheckInOpen(false)}
+        appointments={appointmentsList}
+        onCheckIn={(appointmentId) => checkInMutation.mutate(appointmentId)}
+      />
     </div>
   );
 }

@@ -80,6 +80,8 @@ import {
   type RadiologyStudyItem,
   type ImagingModality,
 } from "@/lib/radiology.functions";
+import { requestBreakGlassAccess } from "@/lib/patient-profile.functions";
+import { LabResultReviewModal } from "@/components/clinical-docs/LabResultReviewModal";
 import { MedicalImageViewerModal } from "@/components/radiology/MedicalImageViewerModal";
 import { UploadImagingModal } from "@/components/radiology/UploadImagingModal";
 import { PrintableDocumentModal } from "@/components/clinical-docs/PrintableDocumentModal";
@@ -92,6 +94,7 @@ import { News2ScoreBadge } from "@/components/clinical-safety/News2ScoreBadge";
 import { DrugInteractionWarningModal } from "@/components/clinical-safety/DrugInteractionWarningModal";
 import { checkDrugSafetyAndInteractions, type DrugSafetyResult } from "@/lib/clinical-safety";
 import { useVoiceDictation } from "@/hooks/useVoiceDictation";
+import { DoctorVoiceNoteModal } from "@/components/voicecare/DoctorVoiceNoteModal";
 import { toast } from "sonner";
 import {
   Camera,
@@ -198,6 +201,7 @@ function ConsultationsPage() {
   const [sickLeaveType, setSickLeaveType] = useState<"excused_from_duty" | "total_bed_rest" | "light_duty">("excused_from_duty");
 
   // Voice Dictation Tracking
+  const [isDoctorVoiceNoteOpen, setIsDoctorVoiceNoteOpen] = useState(false);
   const [activeVoiceField, setActiveVoiceField] = useState<"complaint" | "hpi" | "pmhx" | "exam" | "plan" | null>(null);
 
   const { isListening, toggleListening, stopListening } = useVoiceDictation({
@@ -224,6 +228,13 @@ function ConsultationsPage() {
   const [selectedLabTestId, setSelectedLabTestId] = useState("");
   const [labSampleType, setLabSampleType] = useState("Blood");
   const [labNotes, setLabNotes] = useState("");
+  const [labUrgency, setLabUrgency] = useState<"routine" | "urgent" | "stat">("routine");
+  const [activeReviewLabOrder, setActiveReviewLabOrder] = useState<any | null>(null);
+
+  // Break Glass Emergency Access
+  const requestBreakGlassFn = useServerFn(requestBreakGlassAccess);
+  const [isBreakGlassOpen, setIsBreakGlassOpen] = useState(false);
+  const [breakGlassJustification, setBreakGlassJustification] = useState("");
 
   // Prescription Form State & Clinical Safety Checker
   const [selectedDrugId, setSelectedDrugId] = useState("");
@@ -510,17 +521,52 @@ function ConsultationsPage() {
             hospitalTestId: selectedLabTestId,
             sampleType: labSampleType,
             clinicalNotes: labNotes || undefined,
+            urgency: labUrgency,
+            clinicalIndication: labNotes || "Diagnostic test",
           },
         });
 
         if (res.success) {
-          toast.success("Laboratory order placed successfully.");
+          toast.success(`Laboratory order (${labUrgency.toUpperCase()}) placed successfully.`);
           setSelectedLabTestId("");
           setLabNotes("");
+          setLabUrgency("routine");
           refetchWorkspace();
         }
       } catch (err: any) {
         toast.error(err?.message || "Failed to place lab order.");
+      }
+    });
+  };
+
+  // Emergency Break-Glass Override Action
+  const handleBreakGlassSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = breakGlassJustification.trim();
+    if (trimmed.length < 6) {
+      toast.error("Please enter a valid clinical justification (at least 6 characters).");
+      return;
+    }
+
+    if (!workspaceData?.patient?.id) return;
+
+    startTransition(async () => {
+      try {
+        const res = await requestBreakGlassFn({
+          data: {
+            patientId: workspaceData.patient.id,
+            hospitalId: activeHospitalId || undefined,
+            justification: trimmed,
+          },
+        });
+        if (res.success) {
+          toast.success("Emergency Break-Glass Override granted for 4 hours. Access has been logged in critical audit trail.");
+          setIsBreakGlassOpen(false);
+          setBreakGlassJustification("");
+          refetchWorkspace();
+        }
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to execute emergency break-glass override.");
       }
     });
   };
@@ -1015,6 +1061,16 @@ function ConsultationsPage() {
                         <Printer className="size-3.5 text-teal-600" /> Discharge Summary
                       </Button>
 
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsDoctorVoiceNoteOpen(true)}
+                        className="gap-1.5 bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 text-xs font-bold shadow-xs"
+                      >
+                        <Mic className="size-3.5 text-emerald-600 animate-pulse" />
+                        Voice Clinical Note (Sahara)
+                      </Button>
+
                       {!workspaceData.encounter.practitionerId && (
                         <Button
                           size="sm"
@@ -1095,6 +1151,45 @@ function ConsultationsPage() {
                   </div>
                 </div>
 
+                {/* Patient Privacy & Interoperability / Break-Glass Status Banner (Prompt 43) */}
+                {workspaceData.encounter?.isBreakGlass ? (
+                  <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs text-rose-900 dark:text-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-start gap-2.5">
+                      <ShieldAlert className="size-5 text-rose-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-sm text-rose-700 dark:text-rose-300">
+                          Emergency Break-Glass Override Active
+                        </p>
+                        <p className="text-xs text-rose-800/90 dark:text-rose-300/90 mt-0.5">
+                          Full longitudinal medical history unlocked for urgent emergency trauma care. This access event is logged to the national clinical audit trail and patient notification ledger.
+                        </p>
+                      </div>
+                    </div>
+                    <Badge className="bg-rose-600 text-white shrink-0 text-[10px] font-mono self-start sm:self-center">
+                      4-Hour Active Window
+                    </Badge>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-border bg-card/60 p-3.5 text-xs text-muted-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="size-4 text-teal-600 shrink-0" />
+                      <span>
+                        <strong className="text-foreground font-semibold">HospNest Privacy Shield:</strong> Patient record sharing is active based on patient consent preferences.
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setIsBreakGlassOpen(true)}
+                      className="text-xs text-rose-700 dark:text-rose-400 border-rose-500/30 hover:bg-rose-500/10 shrink-0 h-7"
+                    >
+                      <ShieldAlert className="size-3.5 mr-1 text-rose-600" />
+                      Emergency Break-Glass Override
+                    </Button>
+                  </div>
+                )}
+
                 {/* Structured Clinical Encounter Form */}
                 <div className="rounded-2xl border border-border bg-card p-6 shadow-soft space-y-5">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
@@ -1153,6 +1248,74 @@ function ConsultationsPage() {
                       </Button>
                     </div>
                   </div>
+
+                  {/* AI Generated Visit Synthesis & Home Care Card */}
+                  {(workspaceData.encounter.aiSummary || workspaceData.encounter.aiPatientSummary) && (
+                    <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
+                          <Sparkles className="size-4" />
+                          <span className="font-bold text-xs">AI Gateway Consultation Summary & Home Care Guide</span>
+                        </div>
+                        {workspaceData.encounter.aiGeneratedAt && (
+                          <span className="text-[10px] font-mono text-muted-foreground">
+                            Generated {new Date(workspaceData.encounter.aiGeneratedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2 text-xs">
+                        {workspaceData.encounter.aiSummary && (
+                          <div className="space-y-1">
+                            <span className="font-semibold text-teal-800 dark:text-teal-300 block">Clinician SOAP Overview</span>
+                            <p className="rounded bg-background/80 p-2.5 text-muted-foreground whitespace-pre-line border border-border/70 text-[11px] max-h-32 overflow-y-auto">
+                              {workspaceData.encounter.aiSummary}
+                            </p>
+                          </div>
+                        )}
+
+                        {workspaceData.encounter.aiPatientSummary && (
+                          <div className="space-y-1">
+                            <span className="font-semibold text-purple-800 dark:text-purple-300 block">Patient-Friendly Home Guide</span>
+                            <p className="rounded bg-background/80 p-2.5 text-muted-foreground whitespace-pre-line border border-border/70 text-[11px] max-h-32 overflow-y-auto">
+                              {workspaceData.encounter.aiPatientSummary}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Key Findings & Next Steps */}
+                      {(workspaceData.encounter.aiKeyFindings?.length || workspaceData.encounter.aiNextSteps?.length) ? (
+                        <div className="grid gap-3 sm:grid-cols-2 pt-2 border-t border-purple-500/20 text-[11px]">
+                          {workspaceData.encounter.aiKeyFindings && workspaceData.encounter.aiKeyFindings.length > 0 && (
+                            <div className="space-y-1">
+                              <span className="font-semibold text-teal-700 dark:text-teal-300 flex items-center gap-1">
+                                <CheckCircle2 className="size-3" /> Key Findings:
+                              </span>
+                              <ul className="list-disc pl-4 space-y-0.5 text-muted-foreground">
+                                {workspaceData.encounter.aiKeyFindings.map((f, i) => (
+                                  <li key={i}>{f}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {workspaceData.encounter.aiNextSteps && workspaceData.encounter.aiNextSteps.length > 0 && (
+                            <div className="space-y-1">
+                              <span className="font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                                <ArrowRight className="size-3" /> Next Steps:
+                              </span>
+                              <ul className="list-disc pl-4 space-y-0.5 text-muted-foreground">
+                                {workspaceData.encounter.aiNextSteps.map((s, i) => (
+                                  <li key={i}>{s}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
 
                   {/* 1. Subjective: Chief Complaint & HPI */}
                   <div className="space-y-3">
@@ -1614,12 +1777,12 @@ function ConsultationsPage() {
                   <div className="rounded-2xl border border-border bg-card p-5 shadow-soft space-y-4">
                     <div className="flex items-center justify-between border-b border-border pb-2.5">
                       <div className="flex items-center gap-2">
-                        <FlaskConical className="size-4 text-primary" />
+                        <FlaskConical className="size-4 text-teal-600" />
                         <h4 className="font-display text-sm font-bold text-foreground">
                           Order Lab Investigations
                         </h4>
                       </div>
-                      <span className="rounded-full bg-primary/10 px-2 py-0.2 text-[11px] font-semibold text-primary">
+                      <span className="rounded-full bg-teal-500/10 px-2 py-0.2 text-[11px] font-semibold text-teal-700 dark:text-teal-300">
                         {workspaceData.activeLabOrders.length} Ordered
                       </span>
                     </div>
@@ -1642,22 +1805,35 @@ function ConsultationsPage() {
                         </Select>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">Urgency</Label>
+                          <Select value={labUrgency} onValueChange={(val: any) => setLabUrgency(val)}>
+                            <SelectTrigger className="h-8 text-xs bg-background">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="routine" className="text-xs">Routine</SelectItem>
+                              <SelectItem value="urgent" className="text-xs text-amber-600 font-semibold">Urgent</SelectItem>
+                              <SelectItem value="stat" className="text-xs text-rose-600 font-bold">STAT (Panic)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                         <div className="space-y-1">
                           <Label className="text-[11px] text-muted-foreground">Sample Type</Label>
                           <Input
                             value={labSampleType}
                             onChange={(e) => setLabSampleType(e.target.value)}
-                            placeholder="Blood, Urine, Swab"
+                            placeholder="Blood, Urine"
                             className="h-8 text-xs bg-background"
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-[11px] text-muted-foreground">Clinical Indication</Label>
+                          <Label className="text-[11px] text-muted-foreground">Indication</Label>
                           <Input
                             value={labNotes}
                             onChange={(e) => setLabNotes(e.target.value)}
-                            placeholder="e.g. Febrile illness"
+                            placeholder="Clinical indication"
                             className="h-8 text-xs bg-background"
                           />
                         </div>
@@ -1667,7 +1843,7 @@ function ConsultationsPage() {
                         size="sm"
                         onClick={handleAddLabOrder}
                         disabled={isPending || !selectedLabTestId}
-                        className="w-full h-8 text-xs gap-1.5"
+                        className="w-full h-8 text-xs gap-1.5 bg-teal-600 hover:bg-teal-700 text-white"
                       >
                         <Plus className="size-3.5" /> Submit Lab Order
                       </Button>
@@ -1675,25 +1851,82 @@ function ConsultationsPage() {
 
                     {/* Running List of Ordered Tests */}
                     <div className="space-y-2">
-                      <span className="text-xs font-bold text-foreground">Current Lab Orders</span>
+                      <span className="text-xs font-bold text-foreground">Current Lab Orders & Realtime Tracker</span>
                       {workspaceData.activeLabOrders.length === 0 ? (
                         <p className="text-xs text-muted-foreground italic py-1">No lab tests ordered for this encounter.</p>
                       ) : (
-                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                          {workspaceData.activeLabOrders.map((lab) => (
-                            <div
-                              key={lab.id}
-                              className="flex items-center justify-between rounded-lg border border-border bg-background p-2.5 text-xs"
-                            >
-                              <div>
-                                <span className="font-semibold text-foreground">{lab.testName}</span>
-                                <span className="ml-1 text-[10px] text-muted-foreground">({lab.sampleType || "Sample"})</span>
+                        <div className="space-y-2 max-h-56 overflow-y-auto">
+                          {workspaceData.activeLabOrders.map((lab) => {
+                            const isDone = lab.status === "completed" || Boolean(lab.resultValue);
+                            const isCrit = Boolean(lab.isCritical);
+                            return (
+                              <div
+                                key={lab.id}
+                                className={`rounded-xl border p-2.5 text-xs transition-all ${
+                                  isCrit
+                                    ? "border-rose-500/50 bg-rose-500/5 dark:bg-rose-950/20"
+                                    : isDone
+                                    ? "border-emerald-500/40 bg-emerald-500/5"
+                                    : "border-border bg-background"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-1.5">
+                                  <div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-bold text-foreground">{lab.testName}</span>
+                                      {lab.urgency && lab.urgency !== "routine" && (
+                                        <Badge variant="outline" className={`text-[9px] uppercase px-1 py-0 ${
+                                          lab.urgency === "stat" ? "border-rose-500 text-rose-600 font-bold animate-pulse" : "border-amber-500 text-amber-600"
+                                        }`}>
+                                          {lab.urgency}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-muted-foreground block">
+                                      {lab.sampleType || "Specimen"} {lab.clinicalIndication ? `• ${lab.clinicalIndication}` : ""}
+                                    </span>
+                                  </div>
+
+                                  <Badge
+                                    className={`text-[10px] uppercase font-semibold shrink-0 ${
+                                      isCrit
+                                        ? "bg-rose-600 text-white animate-pulse"
+                                        : lab.status === "completed"
+                                        ? "bg-emerald-600 text-white"
+                                        : lab.status === "processing"
+                                        ? "bg-amber-500 text-white"
+                                        : lab.status === "sample_collected"
+                                        ? "bg-sky-600 text-white"
+                                        : "bg-secondary text-secondary-foreground"
+                                    }`}
+                                  >
+                                    {lab.status.replace("_", " ")}
+                                  </Badge>
+                                </div>
+
+                                {isDone && (
+                                  <div className="mt-2 pt-2 border-t border-border/60 flex items-center justify-between">
+                                    <div className="text-[11px]">
+                                      <span className="text-muted-foreground">Result: </span>
+                                      <span className={`font-mono font-bold ${isCrit ? "text-rose-600" : lab.isOutOfRange ? "text-amber-600" : "text-emerald-700 dark:text-emerald-300"}`}>
+                                        {lab.resultValue} {lab.units || ""}
+                                      </span>
+                                    </div>
+
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setActiveReviewLabOrder(lab)}
+                                      className="h-6 text-[10px] px-2 gap-1 border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 font-bold"
+                                    >
+                                      <Eye className="size-3" />
+                                      {lab.acknowledgedAt ? "View Result" : "Review & Acknowledge"}
+                                    </Button>
+                                  </div>
+                                )}
                               </div>
-                              <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase text-secondary-foreground">
-                                {lab.status}
-                              </span>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -2058,11 +2291,41 @@ function ConsultationsPage() {
                 <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 space-y-1.5">
                   <div className="flex items-center gap-1.5 font-bold text-rose-700 dark:text-rose-400">
                     <ShieldAlert className="size-4" />
-                    <span>Clinical Red Flags & Risk Warnings</span>
+                    <span>Clinical Red Flags & Urgent Warnings</span>
                   </div>
                   <ul className="list-disc pl-5 space-y-1 text-rose-800 dark:text-rose-300">
                     {aiResult.redFlags.map((flag, idx) => (
                       <li key={idx}>{flag}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Key Clinical Findings */}
+              {aiResult.keyFindings && aiResult.keyFindings.length > 0 && (
+                <div className="rounded-xl border border-teal-500/30 bg-teal-500/10 p-3.5 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-teal-800 dark:text-teal-300">
+                    <CheckCircle2 className="size-4 text-teal-600" />
+                    <span>Key Clinical Findings & Highlights</span>
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1 text-teal-900 dark:text-teal-200">
+                    {aiResult.keyFindings.map((finding, idx) => (
+                      <li key={idx}>{finding}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Suggested Next Steps */}
+              {aiResult.nextSteps && aiResult.nextSteps.length > 0 && (
+                <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3.5 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-blue-800 dark:text-blue-300">
+                    <ArrowRight className="size-4 text-blue-600" />
+                    <span>Suggested Next Steps & Clinical Action Plan</span>
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1 text-blue-900 dark:text-blue-200">
+                    {aiResult.nextSteps.map((step, idx) => (
+                      <li key={idx}>{step}</li>
                     ))}
                   </ul>
                 </div>
@@ -2088,7 +2351,7 @@ function ConsultationsPage() {
 
               {/* SOAP Draft Breakdown */}
               <div className="rounded-xl border border-border bg-muted/20 p-3.5 space-y-3">
-                <span className="font-bold text-foreground">Generated SOAP Draft</span>
+                <span className="font-bold text-foreground">Generated Clinician SOAP Draft</span>
                 <div className="space-y-2">
                   <div className="space-y-1">
                     <span className="font-semibold text-teal-700 dark:text-teal-400">Subjective (S):</span>
@@ -2117,12 +2380,22 @@ function ConsultationsPage() {
                 </div>
               </div>
 
-              {/* Patient Instructions */}
-              <div className="rounded-xl border border-border bg-card p-3.5 space-y-1.5">
-                <span className="font-bold text-foreground">Patient Home-Care Instructions</span>
-                <p className="rounded bg-muted/30 p-2 text-muted-foreground whitespace-pre-line border border-border/60">
-                  {aiResult.patientInstructions}
-                </p>
+              {/* Patient-Friendly Plain Language Summary & Instructions */}
+              <div className="rounded-xl border border-border bg-card p-3.5 space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="size-4 text-purple-600" />
+                  <span className="font-bold text-foreground">Patient-Friendly Visit Summary & Home Care Guide</span>
+                </div>
+                {aiResult.patientSummary && (
+                  <p className="rounded bg-purple-500/5 p-2.5 text-foreground leading-relaxed border border-purple-500/20">
+                    {aiResult.patientSummary}
+                  </p>
+                )}
+                {aiResult.patientInstructions && (
+                  <p className="rounded bg-muted/30 p-2.5 text-muted-foreground whitespace-pre-line border border-border/60">
+                    {aiResult.patientInstructions}
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -2608,6 +2881,90 @@ function ConsultationsPage() {
         drugName={pendingDrugName}
         onConfirmOverride={(justification) => {
           handleAddPrescription(justification);
+        }}
+      />
+
+      {/* Closed-Loop Lab Result Review & Doctor Acknowledgement Modal */}
+      {workspaceData && activeReviewLabOrder && (
+        <LabResultReviewModal
+          isOpen={Boolean(activeReviewLabOrder)}
+          onClose={() => setActiveReviewLabOrder(null)}
+          order={activeReviewLabOrder}
+          patientId={workspaceData.patient.id}
+          patientName={workspaceData.patient.fullName}
+          onAcknowledged={() => {
+            refetchWorkspace();
+          }}
+        />
+      )}
+
+      {/* Emergency Break-Glass Override Modal */}
+      {workspaceData && (
+        <Dialog open={isBreakGlassOpen} onOpenChange={setIsBreakGlassOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <div className="flex items-center gap-2 text-rose-600">
+                <AlertTriangle className="size-5" />
+                <DialogTitle className="text-lg font-bold text-rose-600">
+                  Emergency Break-Glass Override
+                </DialogTitle>
+              </div>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Override patient privacy restrictions for life-threatening or urgent trauma care. This grants full 4-hour medical history access and sends an immediate alert to the patient.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleBreakGlassSubmit} className="space-y-4 pt-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="bg-justification" className="text-xs font-semibold">
+                  Clinical Justification (Required)
+                </Label>
+                <Textarea
+                  id="bg-justification"
+                  rows={3}
+                  value={breakGlassJustification}
+                  onChange={(e) => setBreakGlassJustification(e.target.value)}
+                  placeholder="e.g. Unconscious patient with acute respiratory distress, severe polytrauma needing immediate crossmatch and past surgical history..."
+                  className="text-xs"
+                />
+                <span className="text-[10px] text-muted-foreground block">
+                  Minimum 6 characters. Recorded on national audit ledger with MDCN license tag.
+                </span>
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsBreakGlassOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={isPending || breakGlassJustification.trim().length < 6}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-semibold"
+                >
+                  {isPending ? "Unlocking..." : "Authorize Emergency Access"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Doctor Voice Clinical Note Modal (Intron Sahara) */}
+      <DoctorVoiceNoteModal
+        isOpen={isDoctorVoiceNoteOpen}
+        onClose={() => setIsDoctorVoiceNoteOpen(false)}
+        patientName={workspaceData?.patient?.fullName}
+        onApplyNotes={(note) => {
+          if (note.chiefComplaint) setPresentingComplaint(note.chiefComplaint);
+          if (note.history) setHpi(note.history);
+          if (note.observations) setExamination(note.observations);
+          if (note.plan) setPlanAndOrders(note.plan);
         }}
       />
     </div>

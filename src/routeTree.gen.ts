@@ -25,9 +25,11 @@ import { Route as AuthenticatedRadiologyRouteImport } from './routes/_authentica
 import { Route as AuthenticatedReferralsRouteImport } from './routes/_authenticated/referrals'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedSuperadminRouteImport } from './routes/_authenticated/superadmin'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
 import { Route as AuthenticatedTransfersRouteImport } from './routes/_authenticated/transfers'
 import { Route as AuthenticatedTriageRouteImport } from './routes/_authenticated/triage'
+import { Route as AuthenticatedVoicecareRouteImport } from './routes/_authenticated/voicecare'
 import { Route as AuthenticatedWardsRouteImport } from './routes/_authenticated/wards'
 import { Route as HospitalsHospitalSlugRouteImport } from './routes/hospitals/$hospitalSlug'
 import { Route as AuthenticatedAppointmentsIndexRouteImport } from './routes/_authenticated/appointments/index'
@@ -119,6 +121,11 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSuperadminRoute = AuthenticatedSuperadminRouteImport.update({
+  id: '/superadmin',
+  path: '/superadmin',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -132,6 +139,11 @@ const AuthenticatedTransfersRoute = AuthenticatedTransfersRouteImport.update({
 const AuthenticatedTriageRoute = AuthenticatedTriageRouteImport.update({
   id: '/triage',
   path: '/triage',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedVoicecareRoute = AuthenticatedVoicecareRouteImport.update({
+  id: '/voicecare',
+  path: '/voicecare',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedWardsRoute = AuthenticatedWardsRouteImport.update({
@@ -203,9 +215,11 @@ export interface FileRoutesByFullPath {
   '/referrals': typeof AuthenticatedReferralsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/superadmin': typeof AuthenticatedSuperadminRoute
   '/team': typeof AuthenticatedTeamRoute
   '/transfers': typeof AuthenticatedTransfersRoute
   '/triage': typeof AuthenticatedTriageRoute
+  '/voicecare': typeof AuthenticatedVoicecareRoute
   '/wards': typeof AuthenticatedWardsRoute
   '/hospitals/$hospitalSlug': typeof HospitalsHospitalSlugRoute
   '/appointments/queue': typeof AuthenticatedAppointmentsQueueRoute
@@ -232,9 +246,11 @@ export interface FileRoutesByTo {
   '/referrals': typeof AuthenticatedReferralsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/superadmin': typeof AuthenticatedSuperadminRoute
   '/team': typeof AuthenticatedTeamRoute
   '/transfers': typeof AuthenticatedTransfersRoute
   '/triage': typeof AuthenticatedTriageRoute
+  '/voicecare': typeof AuthenticatedVoicecareRoute
   '/wards': typeof AuthenticatedWardsRoute
   '/hospitals/$hospitalSlug': typeof HospitalsHospitalSlugRoute
   '/appointments/queue': typeof AuthenticatedAppointmentsQueueRoute
@@ -263,9 +279,11 @@ export interface FileRoutesById {
   '/_authenticated/referrals': typeof AuthenticatedReferralsRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/superadmin': typeof AuthenticatedSuperadminRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/transfers': typeof AuthenticatedTransfersRoute
   '/_authenticated/triage': typeof AuthenticatedTriageRoute
+  '/_authenticated/voicecare': typeof AuthenticatedVoicecareRoute
   '/_authenticated/wards': typeof AuthenticatedWardsRoute
   '/hospitals/$hospitalSlug': typeof HospitalsHospitalSlugRoute
   '/_authenticated/appointments/queue': typeof AuthenticatedAppointmentsQueueRoute
@@ -294,9 +312,11 @@ export interface FileRouteTypes {
     | '/referrals'
     | '/reports'
     | '/settings'
+    | '/superadmin'
     | '/team'
     | '/transfers'
     | '/triage'
+    | '/voicecare'
     | '/wards'
     | '/hospitals/$hospitalSlug'
     | '/appointments/queue'
@@ -323,9 +343,11 @@ export interface FileRouteTypes {
     | '/referrals'
     | '/reports'
     | '/settings'
+    | '/superadmin'
     | '/team'
     | '/transfers'
     | '/triage'
+    | '/voicecare'
     | '/wards'
     | '/hospitals/$hospitalSlug'
     | '/appointments/queue'
@@ -353,9 +375,11 @@ export interface FileRouteTypes {
     | '/_authenticated/referrals'
     | '/_authenticated/reports'
     | '/_authenticated/settings'
+    | '/_authenticated/superadmin'
     | '/_authenticated/team'
     | '/_authenticated/transfers'
     | '/_authenticated/triage'
+    | '/_authenticated/voicecare'
     | '/_authenticated/wards'
     | '/hospitals/$hospitalSlug'
     | '/_authenticated/appointments/queue'
@@ -488,6 +512,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/superadmin': {
+      id: '/_authenticated/superadmin'
+      path: '/superadmin'
+      fullPath: '/superadmin'
+      preLoaderRoute: typeof AuthenticatedSuperadminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/team': {
       id: '/_authenticated/team'
       path: '/team'
@@ -507,6 +538,13 @@ declare module '@tanstack/react-router' {
       path: '/triage'
       fullPath: '/triage'
       preLoaderRoute: typeof AuthenticatedTriageRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/voicecare': {
+      id: '/_authenticated/voicecare'
+      path: '/voicecare'
+      fullPath: '/voicecare'
+      preLoaderRoute: typeof AuthenticatedVoicecareRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/wards': {
@@ -589,9 +627,11 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedReferralsRoute: typeof AuthenticatedReferralsRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedSuperadminRoute: typeof AuthenticatedSuperadminRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedTransfersRoute: typeof AuthenticatedTransfersRoute
   AuthenticatedTriageRoute: typeof AuthenticatedTriageRoute
+  AuthenticatedVoicecareRoute: typeof AuthenticatedVoicecareRoute
   AuthenticatedWardsRoute: typeof AuthenticatedWardsRoute
   AuthenticatedAppointmentsQueueRoute: typeof AuthenticatedAppointmentsQueueRoute
   AuthenticatedPatientsPatientIdRoute: typeof AuthenticatedPatientsPatientIdRoute
@@ -616,9 +656,11 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedReferralsRoute: AuthenticatedReferralsRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedSuperadminRoute: AuthenticatedSuperadminRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedTransfersRoute: AuthenticatedTransfersRoute,
   AuthenticatedTriageRoute: AuthenticatedTriageRoute,
+  AuthenticatedVoicecareRoute: AuthenticatedVoicecareRoute,
   AuthenticatedWardsRoute: AuthenticatedWardsRoute,
   AuthenticatedAppointmentsQueueRoute: AuthenticatedAppointmentsQueueRoute,
   AuthenticatedPatientsPatientIdRoute: AuthenticatedPatientsPatientIdRoute,

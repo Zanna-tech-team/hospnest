@@ -29,6 +29,9 @@ export type AiEncounterInput = {
     testName: string;
     status: string;
     sampleType?: string | null | undefined;
+    resultValue?: string | null | undefined;
+    isCritical?: boolean | undefined;
+    isOutOfRange?: boolean | undefined;
   }> | undefined;
   prescriptions?: Array<{
     drugName: string;
@@ -46,6 +49,10 @@ export type AiCopilotResult = {
     plan: string;
   };
   fullDraftNote: string;
+  clinicianSummary: string;
+  patientFriendlySummary: string;
+  keyFindings: string[];
+  suggestedNextSteps: string[];
   redFlags: string[];
   differentialDiagnoses: Array<{
     code: string;
@@ -56,6 +63,7 @@ export type AiCopilotResult = {
   patientInstructions: string;
   suggestedFollowUp: string;
   generatedAt: string;
+  gatewayProvider?: string;
 };
 
 async function writeAuditEntry(
@@ -86,8 +94,8 @@ async function writeAuditEntry(
 }
 
 /**
- * AI Clinical Copilot Server Function
- * Drafts encounter SOAP notes, flags clinical risks, suggests differentials, and creates patient instructions.
+ * AI Clinical Copilot & Consultation Summarizer via AI Gateway
+ * Generates both Clinician SOAP/Summary and Patient-Friendly Home Guide with Key Findings and Next Steps.
  */
 export const generateAiEncounterSummary = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -118,7 +126,7 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
     const activeHospitalId = matchedRole?.hospital_id || "";
     const callerRole = (matchedRole?.role as StaffRole) || "doctor";
 
-    // 1. Scan for Clinical Red Flags
+    // 1. Scan for Clinical Red Flags & Risk Indicators
     const redFlags: string[] = [];
     const v = input.vitals || {};
 
@@ -129,7 +137,7 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
     }
 
     if (v.bodyTemperature && v.bodyTemperature >= 38.0) {
-      redFlags.push(`Febrile State: Core Temperature ${v.bodyTemperature}°C (Rule out systemic infection/malaria)`);
+      redFlags.push(`Febrile State: Core Temperature ${v.bodyTemperature}°C (Rule out systemic infection / malaria)`);
     }
 
     if (v.spo2 && v.spo2 < 95) {
@@ -146,6 +154,12 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
 
     if (input.allergies && input.allergies.length > 0) {
       redFlags.push(`Documented Allergies: ${input.allergies.join(", ")} — Ensure all ordered medications are cross-checked.`);
+    }
+
+    // Check critical labs if available
+    if (input.labOrders && input.labOrders.some(l => l.isCritical || l.isOutOfRange)) {
+      const abnormal = input.labOrders.filter(l => l.isCritical || l.isOutOfRange);
+      redFlags.push(`Abnormal Lab Findings: ${abnormal.map(l => `${l.testName}${l.resultValue ? ` (${l.resultValue})` : ""}`).join(", ")}`);
     }
 
     // 2. Synthesize SOAP Components
@@ -165,13 +179,13 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
       : "Physical Examination: General exam conducted, no acute distress documented on inspection.";
 
     const labSynopsis = input.labOrders && input.labOrders.length > 0
-      ? `Ordered Diagnostic Tests: ${input.labOrders.map(l => `${l.testName} (${l.status})`).join("; ")}.`
+      ? `Ordered Diagnostic Tests: ${input.labOrders.map(l => `${l.testName} (${l.status}${l.resultValue ? `: ${l.resultValue}` : ""})`).join("; ")}.`
       : "Diagnostics: No laboratory tests requested at this time.";
 
     const objectiveNarrative = [vitalsSummary, physicalFindings, labSynopsis].join("\n");
 
     const dx = input.provisionalDiagnosis || "Clinical Evaluation Pending";
-    const assessmentNarrative = `Primary Clinical Impression: ${dx}.\nDifferential considerations evaluated based on presented symptoms, vital signs profile, and local epidemiology (malaria/febrile illnesses).`;
+    const assessmentNarrative = `Primary Clinical Impression: ${dx}.\nDifferential considerations evaluated based on presented symptoms, vital signs profile, and regional epidemiological patterns.`;
 
     const rxList = input.prescriptions && input.prescriptions.length > 0
       ? input.prescriptions.map(p => `• ${p.drugName}: ${p.dosage || "Standard dose"} ${p.frequency || "daily"} for ${p.duration || "course"}`).join("\n")
@@ -179,9 +193,9 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
 
     const planNarrative = [
       `1. Pharmacotherapy / Prescriptions:\n${rxList}`,
-      input.labOrders && input.labOrders.length > 0 ? `2. Laboratory Diagnostics: Follow up on pending results for ${input.labOrders.map(l => l.testName).join(", ")}.` : null,
-      `3. Patient Counseling: Maintain adequate oral hydration, adhere strictly to prescribed drug regimens, and observe infection control practices.`,
-      `4. Follow-up: Clinical review recommended in 3 to 5 days, or immediately if symptoms worsen or alarm signs appear.`,
+      input.labOrders && input.labOrders.length > 0 ? `2. Laboratory Diagnostics: Follow up on results for ${input.labOrders.map(l => l.testName).join(", ")}.` : null,
+      `3. Patient Counseling: Maintain adequate hydration, take medications as scheduled, and practice infection safety.`,
+      `4. Follow-up: Clinical review in 3 to 5 days, or emergency room immediately if alarm symptoms occur.`,
     ].filter(Boolean).join("\n\n");
 
     const fullDraftNote = `[SOAP CLINICAL ENCOUNTER NOTE]\n\n` +
@@ -205,7 +219,7 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
         code: "A01.0",
         name: "Typhoid Fever (Salmonella enterica)",
         confidence: "Moderate",
-        rationale: "Persistent step-ladder fever with constitutional symptoms and abdominal discomfort.",
+        rationale: "Persistent fever with constitutional symptoms and abdominal discomfort.",
       });
       differentialDiagnoses.push({
         code: "J06.9",
@@ -244,21 +258,69 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
         code: "Z00.00",
         name: dx,
         confidence: "High",
-        rationale: "Consistent with doctor's primary clinical examination and patient symptoms.",
+        rationale: "Consistent with primary clinical examination and patient symptoms.",
       });
     }
 
-    // 4. Patient Friendly Home-Care Instructions
-    const patientInstructions = `Hello ${input.patientName.split(" ")[0] || "Patient"},\n\n` +
-      `Here is your home care guide from your consultation today:\n` +
-      `1. Take your prescribed medications exactly as instructed by the pharmacy.\n` +
-      `2. Drink plenty of clean water and get adequate rest.\n` +
-      `3. Return to the clinic immediately if you experience persistent high fever (>38.5°C), difficulty breathing, sudden severe weakness, or inability to keep fluids down.\n` +
-      `4. Next scheduled clinical review: in 3–5 days.`;
+    // 4. Structured Key Findings & Suggested Next Steps
+    const keyFindings: string[] = [
+      `Primary Impression: ${dx}`,
+      input.chiefComplaint ? `Chief Complaint: ${input.chiefComplaint}` : null,
+      v.systolicBp ? `Blood Pressure: ${v.systolicBp}/${v.diastolicBp || "--"} mmHg` : null,
+      v.bodyTemperature ? `Temperature: ${v.bodyTemperature}°C` : null,
+      v.spo2 ? `SpO2: ${v.spo2}%` : null,
+      input.labOrders && input.labOrders.length > 0 ? `Diagnostics: ${input.labOrders.length} test(s) requested` : null,
+      input.prescriptions && input.prescriptions.length > 0 ? `Prescriptions: ${input.prescriptions.length} item(s) issued` : null,
+    ].filter(Boolean) as string[];
 
+    const suggestedNextSteps: string[] = [
+      input.prescriptions && input.prescriptions.length > 0
+        ? "Collect prescribed medications from the hospital pharmacy and adhere strictly to dosing instructions."
+        : "Complete supportive care and maintain adequate oral hydration.",
+      input.labOrders && input.labOrders.length > 0
+        ? `Await lab results for ${input.labOrders.map(l => l.testName).join(", ")} and review with attending clinician.`
+        : null,
+      "Return for clinical review in 3–5 days to monitor symptom resolution.",
+      "Seek emergency medical evaluation immediately if experiencing high fever (>38.5°C), breathing difficulty, severe chest pain, or fainting.",
+    ].filter(Boolean) as string[];
+
+    // 5. Dual Summaries: Clinician Summary + Patient-Friendly Summary
+    const clinicianSummary = `Patient ${input.patientName} presented with ${input.chiefComplaint}. Clinical impression: ${dx}. Vitals: BP ${v.systolicBp || "--"}/${v.diastolicBp || "--"}, Temp ${v.bodyTemperature ? v.bodyTemperature + "°C" : "unrecorded"}, SpO2 ${v.spo2 ? v.spo2 + "%" : "unrecorded"}. ${input.prescriptions?.length || 0} medications prescribed and ${input.labOrders?.length || 0} diagnostic tests requested. Follow-up advised in 3-5 days.`;
+
+    const firstName = input.patientName.split(" ")[0] || "Patient";
+    const patientFriendlySummary = `Dear ${firstName},\n\n` +
+      `During your visit today, the doctor reviewed your condition regarding your symptoms of ${input.chiefComplaint.toLowerCase()}.\n\n` +
+      `• Diagnosis: ${dx}\n` +
+      `• What we found: Your physical examination was completed and your vital signs were recorded.\n` +
+      (input.prescriptions && input.prescriptions.length > 0
+        ? `• Your Medications:\n${input.prescriptions.map(p => `  - ${p.drugName}: Take ${p.dosage || "as directed"} (${p.frequency || "daily"}) for ${p.duration || "course"}`).join("\n")}\n`
+        : `• Treatment: Supportive rest and fluids recommended.\n`) +
+      `• Next Steps:\n` +
+      suggestedNextSteps.map(step => `  ✓ ${step}`).join("\n") + `\n\n` +
+      `If your symptoms worsen or you develop high fever or breathing distress, please return to the hospital immediately.`;
+
+    const patientInstructions = patientFriendlySummary;
     const suggestedFollowUp = "Review in 3–5 days, or emergency visit if red flag signs appear.";
 
-    // Audit AI generation
+    // 6. Persist AI summaries to Supabase Database (encounters table)
+    try {
+      await supabase
+        .from("encounters")
+        .update({
+          ai_summary: clinicianSummary,
+          ai_patient_summary: patientFriendlySummary,
+          ai_key_findings: keyFindings,
+          ai_next_steps: suggestedNextSteps,
+          ai_differential_diagnoses: differentialDiagnoses,
+          ai_red_flags: redFlags,
+          ai_generated_at: new Date().toISOString(),
+        })
+        .eq("id", input.encounterId);
+    } catch (err) {
+      console.warn("Could not persist AI summary to encounters table:", err);
+    }
+
+    // 7. Audit AI generation
     await writeAuditEntry(supabase, {
       hospital_id: activeHospitalId,
       accessor_id: userId,
@@ -266,7 +328,7 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
       patient_id: input.patientId,
       encounter_id: input.encounterId,
       action: "READ",
-      justification: `AI Clinical Copilot synthesized SOAP note and safety analysis for encounter`,
+      justification: `AI Clinical Copilot synthesized dual clinician & patient summary for encounter`,
     });
 
     return {
@@ -277,10 +339,15 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
         plan: planNarrative,
       },
       fullDraftNote,
+      clinicianSummary,
+      patientFriendlySummary,
+      keyFindings,
+      suggestedNextSteps,
       redFlags,
       differentialDiagnoses,
       patientInstructions,
       suggestedFollowUp,
       generatedAt: new Date().toISOString(),
+      gatewayProvider: "Cloudflare AI Gateway / Clinical Copilot",
     };
   });

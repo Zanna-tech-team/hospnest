@@ -68,6 +68,30 @@ export type AdminDashboardStats = {
     lowStockDrugsCount: number;
     pendingLabOrdersCount: number;
   };
+  appointmentStats: {
+    todayTotal: number;
+    completed: number;
+    checkedIn: number;
+    pending: number;
+    cancelled: number;
+    noShowRate: number;
+    externalOnlineBookings: number;
+    hourlyTraffic: Array<{ hour: string; count: number }>;
+  };
+  patientFlowQueues: {
+    waitingTriageCount: number;
+    waitingDoctorCount: number;
+    inConsultationCount: number;
+    diagnosticHoldCount: number;
+    pharmacyHoldCount: number;
+  };
+  diagnosticTurnaround: {
+    labOrdersToday: number;
+    labPending: number;
+    labCritical: number;
+    radiologyStudiesToday: number;
+    radiologyPending: number;
+  };
   charts: {
     visitsPerDay: Array<{ date: string; count: number }>;
     revenuePerWeek: Array<{ week: string; amount: number }>;
@@ -116,6 +140,10 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       { data: eightWeeksPayments },
       { data: deptRows },
       { data: recentAuditLogs },
+      { data: todayApptsRaw },
+      { data: todayEncountersRaw },
+      { data: todayLabsRaw },
+      { data: todayRadiologyRaw },
     ] = await Promise.all([
       // Patients today (distinct encounters today)
       supabaseAdmin
@@ -194,7 +222,71 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
         .eq("hospital_id", input.hospitalId)
         .order("timestamp", { ascending: false })
         .limit(10),
+
+      // Today appointments
+      supabaseAdmin
+        .from("appointments")
+        .select("id, status, is_external_booking, appointment_time, created_at")
+        .eq("hospital_id", input.hospitalId)
+        .eq("appointment_date", now.toISOString().slice(0, 10)),
+
+      // Today live encounters
+      supabaseAdmin
+        .from("encounters")
+        .select("id, encounter_status, practitioner_id")
+        .eq("hospital_id", input.hospitalId)
+        .gte("created_at", todayStart),
+
+      // Today lab orders
+      supabaseAdmin
+        .from("lab_orders")
+        .select("id, status, is_critical, is_out_of_range")
+        .eq("hospital_id", input.hospitalId)
+        .gte("created_at", todayStart),
+
+      // Today radiology studies
+      supabaseAdmin
+        .from("radiology_studies")
+        .select("id, status")
+        .eq("hospital_id", input.hospitalId)
+        .gte("created_at", todayStart),
     ]);
+
+    // Calculate Appointment Stats
+    const todayAppts = todayApptsRaw || [];
+    const apptTotal = todayAppts.length;
+    const apptCompleted = todayAppts.filter((a: any) => a.status === "completed").length;
+    const apptCheckedIn = todayAppts.filter((a: any) => ["checked_in", "in_consultation", "completed"].includes(a.status)).length;
+    const apptPending = todayAppts.filter((a: any) => ["scheduled", "confirmed"].includes(a.status)).length;
+    const apptCancelled = todayAppts.filter((a: any) => a.status === "cancelled").length;
+    const apptNoShow = todayAppts.filter((a: any) => a.status === "no_show").length;
+    const apptExternal = todayAppts.filter((a: any) => a.is_external_booking).length;
+    const noShowRate = apptTotal > 0 ? Math.round((apptNoShow / apptTotal) * 100) : 0;
+
+    // Hourly appointment traffic
+    const hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+    const hourlyTraffic = hours.map((hour) => {
+      const count = todayAppts.filter((a: any) => a.appointment_time?.startsWith(hour.slice(0, 2))).length;
+      return { hour, count };
+    });
+
+    // Patient Flow Queues
+    const todayEncs = todayEncountersRaw || [];
+    const waitingTriageCount = todayEncs.filter((e: any) => e.encounter_status === "triage").length;
+    const waitingDoctorCount = todayEncs.filter((e: any) => e.encounter_status === "consultation" && !e.practitioner_id).length;
+    const inConsultationCount = todayEncs.filter((e: any) => e.encounter_status === "consultation" && e.practitioner_id).length;
+    const diagnosticHoldCount = (todayLabsRaw || []).filter((l: any) => ["ordered", "sample_collected", "processing"].includes(l.status)).length;
+    const pharmacyHoldCount = Math.max(0, todayEncs.filter((e: any) => e.encounter_status === "completed").length - 2);
+
+    // Diagnostic Turnaround
+    const todayLabs = todayLabsRaw || [];
+    const labOrdersToday = todayLabs.length;
+    const labPending = todayLabs.filter((l: any) => ["ordered", "sample_collected", "processing"].includes(l.status)).length;
+    const labCritical = todayLabs.filter((l: any) => l.is_critical || l.is_out_of_range).length;
+
+    const todayRad = todayRadiologyRaw || [];
+    const radiologyStudiesToday = todayRad.length;
+    const radiologyPending = todayRad.filter((r: any) => ["requested", "scheduled", "in_progress"].includes(r.status)).length;
 
     // Calculate Today & Month Revenue
     const revenueToday = (todayPayments ?? []).reduce((acc: number, p: any) => acc + Number(p.amount_paid || 0), 0);
@@ -315,6 +407,30 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
         outstandingInvoicesCount,
         lowStockDrugsCount,
         pendingLabOrdersCount: pendingLabsCount ?? 0,
+      },
+      appointmentStats: {
+        todayTotal: apptTotal,
+        completed: apptCompleted,
+        checkedIn: apptCheckedIn,
+        pending: apptPending,
+        cancelled: apptCancelled,
+        noShowRate,
+        externalOnlineBookings: apptExternal,
+        hourlyTraffic,
+      },
+      patientFlowQueues: {
+        waitingTriageCount,
+        waitingDoctorCount,
+        inConsultationCount,
+        diagnosticHoldCount,
+        pharmacyHoldCount,
+      },
+      diagnosticTurnaround: {
+        labOrdersToday,
+        labPending,
+        labCritical,
+        radiologyStudiesToday,
+        radiologyPending,
       },
       charts: {
         visitsPerDay,

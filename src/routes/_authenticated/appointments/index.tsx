@@ -30,6 +30,7 @@ import {
   Phone,
   Shield,
   ArrowRight,
+  Mic,
 } from "lucide-react";
 import { useAppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -473,6 +474,18 @@ function AppointmentsCalendarPage() {
             <Link to="/appointments/queue">
               <Tv className="size-3.5 text-teal-600 dark:text-teal-400" />
               Live Waiting Queue Board
+            </Link>
+          </Button>
+
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 shadow-xs hover:bg-emerald-500/20 text-xs font-semibold"
+          >
+            <Link to="/voicecare">
+              <Mic className="size-3.5 text-emerald-600 animate-pulse" />
+              VoiceCare Booking
             </Link>
           </Button>
 

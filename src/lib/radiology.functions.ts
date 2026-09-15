@@ -403,6 +403,41 @@ export const saveRadiologyReport = createServerFn({ method: "POST" })
 
     if (updateErr) throw new Error(updateErr.message);
 
+    // Prompt 40: Notify requesting doctor (and hospital admin if critical)
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { createNotificationRecord } = await import("./notifications.functions");
+
+      const { data: studyData } = await (supabaseAdmin as any)
+        .from("radiology_studies")
+        .select(`
+          id, encounter_id, modality, body_part, requesting_doctor_id,
+          patient:patient_id (first_name, last_name),
+          doctor:requesting_doctor_id (user_id, full_name)
+        `)
+        .eq("id", input.studyId)
+        .maybeSingle();
+
+      const patientName = studyData?.patient ? `${studyData.patient.first_name} ${studyData.patient.last_name}` : "Patient";
+      const docUserId = studyData?.doctor?.user_id;
+      const modalityName = `${String(studyData?.modality || "Imaging").toUpperCase()} (${studyData?.body_part || "Scan"})`;
+
+      if (docUserId) {
+        await createNotificationRecord(supabaseAdmin, {
+          recipientUserId: docUserId,
+          hospitalId: activeHospitalId,
+          type: input.isCritical ? "radiology_critical" : "radiology_completed",
+          priority: input.isCritical ? "critical" : "routine",
+          title: input.isCritical ? `⚠️ CRITICAL RADIOLOGY FINDING: ${modalityName}` : `Radiology Report Ready: ${modalityName}`,
+          body: `${patientName} — Impression: ${input.impression}. Findings: ${input.findings.slice(0, 100)}...`,
+          linkTarget: `/radiology?studyId=${input.studyId}`,
+          entityReference: input.studyId,
+        });
+      }
+    } catch (notifErr) {
+      console.warn("Radiology notification warning:", notifErr);
+    }
+
     await writeAuditEntry(supabase, {
       hospital_id: activeHospitalId,
       accessor_id: userId,

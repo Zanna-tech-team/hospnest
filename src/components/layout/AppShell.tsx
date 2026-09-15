@@ -44,6 +44,7 @@ import {
   UserPlus,
   Users,
   X,
+  Mic,
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -122,6 +123,13 @@ const NAVIGATION_ITEMS: NavItem[] = [
     href: "/portal",
     icon: HeartPulse,
     patientOnly: true,
+    category: "core",
+  },
+  {
+    label: "VoiceCare Platform",
+    href: "/voicecare",
+    icon: Mic,
+    badge: "VOICE",
     category: "core",
   },
   {
@@ -230,6 +238,14 @@ const NAVIGATION_ITEMS: NavItem[] = [
     category: "admin",
   },
   {
+    label: "Super Admin Platform",
+    href: "/superadmin",
+    icon: ShieldAlert,
+    roles: ["super_admin"],
+    category: "admin",
+    badge: "GLOBAL",
+  },
+  {
     label: "Hospital Settings",
     href: "/settings",
     icon: Settings,
@@ -254,8 +270,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const activeHospitalId = selectedHospitalId || shellData?.activeWorkplace?.hospitalId || "";
   const isPatientUser = Boolean(shellData?.isPatient);
+  const isSuperAdmin = Boolean(shellData?.isSuperAdmin);
   const hasStaffWorkplaces = (shellData?.workplaces?.length ?? 0) > 0;
-  const currentRole = shellData?.activeWorkplace?.role || (isPatientUser ? "patient" : "doctor");
+  const currentRole = shellData?.activeWorkplace?.role || (isPatientUser ? "patient" : isSuperAdmin ? "super_admin" : "doctor");
   const isAdmin = shellData?.isAdmin || false;
 
   const handleSignOut = async () => {
@@ -265,6 +282,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Filter navigation items by role
   const visibleNavItems = NAVIGATION_ITEMS.filter((item) => {
+    if (item.href === "/superadmin") {
+      return isSuperAdmin;
+    }
     if (item.patientOnly) {
       return isPatientUser || !hasStaffWorkplaces;
     }

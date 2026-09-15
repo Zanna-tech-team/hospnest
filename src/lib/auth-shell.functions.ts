@@ -18,6 +18,7 @@ export type AppShellData = {
   workplaces: Workplace[];
   activeWorkplace: Workplace | null;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   isPatient: boolean;
 };
 
@@ -44,6 +45,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
     if (roleError) throw new Error(roleError.message);
 
     const isPatient = (roleRows ?? []).some((r: any) => r.role === "patient");
+    const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin" || r.role === "superadmin");
 
     const workplaces: Workplace[] = (roleRows ?? [])
       .filter((r: any) => r.hospital_id && r.role !== "patient")
@@ -91,8 +93,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
 
     const activeWorkplace = workplaces.find((w) => w.hospitalId === activeHospitalId) || workplaces[0] || null;
 
-    const isSuper = workplaces.some((w) => w.role === "super_admin");
-    const isAdmin = isSuper || activeWorkplace?.role === "hospital_admin";
+    const isAdmin = isSuperAdmin || activeWorkplace?.role === "hospital_admin";
 
     return {
       user: {
@@ -103,6 +104,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
       workplaces,
       activeWorkplace,
       isAdmin,
+      isSuperAdmin,
       isPatient,
     };
   });

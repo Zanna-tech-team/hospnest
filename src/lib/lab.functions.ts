@@ -353,11 +353,15 @@ export type RecordLabResultInput = {
   unit?: string | undefined;
   referenceRange?: string | undefined;
   abnormalFlag: "normal" | "abnormal" | "critical";
+  isOutOfRange?: boolean | undefined;
+  interpretation?: string | undefined;
+  attachedFileUrl?: string | undefined;
   comments?: string | undefined;
 };
 
 /**
- * Records structured lab test results and marks order completed (or critical).
+ * Records structured lab test results, stamps technician, marks order completed (or critical),
+ * and triggers closed-loop real-time notifications to the ordering doctor (Prompt 40).
  */
 export const recordLabResult = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -371,6 +375,9 @@ export const recordLabResult = createServerFn({ method: "POST" })
       unit?: string | undefined;
       referenceRange?: string | undefined;
       abnormalFlag: "normal" | "abnormal" | "critical";
+      isOutOfRange?: boolean | undefined;
+      interpretation?: string | undefined;
+      attachedFileUrl?: string | undefined;
       comments?: string | undefined;
     }) => {
       if (!input.labOrderId) throw new Error("Missing lab order ID.");
@@ -384,6 +391,9 @@ export const recordLabResult = createServerFn({ method: "POST" })
         unit: input.unit ? String(input.unit).trim() : undefined,
         referenceRange: input.referenceRange ? String(input.referenceRange).trim() : undefined,
         abnormalFlag: input.abnormalFlag || "normal",
+        isOutOfRange: Boolean(input.isOutOfRange || input.abnormalFlag !== "normal"),
+        interpretation: input.interpretation ? String(input.interpretation).trim() : undefined,
+        attachedFileUrl: input.attachedFileUrl ? String(input.attachedFileUrl).trim() : undefined,
         comments: input.comments ? String(input.comments).trim() : undefined,
       };
     },
@@ -416,29 +426,107 @@ export const recordLabResult = createServerFn({ method: "POST" })
 
     const isCritical = input.abnormalFlag === "critical";
     const status = isCritical ? "critical" : "completed";
+    const completedAt = new Date().toISOString();
 
     const resultMetadata = {
       unit: input.unit || "",
       referenceRange: input.referenceRange || "",
       abnormalFlag: input.abnormalFlag,
+      isOutOfRange: input.isOutOfRange,
+      interpretation: input.interpretation || "",
+      attachedFileUrl: input.attachedFileUrl || null,
       comments: input.comments || "",
-      enteredAt: new Date().toISOString(),
+      enteredAt: completedAt,
       enteredByName: staffRow?.full_name || "Lab Staff",
     };
 
+    // 1. Fetch current lab order to get test name, patient name, and ordering doctor
+    const { data: currentOrder } = await supabase
+      .from("lab_orders")
+      .select(`
+        id, ordered_by,
+        test:test_id(test_catalog:test_catalog_id(name, code)),
+        patient:patient_id(first_name, last_name),
+        ordered_by_staff:ordered_by(user_id, full_name)
+      `)
+      .eq("id", input.labOrderId)
+      .single();
+
+    const testName = (currentOrder?.test as any)?.test_catalog?.name || "Lab Test";
+    const patientName = currentOrder?.patient ? `${(currentOrder.patient as any).first_name} ${(currentOrder.patient as any).last_name}` : "Patient";
+    const doctorUserId = (currentOrder?.ordered_by_staff as any)?.user_id;
+
+    // 2. Update lab order
     const { error: updateErr } = await supabase
       .from("lab_orders")
       .update({
         result_value: input.resultValue,
+        units: input.unit || null,
+        reference_range: input.referenceRange || null,
+        is_out_of_range: input.isOutOfRange,
+        interpretation: input.interpretation || input.comments || null,
+        attached_file_url: input.attachedFileUrl || null,
         result_metadata: resultMetadata,
         status,
         is_critical: isCritical,
-        critical_flagged_at: isCritical ? new Date().toISOString() : null,
+        completed_at: completedAt,
+        critical_flagged_at: isCritical ? completedAt : null,
         technician_id: staffRow?.id || null,
+        technician_name: staffRow?.full_name || "Lab Staff",
+        verified_at: completedAt,
       })
       .eq("id", input.labOrderId);
 
     if (updateErr) throw new Error(updateErr.message);
+
+    // 3. Create Doctor & Hospital Notifications (Prompt 40)
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { createNotificationRecord } = await import("./notifications.functions");
+
+    if (doctorUserId) {
+      await createNotificationRecord(supabaseAdmin, {
+        recipientUserId: doctorUserId,
+        hospitalId: activeHospitalId,
+        type: isCritical ? "lab_result_critical" : "lab_result_completed",
+        priority: isCritical ? "critical" : "routine",
+        title: isCritical ? `⚠️ CRITICAL LAB ALERT: ${testName}` : `Lab Result Ready: ${testName}`,
+        body: `${patientName} — Result: ${input.resultValue} ${input.unit || ""}. Flag: ${input.abnormalFlag.toUpperCase()}`,
+        linkTarget: `/consultations?encounterId=${input.encounterId}&orderId=${input.labOrderId}`,
+        entityReference: input.labOrderId,
+        metadata: {
+          labOrderId: input.labOrderId,
+          encounterId: input.encounterId,
+          patientName,
+          testName,
+          isCritical,
+          resultValue: input.resultValue,
+        },
+      });
+    }
+
+    // If critical, also notify hospital admins and on-duty staff
+    if (isCritical) {
+      const { data: adminRoles } = await (supabaseAdmin as any)
+        .from("user_roles")
+        .select("user_id")
+        .eq("hospital_id", activeHospitalId)
+        .in("role", ["hospital_admin", "nurse"]);
+
+      for (const adm of adminRoles ?? []) {
+        if (adm.user_id !== doctorUserId && adm.user_id !== userId) {
+          await createNotificationRecord(supabaseAdmin, {
+            recipientUserId: adm.user_id,
+            hospitalId: activeHospitalId,
+            type: "lab_result_critical",
+            priority: "critical",
+            title: `⚠️ CRITICAL LAB ALERT: ${testName} (${patientName})`,
+            body: `Critical panic value recorded: ${input.resultValue} ${input.unit || ""}. Immediate clinical review required.`,
+            linkTarget: `/consultations?encounterId=${input.encounterId}`,
+            entityReference: input.labOrderId,
+          });
+        }
+      }
+    }
 
     // Check if all lab orders for this encounter are completed
     const { data: remainingLabs } = await supabase
@@ -447,7 +535,6 @@ export const recordLabResult = createServerFn({ method: "POST" })
       .eq("encounter_id", input.encounterId)
       .in("status", ["ordered", "sample_collected", "processing"]);
 
-    // If no remaining pending labs, check if pharmacy is pending or close
     if (!remainingLabs || remainingLabs.length === 0) {
       const { data: pendingRx } = await supabase
         .from("prescriptions")
@@ -474,3 +561,84 @@ export const recordLabResult = createServerFn({ method: "POST" })
 
     return { success: true, status };
   });
+
+/**
+ * Acknowledges / Reviews a lab result from doctor workstation (Prompt 40).
+ */
+export const acknowledgeDoctorLabResult = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input: {
+      labOrderId: string;
+      comment?: string | undefined;
+      hospitalId?: string | undefined;
+    }) => ({
+      labOrderId: String(input.labOrderId).trim(),
+      comment: input.comment ? String(input.comment).trim() : undefined,
+      hospitalId: input.hospitalId ? String(input.hospitalId).trim() : undefined,
+    })
+  )
+  .handler(async ({ context, data: input }) => {
+    const { supabase, userId } = context;
+
+    const { data: staffRow } = await supabase
+      .from("staff")
+      .select("id, full_name, hospital_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const timestamp = new Date().toISOString();
+
+    const { error: updErr } = await supabase
+      .from("lab_orders")
+      .update({
+        acknowledged_at: timestamp,
+        acknowledged_by: staffRow?.id || null,
+        acknowledged_by_name: staffRow?.full_name || "Physician",
+        acknowledgement_comment: input.comment || "Reviewed and clinically managed.",
+      })
+      .eq("id", input.labOrderId);
+
+    if (updErr) throw new Error(updErr.message);
+
+    return { success: true, acknowledgedAt: timestamp, acknowledgedByName: staffRow?.full_name || "Physician" };
+  });
+
+/**
+ * Fetches historical trend comparison for a patient test (Prompt 40).
+ */
+export const getPatientLabTrends = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: { patientId: string; testName: string }) => ({
+    patientId: String(input.patientId),
+    testName: String(input.testName),
+  }))
+  .handler(async ({ context, data: input }) => {
+    const { supabase } = context;
+
+    const { data: rows } = await supabase
+      .from("lab_orders")
+      .select(`
+        id, result_value, units, reference_range, is_critical, is_out_of_range, completed_at, created_at,
+        test:test_id(test_catalog:test_catalog_id(name, code))
+      `)
+      .eq("patient_id", input.patientId)
+      .in("status", ["completed", "critical"])
+      .order("completed_at", { ascending: true });
+
+    const filtered = (rows ?? []).filter((r: any) => {
+      const name = (r.test as any)?.test_catalog?.name || "";
+      return name.toLowerCase().includes(input.testName.toLowerCase()) || input.testName.toLowerCase().includes(name.toLowerCase());
+    });
+
+    return filtered.map((r: any) => ({
+      id: r.id,
+      date: r.completed_at || r.created_at,
+      value: r.result_value,
+      units: r.units || "",
+      referenceRange: r.reference_range || "",
+      isCritical: Boolean(r.is_critical),
+      isOutOfRange: Boolean(r.is_out_of_range),
+    }));
+  });
+
