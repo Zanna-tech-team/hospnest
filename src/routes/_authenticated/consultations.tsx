@@ -64,11 +64,13 @@ import {
   orderLabTest,
   orderPrescription,
   finishConsultation,
+  getDoctorReturnedLabNotifications,
   COMMON_DIAGNOSES,
   type ConsultationQueueItem,
   type DiagnosisItem,
   type SystematicPhysicalExam,
   type ClinicalAmendmentItem,
+  type DoctorLabNotificationItem,
 } from "@/lib/consultations.functions";
 import {
   generateAiEncounterSummary,
@@ -246,8 +248,20 @@ function ConsultationsPage() {
   const [isDrugWarningOpen, setIsDrugWarningOpen] = useState(false);
   const [pendingSafetyResult, setPendingSafetyResult] = useState<DrugSafetyResult | null>(null);
   const [pendingDrugName, setPendingDrugName] = useState("");
+  const getLabNotifsFn = useServerFn(getDoctorReturnedLabNotifications);
+  const [selectedNotificationOrder, setSelectedNotificationOrder] = useState<DoctorLabNotificationItem | null>(null);
 
   const [isPending, startTransition] = useTransition();
+
+  // Returned Lab Notifications Query for doctor alerts
+  const {
+    data: labNotifsData,
+    refetch: refetchLabNotifs,
+  } = useQuery({
+    queryKey: ["doctor-lab-notifications", activeHospitalId],
+    queryFn: () => getLabNotifsFn({ data: { hospitalId: activeHospitalId || undefined } }),
+    refetchInterval: 10000,
+  });
 
   // Queue query
   const {
@@ -839,12 +853,15 @@ function ConsultationsPage() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => refetchQueue()}
+            onClick={() => {
+              refetchQueue();
+              refetchLabNotifs();
+            }}
             disabled={isQueueFetching}
             className="gap-1.5 border-border"
           >
             <RefreshCw className={`size-3.5 ${isQueueFetching ? "animate-spin" : ""}`} />
-            Refresh Queue
+            Refresh Queue & Labs
           </Button>
           <Button asChild size="sm" variant="secondary" className="gap-1.5">
             <Link to="/triage">
@@ -853,6 +870,108 @@ function ConsultationsPage() {
           </Button>
         </div>
       </div>
+
+      {/* Returned Lab Notifications Alert Bar */}
+      {labNotifsData && labNotifsData.notifications.length > 0 && (
+        <div className="rounded-2xl border border-teal-500/30 bg-gradient-to-r from-teal-500/10 via-background to-blue-500/10 p-4 shadow-soft space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2">
+            <div className="flex items-center gap-2">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-teal-600 text-white font-bold text-xs">
+                <FlaskConical className="size-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-foreground flex items-center gap-2">
+                  <span>Returned Lab Reports & Diagnostic Notifications</span>
+                  {labNotifsData.unacknowledgedCount > 0 && (
+                    <Badge className="bg-rose-600 text-white text-[10px] font-bold animate-pulse">
+                      {labNotifsData.unacknowledgedCount} New Unreviewed
+                    </Badge>
+                  )}
+                </h3>
+                <p className="text-[11px] text-muted-foreground">
+                  Immediate laboratory investigation results completed for patients at this facility.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => refetchLabNotifs()}
+              className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+            >
+              <RefreshCw className="size-3" /> Refresh Labs
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-52 overflow-y-auto">
+            {labNotifsData.notifications.map((notif) => {
+              const isCrit = notif.isCritical || notif.abnormalFlag === "critical";
+              const isAbnormal = notif.isOutOfRange || notif.abnormalFlag === "abnormal";
+              const isReviewed = Boolean(notif.acknowledgedAt);
+
+              return (
+                <div
+                  key={notif.id}
+                  className={`rounded-xl border p-3 text-xs transition-all flex flex-col justify-between space-y-2 ${
+                    isCrit
+                      ? "border-rose-500/60 bg-rose-500/10 dark:bg-rose-950/30"
+                      : isAbnormal
+                      ? "border-amber-500/50 bg-amber-500/10 dark:bg-amber-950/20"
+                      : "border-border/80 bg-card"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-1.5">
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <strong className="text-foreground text-xs">{notif.patientName}</strong>
+                        <span className="text-[10px] text-muted-foreground font-mono">({notif.patientAge}, {notif.patientGender})</span>
+                      </div>
+                      <span className="text-[11px] font-semibold text-teal-700 dark:text-teal-300 block mt-0.5">
+                        {notif.testName} ({notif.testCode})
+                      </span>
+                    </div>
+
+                    <Badge
+                      className={`text-[9px] uppercase font-bold shrink-0 ${
+                        isCrit
+                          ? "bg-rose-600 text-white animate-pulse"
+                          : isAbnormal
+                          ? "bg-amber-500 text-white"
+                          : "bg-emerald-600 text-white"
+                      }`}
+                    >
+                      {notif.abnormalFlag}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-border/50 text-[11px]">
+                    <div>
+                      <span className="text-muted-foreground">Result: </span>
+                      <span className={`font-mono font-bold ${isCrit ? "text-rose-600" : isAbnormal ? "text-amber-600" : "text-emerald-600 font-semibold"}`}>
+                        {notif.resultValue} {notif.units || ""}
+                      </span>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setSelectedNotificationOrder(notif);
+                        if (notif.encounterId) {
+                          setSelectedEncounterId(notif.encounterId);
+                        }
+                      }}
+                      className="h-6 text-[10px] px-2.5 gap-1 bg-teal-600 hover:bg-teal-700 text-white font-bold"
+                    >
+                      <Eye className="size-3" />
+                      {isReviewed ? "View Report" : "Review Report"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Main Grid: Left Column Queue / Right Column Workspace */}
       <div className="grid gap-6 lg:grid-cols-12">
@@ -1250,25 +1369,41 @@ function ConsultationsPage() {
                   </div>
 
                   {/* AI Generated Visit Synthesis & Home Care Card */}
-                  {(workspaceData.encounter.aiSummary || workspaceData.encounter.aiPatientSummary) && (
+                  {workspaceData.encounter.aiSummary || workspaceData.encounter.aiPatientSummary ? (
                     <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 space-y-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
-                          <Sparkles className="size-4" />
+                          <Sparkles className="size-4 text-purple-600" />
                           <span className="font-bold text-xs">AI Gateway Consultation Summary & Home Care Guide</span>
+                          <Badge variant="outline" className="text-[9px] border-purple-500/30 text-purple-700 dark:text-purple-300 bg-purple-500/10">
+                            AI Gateway
+                          </Badge>
                         </div>
-                        {workspaceData.encounter.aiGeneratedAt && (
-                          <span className="text-[10px] font-mono text-muted-foreground">
-                            Generated {new Date(workspaceData.encounter.aiGeneratedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {workspaceData.encounter.aiGeneratedAt && (
+                            <span className="text-[10px] font-mono text-muted-foreground">
+                              Synthesized {new Date(workspaceData.encounter.aiGeneratedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleRunAiCopilot}
+                            disabled={isGeneratingAi}
+                            className="h-6 text-[10px] px-2 gap-1 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10"
+                          >
+                            <RefreshCw className={`size-3 ${isGeneratingAi ? "animate-spin" : ""}`} />
+                            Re-Summarize
+                          </Button>
+                        </div>
                       </div>
 
                       <div className="grid gap-3 sm:grid-cols-2 text-xs">
                         {workspaceData.encounter.aiSummary && (
                           <div className="space-y-1">
                             <span className="font-semibold text-teal-800 dark:text-teal-300 block">Clinician SOAP Overview</span>
-                            <p className="rounded bg-background/80 p-2.5 text-muted-foreground whitespace-pre-line border border-border/70 text-[11px] max-h-32 overflow-y-auto">
+                            <p className="rounded bg-background/80 p-2.5 text-muted-foreground whitespace-pre-line border border-border/70 text-[11px] max-h-36 overflow-y-auto">
                               {workspaceData.encounter.aiSummary}
                             </p>
                           </div>
@@ -1277,7 +1412,7 @@ function ConsultationsPage() {
                         {workspaceData.encounter.aiPatientSummary && (
                           <div className="space-y-1">
                             <span className="font-semibold text-purple-800 dark:text-purple-300 block">Patient-Friendly Home Guide</span>
-                            <p className="rounded bg-background/80 p-2.5 text-muted-foreground whitespace-pre-line border border-border/70 text-[11px] max-h-32 overflow-y-auto">
+                            <p className="rounded bg-background/80 p-2.5 text-muted-foreground whitespace-pre-line border border-border/70 text-[11px] max-h-36 overflow-y-auto">
                               {workspaceData.encounter.aiPatientSummary}
                             </p>
                           </div>
@@ -1314,6 +1449,52 @@ function ConsultationsPage() {
                           )}
                         </div>
                       ) : null}
+
+                      {/* Quick Apply Action */}
+                      <div className="pt-2 border-t border-purple-500/20 flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground">
+                          Available to patient in Patient Portal and saved to encounter record.
+                        </span>
+                        {!workspaceData.encounter.isLocked && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              if (workspaceData.encounter.aiNextSteps?.length) {
+                                setPlanAndOrders((prev) =>
+                                  prev
+                                    ? `${prev}\n\n[AI Suggested Next Steps]:\n${workspaceData.encounter.aiNextSteps!.join("\n")}`
+                                    : `[AI Suggested Next Steps]:\n${workspaceData.encounter.aiNextSteps!.join("\n")}`
+                                );
+                                toast.success("Added AI next steps to clinical plan!");
+                              }
+                            }}
+                            className="h-6 text-[10px] px-2 gap-1 border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10"
+                          >
+                            <Copy className="size-3" /> Apply Next Steps to Plan
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-purple-500/30 bg-purple-500/5 p-3 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="size-4 text-purple-600" />
+                        <span className="text-muted-foreground">
+                          Generate dual AI summary for you (Clinician SOAP) and your patient (Home Care Guide & Next Steps).
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleRunAiCopilot}
+                        disabled={isGeneratingAi}
+                        className="h-7 text-xs gap-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold"
+                      >
+                        {isGeneratingAi ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+                        Generate AI Summary
+                      </Button>
                     </div>
                   )}
 
@@ -2893,6 +3074,22 @@ function ConsultationsPage() {
           patientId={workspaceData.patient.id}
           patientName={workspaceData.patient.fullName}
           onAcknowledged={() => {
+            refetchWorkspace();
+            refetchLabNotifs();
+          }}
+        />
+      )}
+
+      {/* Direct Review Modal from Notification Alert */}
+      {selectedNotificationOrder && (
+        <LabResultReviewModal
+          isOpen={Boolean(selectedNotificationOrder)}
+          onClose={() => setSelectedNotificationOrder(null)}
+          order={selectedNotificationOrder}
+          patientId={selectedNotificationOrder.patientId}
+          patientName={selectedNotificationOrder.patientName}
+          onAcknowledged={() => {
+            refetchLabNotifs();
             refetchWorkspace();
           }}
         />

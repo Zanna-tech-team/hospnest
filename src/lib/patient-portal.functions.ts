@@ -50,6 +50,11 @@ export type PatientPortalEncounter = {
   chiefComplaint: string | null;
   diagnosis: string | null;
   status: string;
+  aiSummary?: string | null;
+  aiPatientSummary?: string | null;
+  aiKeyFindings?: string[] | null;
+  aiNextSteps?: string[] | null;
+  aiGeneratedAt?: string | null;
 };
 
 export type PatientPortalLabResult = {
@@ -652,16 +657,16 @@ export const getPatientPortalDashboardData = createServerFn({ method: "GET" })
       createdAt: a.created_at,
     }));
 
-    // 3. Fetch Closed Encounters (Visit History with diagnoses)
+    // 3. Fetch Closed Encounters (Visit History with diagnoses & AI summaries)
     const { data: encRows } = await (supabase as any)
       .from("encounters")
       .select(`
         id, encounter_status, chief_complaint, diagnosis, created_at, closed_at,
+        ai_summary, ai_patient_summary, ai_key_findings, ai_next_steps, ai_generated_at,
         hospital:hospital_id (name),
         practitioner:practitioner_id (full_name)
       `)
       .eq("patient_id", patientId)
-      .in("encounter_status", ["closed", "discharged"])
       .order("created_at", { ascending: false });
 
     const recentEncounters: PatientPortalEncounter[] = (encRows ?? []).map((e: any) => ({
@@ -673,6 +678,11 @@ export const getPatientPortalDashboardData = createServerFn({ method: "GET" })
       chiefComplaint: e.chief_complaint,
       diagnosis: e.diagnosis,
       status: e.encounter_status,
+      aiSummary: e.ai_summary || null,
+      aiPatientSummary: e.ai_patient_summary || null,
+      aiKeyFindings: Array.isArray(e.ai_key_findings) ? e.ai_key_findings : null,
+      aiNextSteps: Array.isArray(e.ai_next_steps) ? e.ai_next_steps : null,
+      aiGeneratedAt: e.ai_generated_at || null,
     }));
 
     // 4. Fetch Completed Lab Results

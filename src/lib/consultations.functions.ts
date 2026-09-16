@@ -1486,3 +1486,128 @@ export const finishConsultation = createServerFn({ method: "POST" })
 
     return { success: true, nextStatus };
   });
+
+export type DoctorLabNotificationItem = {
+  id: string;
+  encounterId: string;
+  patientId: string;
+  patientName: string;
+  patientNin: string;
+  patientAge: string;
+  patientGender: string;
+  testName: string;
+  testCode: string;
+  resultValue: string;
+  units: string | null;
+  referenceRange: string | null;
+  abnormalFlag: "normal" | "abnormal" | "critical";
+  isCritical: boolean;
+  isOutOfRange: boolean;
+  interpretation: string | null;
+  attachedFileUrl: string | null;
+  technicianName: string | null;
+  completedAt: string;
+  acknowledgedAt: string | null;
+  acknowledgedByName: string | null;
+};
+
+/**
+ * Returns newly completed and critical lab reports for the doctor's hospital
+ * so doctors receive immediate alerts with patient details and direct report review.
+ */
+export const getDoctorReturnedLabNotifications = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input?: {
+      hospitalId?: string | undefined;
+    }) => ({
+      hospitalId: input?.hospitalId ? String(input.hospitalId).trim() : undefined,
+    })
+  )
+  .handler(async ({ context, data: input }): Promise<{ notifications: DoctorLabNotificationItem[]; unacknowledgedCount: number }> => {
+    const { supabase, userId } = context;
+
+    const { data: roleRows } = await supabase
+      .from("user_roles")
+      .select("role, hospital_id")
+      .eq("user_id", userId)
+      .eq("is_active", true);
+
+    const roles = (roleRows ?? []).filter((r: any) => r.hospital_id && r.role !== "patient");
+    if (roles.length === 0) return { notifications: [], unacknowledgedCount: 0 };
+
+    const matchedRole = input?.hospitalId
+      ? roles.find((r: any) => r.hospital_id === input.hospitalId) || roles[0]
+      : roles[0];
+
+    const activeHospitalId = matchedRole?.hospital_id || "";
+
+    const { data: labRows, error } = await supabase
+      .from("lab_orders")
+      .select(`
+        id, encounter_id, patient_id, status, result_value, units, reference_range,
+        is_out_of_range, is_critical, interpretation, attached_file_url,
+        technician_name, completed_at, acknowledged_at, acknowledged_by_name,
+        result_metadata,
+        test:test_id(
+          test_catalog:test_catalog_id(name, code)
+        ),
+        patient:patient_id(
+          id, first_name, last_name, nin, date_of_birth, gender
+        )
+      `)
+      .eq("hospital_id", activeHospitalId)
+      .in("status", ["completed", "critical"])
+      .order("completed_at", { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.warn("Error fetching doctor lab notifications:", error);
+      return { notifications: [], unacknowledgedCount: 0 };
+    }
+
+    let unacknowledgedCount = 0;
+    const notifications: DoctorLabNotificationItem[] = (labRows ?? []).map((row: any) => {
+      const p = row.patient;
+      const t = row.test?.test_catalog;
+      const meta = (row.result_metadata as any) || {};
+
+      if (!row.acknowledged_at) {
+        unacknowledgedCount++;
+      }
+
+      let age = "Adult";
+      if (p?.date_of_birth) {
+        const birth = new Date(p.date_of_birth);
+        const diff = new Date().getFullYear() - birth.getFullYear();
+        age = `${diff} yrs`;
+      }
+
+      return {
+        id: row.id,
+        encounterId: row.encounter_id,
+        patientId: row.patient_id,
+        patientName: p ? `${p.first_name} ${p.last_name}` : "Patient",
+        patientNin: p?.nin || "N/A",
+        patientAge: age,
+        patientGender: p?.gender || "Unknown",
+        testName: t?.name || "Diagnostic Test",
+        testCode: t?.code || "LAB",
+        resultValue: row.result_value || "Completed",
+        units: row.units || meta.unit || null,
+        referenceRange: row.reference_range || meta.referenceRange || null,
+        abnormalFlag: meta.abnormalFlag || (row.is_critical ? "critical" : row.is_out_of_range ? "abnormal" : "normal"),
+        isCritical: Boolean(row.is_critical),
+        isOutOfRange: Boolean(row.is_out_of_range),
+        interpretation: row.interpretation || meta.interpretation || null,
+        attachedFileUrl: row.attached_file_url || meta.attachedFileUrl || null,
+        technicianName: row.technician_name || meta.enteredByName || "Lab Technician",
+        completedAt: row.completed_at || new Date().toISOString(),
+        acknowledgedAt: row.acknowledged_at || null,
+        acknowledgedByName: row.acknowledged_by_name || null,
+      };
+    });
+
+    return { notifications, unacknowledgedCount };
+  });
+

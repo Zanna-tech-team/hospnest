@@ -923,6 +923,61 @@ export function PatientPortalPage() {
                         </div>
                       </div>
 
+                      {/* AI Consultation Summary & Home Care Guide */}
+                      {(enc.aiPatientSummary || enc.aiSummary || enc.aiKeyFindings?.length || enc.aiNextSteps?.length) && (
+                        <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-3.5 space-y-2.5 text-xs">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-purple-700 dark:text-purple-300 font-bold">
+                              <Sparkles className="h-4 w-4 text-purple-600" />
+                              <span>AI Visit Summary & Home Care Instructions</span>
+                            </div>
+                            <Badge variant="outline" className="text-[9px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30">
+                              AI Gateway
+                            </Badge>
+                          </div>
+
+                          {enc.aiPatientSummary ? (
+                            <p className="rounded-lg bg-background/80 p-2.5 text-muted-foreground whitespace-pre-line border border-border/60 text-[11px]">
+                              {enc.aiPatientSummary}
+                            </p>
+                          ) : enc.aiSummary ? (
+                            <p className="rounded-lg bg-background/80 p-2.5 text-muted-foreground whitespace-pre-line border border-border/60 text-[11px]">
+                              {enc.aiSummary}
+                            </p>
+                          ) : null}
+
+                          {(enc.aiKeyFindings?.length || enc.aiNextSteps?.length) ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-purple-500/20 text-[11px]">
+                              {enc.aiKeyFindings && enc.aiKeyFindings.length > 0 && (
+                                <div className="space-y-1">
+                                  <span className="font-semibold text-teal-700 dark:text-teal-300 flex items-center gap-1">
+                                    <CheckCircle2 className="h-3 w-3" /> Key Findings:
+                                  </span>
+                                  <ul className="list-disc pl-4 space-y-0.5 text-muted-foreground">
+                                    {enc.aiKeyFindings.map((f, i) => (
+                                      <li key={i}>{f}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {enc.aiNextSteps && enc.aiNextSteps.length > 0 && (
+                                <div className="space-y-1">
+                                  <span className="font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                                    <ArrowRight className="h-3 w-3" /> Suggested Next Steps:
+                                  </span>
+                                  <ul className="list-disc pl-4 space-y-0.5 text-muted-foreground">
+                                    {enc.aiNextSteps.map((s, i) => (
+                                      <li key={i}>{s}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+
                       {enc.doctorName && (
                         <div className="text-[11px] text-muted-foreground pt-1 flex items-center justify-between">
                           <span>Attending Practitioner: <strong>Dr. {enc.doctorName}</strong></span>

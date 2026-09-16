@@ -126,8 +126,84 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
     const activeHospitalId = matchedRole?.hospital_id || "";
     const callerRole = (matchedRole?.role as StaffRole) || "doctor";
 
+    // Check for AI Gateway configuration
+    let aiGatewayResult: Partial<AiCopilotResult> | null = null;
+    let gatewayProvider = "HospNest Clinical Reasoning Engine";
+
+    const aiGatewayUrl = process.env.AI_GATEWAY_URL || process.env.CF_AI_GATEWAY_URL;
+    const aiApiKey = process.env.AI_GATEWAY_TOKEN || process.env.CLOUDFLARE_API_TOKEN || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
+
+    if (aiGatewayUrl || aiApiKey) {
+      try {
+        const endpoint = aiGatewayUrl || (process.env.OPENAI_API_KEY ? "https://api.openai.com/v1/chat/completions" : null);
+        if (endpoint) {
+          gatewayProvider = "Cloudflare AI Gateway / Neural LLM";
+          const promptPayload = {
+            model: process.env.AI_MODEL || "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content: `You are an expert clinical AI assistant. Given patient consultation details, synthesize:
+1. Clinician technical summary (SOAP context, concise findings, diagnostic rationale).
+2. Patient-friendly summary & home instructions (warm, clear, non-jargon, medication guidance, red flag warning signs).
+3. Structured key findings (bullet points).
+4. Suggested next steps (actionable patient & doctor checklist).
+5. SOAP breakdown (Subjective, Objective, Assessment, Plan).
+Return strictly valid JSON with keys: clinicianSummary, patientFriendlySummary, keyFindings (array of strings), suggestedNextSteps (array of strings), redFlags (array of strings), soapSummary ({subjective, objective, assessment, plan}).`
+              },
+              {
+                role: "user",
+                content: JSON.stringify({
+                  patient: {
+                    name: input.patientName,
+                    age: input.patientAge,
+                    gender: input.patientGender,
+                    allergies: input.allergies,
+                    chronicConditions: input.chronicConditions,
+                  },
+                  visit: {
+                    chiefComplaint: input.chiefComplaint,
+                    hpi: input.historyOfPresentingIllness,
+                    exam: input.examinationFindings,
+                    provisionalDiagnosis: input.provisionalDiagnosis,
+                    vitals: input.vitals,
+                    labOrders: input.labOrders,
+                    prescriptions: input.prescriptions,
+                  }
+                })
+              }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.2,
+          };
+
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(aiApiKey ? { "Authorization": `Bearer ${aiApiKey}` } : {}),
+            },
+            body: JSON.stringify(promptPayload),
+          });
+
+          if (res.ok) {
+            const json = await res.json();
+            const contentStr = json?.choices?.[0]?.message?.content;
+            if (contentStr) {
+              const parsed = JSON.parse(contentStr);
+              if (parsed.clinicianSummary && parsed.patientFriendlySummary) {
+                aiGatewayResult = parsed;
+              }
+            }
+          }
+        }
+      } catch (gatewayErr) {
+        console.warn("AI Gateway request bypassed, using clinical algorithmic engine fallback:", gatewayErr);
+      }
+    }
+
     // 1. Scan for Clinical Red Flags & Risk Indicators
-    const redFlags: string[] = [];
+    const redFlags: string[] = aiGatewayResult?.redFlags || [];
     const v = input.vitals || {};
 
     if (v.systolicBp && v.systolicBp >= 140) {
@@ -263,32 +339,38 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
     }
 
     // 4. Structured Key Findings & Suggested Next Steps
-    const keyFindings: string[] = [
-      `Primary Impression: ${dx}`,
-      input.chiefComplaint ? `Chief Complaint: ${input.chiefComplaint}` : null,
-      v.systolicBp ? `Blood Pressure: ${v.systolicBp}/${v.diastolicBp || "--"} mmHg` : null,
-      v.bodyTemperature ? `Temperature: ${v.bodyTemperature}°C` : null,
-      v.spo2 ? `SpO2: ${v.spo2}%` : null,
-      input.labOrders && input.labOrders.length > 0 ? `Diagnostics: ${input.labOrders.length} test(s) requested` : null,
-      input.prescriptions && input.prescriptions.length > 0 ? `Prescriptions: ${input.prescriptions.length} item(s) issued` : null,
-    ].filter(Boolean) as string[];
+    const keyFindings: string[] = aiGatewayResult?.keyFindings && aiGatewayResult.keyFindings.length > 0
+      ? aiGatewayResult.keyFindings
+      : [
+          `Primary Impression: ${dx}`,
+          input.chiefComplaint ? `Chief Complaint: ${input.chiefComplaint}` : null,
+          v.systolicBp ? `Blood Pressure: ${v.systolicBp}/${v.diastolicBp || "--"} mmHg` : null,
+          v.bodyTemperature ? `Temperature: ${v.bodyTemperature}°C` : null,
+          v.spo2 ? `SpO2: ${v.spo2}%` : null,
+          input.labOrders && input.labOrders.length > 0 ? `Diagnostics: ${input.labOrders.length} test(s) requested` : null,
+          input.prescriptions && input.prescriptions.length > 0 ? `Prescriptions: ${input.prescriptions.length} item(s) issued` : null,
+        ].filter(Boolean) as string[];
 
-    const suggestedNextSteps: string[] = [
-      input.prescriptions && input.prescriptions.length > 0
-        ? "Collect prescribed medications from the hospital pharmacy and adhere strictly to dosing instructions."
-        : "Complete supportive care and maintain adequate oral hydration.",
-      input.labOrders && input.labOrders.length > 0
-        ? `Await lab results for ${input.labOrders.map(l => l.testName).join(", ")} and review with attending clinician.`
-        : null,
-      "Return for clinical review in 3–5 days to monitor symptom resolution.",
-      "Seek emergency medical evaluation immediately if experiencing high fever (>38.5°C), breathing difficulty, severe chest pain, or fainting.",
-    ].filter(Boolean) as string[];
+    const suggestedNextSteps: string[] = aiGatewayResult?.suggestedNextSteps && aiGatewayResult.suggestedNextSteps.length > 0
+      ? aiGatewayResult.suggestedNextSteps
+      : [
+          input.prescriptions && input.prescriptions.length > 0
+            ? "Collect prescribed medications from the hospital pharmacy and adhere strictly to dosing instructions."
+            : "Complete supportive care and maintain adequate oral hydration.",
+          input.labOrders && input.labOrders.length > 0
+            ? `Await lab results for ${input.labOrders.map(l => l.testName).join(", ")} and review with attending clinician.`
+            : null,
+          "Return for clinical review in 3–5 days to monitor symptom resolution.",
+          "Seek emergency medical evaluation immediately if experiencing high fever (>38.5°C), breathing difficulty, severe chest pain, or fainting.",
+        ].filter(Boolean) as string[];
 
     // 5. Dual Summaries: Clinician Summary + Patient-Friendly Summary
-    const clinicianSummary = `Patient ${input.patientName} presented with ${input.chiefComplaint}. Clinical impression: ${dx}. Vitals: BP ${v.systolicBp || "--"}/${v.diastolicBp || "--"}, Temp ${v.bodyTemperature ? v.bodyTemperature + "°C" : "unrecorded"}, SpO2 ${v.spo2 ? v.spo2 + "%" : "unrecorded"}. ${input.prescriptions?.length || 0} medications prescribed and ${input.labOrders?.length || 0} diagnostic tests requested. Follow-up advised in 3-5 days.`;
+    const clinicianSummary = aiGatewayResult?.clinicianSummary ||
+      `Patient ${input.patientName} presented with ${input.chiefComplaint}. Clinical impression: ${dx}. Vitals: BP ${v.systolicBp || "--"}/${v.diastolicBp || "--"}, Temp ${v.bodyTemperature ? v.bodyTemperature + "°C" : "unrecorded"}, SpO2 ${v.spo2 ? v.spo2 + "%" : "unrecorded"}. ${input.prescriptions?.length || 0} medications prescribed and ${input.labOrders?.length || 0} diagnostic tests requested. Follow-up advised in 3-5 days.`;
 
     const firstName = input.patientName.split(" ")[0] || "Patient";
-    const patientFriendlySummary = `Dear ${firstName},\n\n` +
+    const patientFriendlySummary = aiGatewayResult?.patientFriendlySummary ||
+      (`Dear ${firstName},\n\n` +
       `During your visit today, the doctor reviewed your condition regarding your symptoms of ${input.chiefComplaint.toLowerCase()}.\n\n` +
       `• Diagnosis: ${dx}\n` +
       `• What we found: Your physical examination was completed and your vital signs were recorded.\n` +
@@ -297,7 +379,7 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
         : `• Treatment: Supportive rest and fluids recommended.\n`) +
       `• Next Steps:\n` +
       suggestedNextSteps.map(step => `  ✓ ${step}`).join("\n") + `\n\n` +
-      `If your symptoms worsen or you develop high fever or breathing distress, please return to the hospital immediately.`;
+      `If your symptoms worsen or you develop high fever or breathing distress, please return to the hospital immediately.`);
 
     const patientInstructions = patientFriendlySummary;
     const suggestedFollowUp = "Review in 3–5 days, or emergency visit if red flag signs appear.";
@@ -328,11 +410,11 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
       patient_id: input.patientId,
       encounter_id: input.encounterId,
       action: "READ",
-      justification: `AI Clinical Copilot synthesized dual clinician & patient summary for encounter`,
+      justification: `AI Clinical Copilot synthesized dual clinician & patient summary for encounter via ${gatewayProvider}`,
     });
 
     return {
-      soapSummary: {
+      soapSummary: aiGatewayResult?.soapSummary || {
         subjective: subjectNarrative,
         objective: objectiveNarrative,
         assessment: assessmentNarrative,
@@ -348,6 +430,6 @@ export const generateAiEncounterSummary = createServerFn({ method: "POST" })
       patientInstructions,
       suggestedFollowUp,
       generatedAt: new Date().toISOString(),
-      gatewayProvider: "Cloudflare AI Gateway / Clinical Copilot",
+      gatewayProvider,
     };
   });

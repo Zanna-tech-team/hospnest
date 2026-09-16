@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 
 import { useAppShell } from "@/components/layout/AppShell";
-import { createHospital, getMyHospitals } from "@/lib/hospital.functions";
+import { createHospital, getMyHospitals, quickOnboardHospital } from "@/lib/hospital.functions";
 import {
   getHospitalOnboardingProgress,
   saveHospitalOnboardingStep,
@@ -53,6 +53,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -138,13 +139,14 @@ export const Route = createFileRoute("/_authenticated/hospital-setup")({
 
 function HospitalSetupWizardPage() {
   const navigate = useNavigate();
-  const { activeHospitalId, setActiveHospitalId } = useAppShell();
+  const { activeHospitalId, setActiveHospitalId, shellData } = useAppShell();
 
   const getMyHospFn = useServerFn(getMyHospitals);
   const getProgressFn = useServerFn(getHospitalOnboardingProgress);
   const saveStepFn = useServerFn(saveHospitalOnboardingStep);
   const finalizeFn = useServerFn(finalizeHospitalOnboarding);
   const createHospFn = useServerFn(createHospital);
+  const quickOnboardFn = useServerFn(quickOnboardHospital);
 
   const { data: myHospitalsData, refetch: refetchMyHospitals } = useQuery({
     queryKey: ["my-hospitals-setup"],
@@ -163,9 +165,29 @@ function HospitalSetupWizardPage() {
     enabled: Boolean(targetHospitalId),
   });
 
-  // Current step state (1 to 10)
+  // Setup View Mode: "quick" (fast 1-step go-live) or "wizard" (10-step deep config)
+  const [setupViewMode, setSetupViewMode] = useState<"quick" | "wizard">("quick");
+
+  // Current step state for wizard (1 to 10)
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [saving, setSaving] = useState(false);
+
+  // Quick Onboarding Form State
+  const [quickCategory, setQuickCategory] = useState<"general" | "specialist" | "primary" | "private_clinic">("general");
+  const [quickConsultationFee, setQuickConsultationFee] = useState("3000");
+  const [quickSpecialistFee, setQuickSpecialistFee] = useState("7500");
+  const [quickSlotDuration, setQuickSlotDuration] = useState("30");
+  const [quickAdminName, setQuickAdminName] = useState(shellData?.user?.fullName || "");
+  const [quickEmergencyAvailable, setQuickEmergencyAvailable] = useState(true);
+  const [quickSelectedDepts, setQuickSelectedDepts] = useState<string[]>([
+    "OPD", "PED", "O&G", "SURG", "ER", "LAB", "PHARM", "RAD"
+  ]);
+  const [createdHospital, setCreatedHospital] = useState<{
+    id: string;
+    name: string;
+    slug: string;
+    bookingUrl: string;
+  } | null>(null);
 
   // Step 1: Identity State
   const [hospName, setHospName] = useState("");
@@ -396,6 +418,78 @@ function HospitalSetupWizardPage() {
     setNewWardName("");
   }
 
+  const handleQuickDeptToggle = (code: string) => {
+    setQuickSelectedDepts((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
+    );
+  };
+
+  const handleQuickOnboardSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hospName.trim()) {
+      toast.error("Please enter the hospital name.");
+      return;
+    }
+    if (!licenseNumber.trim()) {
+      toast.error("Please enter the facility registration / license number.");
+      return;
+    }
+    if (!state) {
+      toast.error("Please select a state of operation.");
+      return;
+    }
+    if (!quickAdminName.trim()) {
+      toast.error("Please enter the administrator's full name.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await quickOnboardFn({
+        data: {
+          name: hospName.trim(),
+          hospitalType: hospType === "government" ? "government" : "private",
+          category: quickCategory,
+          licenseNumber: licenseNumber.trim(),
+          state,
+          lga: lga.trim() || undefined,
+          address: address.trim() || undefined,
+          contactEmail: contactEmail.trim() || undefined,
+          contactPhone: contactPhone.trim() || undefined,
+          adminFullName: quickAdminName.trim(),
+          consultationFee: parseFloat(quickConsultationFee) || 3000,
+          specialistFee: parseFloat(quickSpecialistFee) || 7500,
+          slotDurationMinutes: parseInt(quickSlotDuration, 10) || 30,
+          openingHours: "Open 24 Hours / 7 Days",
+          emergencyAvailable: quickEmergencyAvailable,
+          selectedDepartmentCodes: quickSelectedDepts,
+        },
+      });
+
+      toast.success(`🎉 ${res.name} registered and activated successfully!`);
+      setCreatedHospital({
+        id: res.hospitalId,
+        name: res.name,
+        slug: res.slug,
+        bookingUrl: res.bookingUrl,
+      });
+
+      setActiveHospitalId(res.hospitalId);
+      refetchMyHospitals();
+    } catch (err: any) {
+      toast.error(err.message || "Registration failed. Please review your details.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copyBookingUrl = () => {
+    if (!createdHospital) return;
+    const fullUrl = `${window.location.origin}${createdHospital.bookingUrl}`;
+    navigator.clipboard.writeText(fullUrl);
+    toast.success("Public booking link copied to clipboard!");
+  };
+
   const stepsMeta = [
     { number: 1, title: "Identity & Info", icon: Building2 },
     { number: 2, title: "Departments", icon: Layers },
@@ -448,39 +542,467 @@ function HospitalSetupWizardPage() {
         </div>
       </header>
 
-      {/* 10-Step Progress Steps Stepper Bar */}
-      <div className="bg-card border-b border-border px-4 py-3 overflow-x-auto">
-        <div className="mx-auto max-w-7xl flex items-center justify-between min-w-[800px] gap-2">
-          {stepsMeta.map((s) => {
-            const isDone = s.number < currentStep;
-            const isCurrent = s.number === currentStep;
-            const Icon = s.icon;
-            return (
+      {/* Mode Switcher Bar */}
+      <div className="bg-card/50 border-b border-border px-4 py-2.5">
+        <div className="mx-auto max-w-7xl flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">Onboarding Mode:</span>
+            <div className="inline-flex rounded-xl bg-muted p-1 border border-border">
               <button
-                key={s.number}
                 type="button"
-                onClick={() => setCurrentStep(s.number)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                  isCurrent
-                    ? "bg-teal-600 text-white shadow-sm"
-                    : isDone
-                    ? "bg-teal-500/10 text-teal-800 dark:text-teal-300 hover:bg-teal-500/20"
-                    : "text-muted-foreground hover:bg-muted"
+                onClick={() => setSetupViewMode("quick")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  setupViewMode === "quick"
+                    ? "bg-teal-600 text-white shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <div className={`size-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                  isCurrent ? "bg-white text-teal-700" : isDone ? "bg-teal-600 text-white" : "bg-muted text-muted-foreground"
-                }`}>
-                  {isDone ? <Check className="size-3" /> : s.number}
-                </div>
-                <span className="whitespace-nowrap">{s.title}</span>
+                <Sparkles className="size-3.5" />
+                ⚡ Fast-Track 1-Step Registration
               </button>
-            );
-          })}
+              <button
+                type="button"
+                onClick={() => setSetupViewMode("wizard")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  setupViewMode === "wizard"
+                    ? "bg-teal-600 text-white shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Layers className="size-3.5" />
+                📋 Comprehensive 10-Step Wizard
+              </button>
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {setupViewMode === "quick"
+              ? "Register required hospital details in 1 step & instantly receive online patient bookings."
+              : "Detailed step-by-step setup of tariffs, wards, laboratory catalogue, and shift rosters."}
+          </p>
         </div>
       </div>
 
+      {/* QUICK ONBOARDING VIEW */}
+      {setupViewMode === "quick" && (
+        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 space-y-6">
+          {createdHospital ? (
+            /* Go-Live Success Celebration Card */
+            <div className="rounded-3xl border border-emerald-500/30 bg-card p-6 sm:p-10 shadow-lg text-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
+              <div className="mx-auto size-20 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-600 shadow-inner">
+                <CheckCircle2 className="size-10" />
+              </div>
+
+              <div className="space-y-2">
+                <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 px-3 py-1 font-bold">
+                  🚀 Hospital Successfully Registered & Live
+                </Badge>
+                <h2 className="font-display text-3xl font-extrabold text-foreground">
+                  {createdHospital.name}
+                </h2>
+                <p className="text-sm text-muted-foreground max-w-lg mx-auto">
+                  Your clinical command center, default departments, starter tariffs, and public patient booking page are live and ready to accept appointment bookings.
+                </p>
+              </div>
+
+              {/* Booking URL Card */}
+              <div className="max-w-xl mx-auto rounded-2xl border border-teal-500/30 bg-teal-500/5 p-4 text-left space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+                    <Globe className="size-3.5" />
+                    Public Patient Booking Portal Link
+                  </span>
+                  <Badge variant="outline" className="border-teal-500/40 text-[10px] font-mono text-teal-700 dark:text-teal-300">
+                    Live
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={
+                      typeof window !== "undefined"
+                        ? `${window.location.origin}${createdHospital.bookingUrl}`
+                        : createdHospital.bookingUrl
+                    }
+                    className="font-mono text-xs bg-background"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={copyBookingUrl}
+                    className="shrink-0 text-xs font-semibold gap-1"
+                  >
+                    Copy Link
+                  </Button>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-4 border-t border-border">
+                <Button
+                  onClick={() => navigate({ to: "/dashboard" })}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-bold gap-2 px-6 shadow-md"
+                >
+                  <LayoutDashboard className="size-4" />
+                  Enter Hospital Dashboard
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="font-bold gap-2"
+                >
+                  <a href={createdHospital.bookingUrl} target="_blank" rel="noreferrer">
+                    <Globe className="size-4" />
+                    Preview Patient Booking Page
+                  </a>
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setSetupViewMode("wizard");
+                    setCurrentStep(2);
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Configure Advanced Details (Wards, Shifts, Pharmacy) →
+                </Button>
+              </div>
+            </div>
+          ) : (
+            /* Fast-Track Registration Form */
+            <div className="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-soft space-y-6">
+              <div className="border-b border-border pb-5">
+                <div className="flex items-center gap-2 text-teal-600 font-bold text-xs uppercase tracking-wider">
+                  <Sparkles className="size-4" />
+                  Quick Hospital Registration & Public Listing
+                </div>
+                <h2 className="font-display text-2xl font-bold text-foreground mt-1">
+                  Launch Your Hospital on HospNest
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Provide your essential facility information to instantly provision clinical workspaces and publish your patient booking portal.
+                </p>
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                {/* Hospital Name */}
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="quick-hosp-name" className="text-xs font-semibold">
+                    Hospital / Healthcare Facility Name *
+                  </Label>
+                  <Input
+                    id="quick-hosp-name"
+                    value={hospName}
+                    onChange={(e) => setHospName(e.target.value)}
+                    placeholder="e.g. Apex Specialist Hospital & Fertility Centre"
+                    className="h-10 text-sm font-medium"
+                  />
+                </div>
+
+                {/* Facility Category */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="quick-category" className="text-xs font-semibold">
+                    Facility Category
+                  </Label>
+                  <Select
+                    value={quickCategory}
+                    onValueChange={(v: any) => setQuickCategory(v)}
+                  >
+                    <SelectTrigger id="quick-category" className="h-10 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="general">General Multidisciplinary Hospital</SelectItem>
+                      <SelectItem value="specialist">Specialist & Tertiary Medical Centre</SelectItem>
+                      <SelectItem value="primary">Primary Healthcare Centre (PHC)</SelectItem>
+                      <SelectItem value="private_clinic">Private Outpatient Clinic</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* License Number */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="quick-license" className="text-xs font-semibold">
+                    CAC / Medical Board Registration No. *
+                  </Label>
+                  <Input
+                    id="quick-license"
+                    value={licenseNumber}
+                    onChange={(e) => setLicenseNumber(e.target.value)}
+                    placeholder="e.g. RC-1489201 or MOH/LG/2024/99"
+                    className="h-10 text-xs font-mono"
+                  />
+                </div>
+
+                {/* State */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="quick-state" className="text-xs font-semibold">
+                    State of Operation *
+                  </Label>
+                  <Select value={state} onValueChange={setState}>
+                    <SelectTrigger id="quick-state" className="h-10 text-xs">
+                      <SelectValue placeholder="Select Nigerian State" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATES.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* LGA */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="quick-lga" className="text-xs font-semibold">
+                    Local Government Area (LGA)
+                  </Label>
+                  <Input
+                    id="quick-lga"
+                    value={lga}
+                    onChange={(e) => setLga(e.target.value)}
+                    placeholder="e.g. Ikeja / Abuja Municipal / Port Harcourt"
+                    className="h-10 text-xs"
+                  />
+                </div>
+
+                {/* Address */}
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="quick-address" className="text-xs font-semibold">
+                    Physical Facility Address
+                  </Label>
+                  <Input
+                    id="quick-address"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="e.g. Plot 12, Commercial Avenue, Victoria Island"
+                    className="h-10 text-xs"
+                  />
+                </div>
+
+                {/* Contact Email */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="quick-email" className="text-xs font-semibold">
+                    Official Contact Email
+                  </Label>
+                  <Input
+                    id="quick-email"
+                    type="email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    placeholder="info@hospital.ng"
+                    className="h-10 text-xs"
+                  />
+                </div>
+
+                {/* Contact Phone */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="quick-phone" className="text-xs font-semibold">
+                    Emergency / Reception Phone
+                  </Label>
+                  <Input
+                    id="quick-phone"
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                    placeholder="+234 800 123 4567"
+                    className="h-10 text-xs font-mono"
+                  />
+                </div>
+
+                {/* Admin Full Name */}
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="quick-admin-name" className="text-xs font-semibold">
+                    Medical Director / Administrator Full Name *
+                  </Label>
+                  <Input
+                    id="quick-admin-name"
+                    value={quickAdminName}
+                    onChange={(e) => setQuickAdminName(e.target.value)}
+                    placeholder="e.g. Dr. Aminu Bello, MBBS, FWACS"
+                    className="h-10 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Tariffs & Booking Preferences */}
+              <div className="border-t border-border pt-5 space-y-4">
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <CreditCard className="size-4 text-teal-600" />
+                  Starter Booking Tariffs & Appointment Slot Settings
+                </h3>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="quick-fee-gp" className="text-xs font-semibold">
+                      General Consultation Fee (₦)
+                    </Label>
+                    <Input
+                      id="quick-fee-gp"
+                      type="number"
+                      value={quickConsultationFee}
+                      onChange={(e) => setQuickConsultationFee(e.target.value)}
+                      className="h-10 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="quick-fee-spec" className="text-xs font-semibold">
+                      Specialist Consultation Fee (₦)
+                    </Label>
+                    <Input
+                      id="quick-fee-spec"
+                      type="number"
+                      value={quickSpecialistFee}
+                      onChange={(e) => setQuickSpecialistFee(e.target.value)}
+                      className="h-10 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="quick-slot" className="text-xs font-semibold">
+                      Booking Slot Duration
+                    </Label>
+                    <Select
+                      value={quickSlotDuration}
+                      onValueChange={setQuickSlotDuration}
+                    >
+                      <SelectTrigger id="quick-slot" className="h-10 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="15">15 Minutes / Patient</SelectItem>
+                        <SelectItem value="20">20 Minutes / Patient</SelectItem>
+                        <SelectItem value="30">30 Minutes / Patient (Standard)</SelectItem>
+                        <SelectItem value="45">45 Minutes / Patient</SelectItem>
+                        <SelectItem value="60">60 Minutes / Patient</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2 pt-2">
+                  <Checkbox
+                    id="quick-er"
+                    checked={quickEmergencyAvailable}
+                    onCheckedChange={(c) => setQuickEmergencyAvailable(Boolean(c))}
+                  />
+                  <Label htmlFor="quick-er" className="text-xs font-medium cursor-pointer">
+                    Enable 24/7 Emergency & Walk-In Intake Badge on Public Booking Page
+                  </Label>
+                </div>
+              </div>
+
+              {/* Provisioned Departments */}
+              <div className="border-t border-border pt-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <Layers className="size-4 text-teal-600" />
+                    Starter Clinical Departments (Included in Setup)
+                  </h3>
+                  <span className="text-xs text-muted-foreground">
+                    {quickSelectedDepts.length} departments selected
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { code: "OPD", label: "Outpatient (OPD)" },
+                    { code: "PED", label: "Pediatrics" },
+                    { code: "O&G", label: "Obstetrics & Gynaecology" },
+                    { code: "SURG", label: "General Surgery" },
+                    { code: "ER", label: "Accident & Emergency" },
+                    { code: "LAB", label: "Diagnostic Laboratory" },
+                    { code: "PHARM", label: "Pharmacy" },
+                    { code: "RAD", label: "Radiology & Imaging" },
+                  ].map((d) => {
+                    const isSelected = quickSelectedDepts.includes(d.code);
+                    return (
+                      <button
+                        key={d.code}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            setQuickSelectedDepts(quickSelectedDepts.filter((c) => c !== d.code));
+                          } else {
+                            setQuickSelectedDepts([...quickSelectedDepts, d.code]);
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
+                          isSelected
+                            ? "bg-teal-500/15 border-teal-500 text-teal-800 dark:text-teal-200"
+                            : "bg-background border-border text-muted-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {isSelected ? "✓ " : "+ "}
+                        {d.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Submit CTA */}
+              <div className="border-t border-border pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <p className="text-xs text-muted-foreground">
+                  By registering, your hospital landing page and booking calendar will be immediately activated.
+                </p>
+
+                <Button
+                  size="lg"
+                  onClick={handleQuickRegister}
+                  disabled={saving}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-bold gap-2 px-8 shadow-md w-full sm:w-auto"
+                >
+                  {saving ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Rocket className="size-4" />
+                  )}
+                  Register Hospital & Activate Booking Link
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 10-Step Progress Steps Stepper Bar */}
+      {setupViewMode === "wizard" && (
+        <div className="bg-card border-b border-border px-4 py-3 overflow-x-auto">
+          <div className="mx-auto max-w-7xl flex items-center justify-between min-w-[800px] gap-2">
+            {stepsMeta.map((s) => {
+              const isDone = s.number < currentStep;
+              const isCurrent = s.number === currentStep;
+              const Icon = s.icon;
+              return (
+                <button
+                  key={s.number}
+                  type="button"
+                  onClick={() => setCurrentStep(s.number)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                    isCurrent
+                      ? "bg-teal-600 text-white shadow-sm"
+                      : isDone
+                      ? "bg-teal-500/10 text-teal-800 dark:text-teal-300 hover:bg-teal-500/20"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  <div className={`size-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    isCurrent ? "bg-white text-teal-700" : isDone ? "bg-teal-600 text-white" : "bg-muted text-muted-foreground"
+                  }`}>
+                    {isDone ? <Check className="size-3" /> : s.number}
+                  </div>
+                  <span className="whitespace-nowrap">{s.title}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Main Wizard Step Content Area */}
+      {setupViewMode === "wizard" && (
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 space-y-6">
         {/* STEP 1: IDENTITY & FACILITY INFO */}
         {currentStep === 1 && (
@@ -1344,6 +1866,7 @@ function HospitalSetupWizardPage() {
           )}
         </div>
       </div>
+      )}
     </main>
   );
 }
