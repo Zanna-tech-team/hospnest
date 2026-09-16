@@ -8,6 +8,7 @@ import {
   getSuperadminHospitalDetail,
   updateSuperadminHospital,
   getSuperadminPlatformUsers,
+  getSuperadminHospitalGroupedDirectory,
   updateSuperadminUserRole,
   getSuperadminGlobalBreakGlassLedger,
   verifyPlatformAuditChainIntegrity,
@@ -15,6 +16,10 @@ import {
   type SuperadminHospitalItem,
   type SuperadminHospitalDetail,
   type SuperadminPlatformUser,
+  type SuperadminGroupedDirectoryData,
+  type HospitalGroupedSection,
+  type HospitalStaffMember,
+  type HospitalPatientMember,
   type SuperadminBreakGlassLog,
   type AuditChainValidationResult,
 } from "@/lib/superadmin.functions";
@@ -248,7 +253,12 @@ export function SuperadminDashboardPage() {
       }),
   });
 
-  // 3. Users Query
+  const getGroupedDirectoryFn = useServerFn(getSuperadminHospitalGroupedDirectory);
+
+  const [selectedGroupHospitalId, setSelectedGroupHospitalId] = useState<string>("all");
+  const [userCategoryTab, setUserCategoryTab] = useState<"doctors" | "nurses" | "admins" | "lab" | "pharmacy" | "patients" | "all_patients">("doctors");
+
+  // 3. Users Queries
   const {
     data: usersData,
     isLoading: isUsersLoading,
@@ -260,6 +270,21 @@ export function SuperadminDashboardPage() {
         data: {
           searchQuery: userSearch,
           roleFilter: userRoleFilter,
+        },
+      }),
+  });
+
+  const {
+    data: groupedDirectoryData,
+    isLoading: isGroupedDirectoryLoading,
+    refetch: refetchGroupedDirectory,
+  } = useQuery({
+    queryKey: ["superadmin-grouped-directory", userSearch, selectedGroupHospitalId],
+    queryFn: () =>
+      getGroupedDirectoryFn({
+        data: {
+          searchQuery: userSearch,
+          hospitalIdFilter: selectedGroupHospitalId,
         },
       }),
   });
@@ -966,123 +991,470 @@ export function SuperadminDashboardPage() {
           </TabsContent>
 
           {/* ========================================================= */}
-          {/* TAB 3: GLOBAL USERS & ROLE GOVERNANCE                     */}
+          {/* TAB 3: HOSPITAL-CENTRIC USERS & ROLE DIRECTORY            */}
           {/* ========================================================= */}
-          <TabsContent value="users" className="space-y-4">
-            <Card className="border-border shadow-soft">
+          <TabsContent value="users" className="space-y-6">
+            {/* 1. PLATFORM SUPERADMINS (GLOBAL UNIT) */}
+            <Card className="border-purple-500/30 bg-purple-500/5 shadow-soft">
               <CardHeader className="pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="size-9 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-xs">
+                      <Crown className="size-5" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-sm sm:text-base font-bold text-foreground">
+                        Platform Superadmins (Global Governance Unit)
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Root platform authorities with unrestricted multi-tenant oversight and compliance access
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge className="bg-purple-600 text-white text-[10px] w-fit">
+                    {groupedDirectoryData?.platformSuperadmins.length || 0} SUPERADMIN ACCOUNTS
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {isGroupedDirectoryLoading ? (
+                    <div className="col-span-full py-6 text-center text-xs text-muted-foreground">
+                      Loading platform superadmins...
+                    </div>
+                  ) : !groupedDirectoryData?.platformSuperadmins?.length ? (
+                    <div className="col-span-full py-4 text-center text-xs text-muted-foreground">
+                      No superadmin accounts found.
+                    </div>
+                  ) : (
+                    groupedDirectoryData.platformSuperadmins.map((sa) => (
+                      <div
+                        key={sa.userId}
+                        className="p-3 rounded-xl border border-purple-500/20 bg-background flex items-center justify-between gap-2 text-xs shadow-2xs"
+                      >
+                        <div className="overflow-hidden">
+                          <p className="font-bold text-foreground truncate">{sa.fullName}</p>
+                          <p className="text-[11px] font-mono text-muted-foreground truncate">{sa.email}</p>
+                          <span className="text-[9px] text-purple-700 dark:text-purple-300 font-semibold uppercase tracking-wider">
+                            Active Superadmin
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setManagingUser({
+                              id: sa.userId,
+                              email: sa.email,
+                              fullName: sa.fullName,
+                              roles: [{ role: "super_admin", hospitalId: null, hospitalName: "Platform-wide", isActive: sa.isActive }],
+                              isSuperAdmin: true,
+                              isStaff: true,
+                              isPatient: false,
+                              lastActive: sa.createdAt,
+                              createdAt: sa.createdAt,
+                            });
+                          }}
+                          className="text-[10px] h-7 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 shrink-0"
+                        >
+                          Manage
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 2. HOSPITAL-CENTRIC DIRECTORY FILTERS & CATEGORIES */}
+            <Card className="border-border shadow-soft">
+              <CardHeader className="pb-3 border-b border-border/60">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
-                    <CardTitle className="text-base font-bold text-foreground">
-                      Global User Accounts & Permissions
+                    <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                      <Building2 className="h-5 w-5 text-teal-600" />
+                      Hospital-Centric Directory & Role Matrix
                     </CardTitle>
                     <CardDescription className="text-xs">
-                      Inspect user roles, assign platform superadmin privileges, and manage facility affiliations
+                      Inspect personnel and NIN-linked patients categorized by individual hospital facility
                     </CardDescription>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="relative w-full sm:w-64">
+                    <div className="relative w-full sm:w-60">
                       <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                       <Input
-                        placeholder="Search user name or email..."
+                        placeholder="Search name, NIN, specialty..."
                         value={userSearch}
                         onChange={(e) => setUserSearch(e.target.value)}
                         className="pl-8 text-xs h-8"
                       />
                     </div>
 
-                    <Select value={userRoleFilter} onValueChange={setUserRoleFilter}>
-                      <SelectTrigger className="text-xs h-8 w-36">
-                        <SelectValue placeholder="Role Filter" />
+                    <Select value={selectedGroupHospitalId} onValueChange={setSelectedGroupHospitalId}>
+                      <SelectTrigger className="text-xs h-8 w-44">
+                        <SelectValue placeholder="All Facilities" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Roles</SelectItem>
-                        <SelectItem value="super_admin">Super Admin</SelectItem>
-                        <SelectItem value="hospital_admin">Hospital Admin</SelectItem>
-                        <SelectItem value="doctor">Doctor</SelectItem>
-                        <SelectItem value="nurse">Nurse</SelectItem>
-                        <SelectItem value="pharmacist">Pharmacist</SelectItem>
-                        <SelectItem value="lab_tech">Lab Tech</SelectItem>
-                        <SelectItem value="patient">Patient</SelectItem>
+                        <SelectItem value="all">All Hospitals & Clinics</SelectItem>
+                        {groupedDirectoryData?.hospitals.map((h) => (
+                          <SelectItem key={h.hospitalId} value={h.hospitalId}>
+                            {h.hospitalName}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
+
+                {/* Sub-Tabs for Roles & Patient Segmentation */}
+                <div className="pt-3">
+                  <Tabs value={userCategoryTab} onValueChange={(v) => setUserCategoryTab(v as any)}>
+                    <TabsList className="bg-muted/70 p-1 rounded-xl flex flex-wrap h-auto gap-1">
+                      <TabsTrigger value="doctors" className="text-xs py-1.5 px-3 rounded-lg font-semibold">
+                        🩺 Doctors
+                      </TabsTrigger>
+                      <TabsTrigger value="nurses" className="text-xs py-1.5 px-3 rounded-lg font-semibold">
+                        👩‍⚕️ Nurses & Midwives
+                      </TabsTrigger>
+                      <TabsTrigger value="admins" className="text-xs py-1.5 px-3 rounded-lg font-semibold">
+                        🏢 Hospital Admins
+                      </TabsTrigger>
+                      <TabsTrigger value="lab" className="text-xs py-1.5 px-3 rounded-lg font-semibold">
+                        🧪 Lab Technologists
+                      </TabsTrigger>
+                      <TabsTrigger value="pharmacy" className="text-xs py-1.5 px-3 rounded-lg font-semibold">
+                        💊 Pharmacists
+                      </TabsTrigger>
+                      <TabsTrigger value="patients" className="text-xs py-1.5 px-3 rounded-lg font-semibold">
+                        🏥 Registered Patients (NIN)
+                      </TabsTrigger>
+                      <TabsTrigger value="all_patients" className="text-xs py-1.5 px-3 rounded-lg font-semibold border-teal-500/30">
+                        🌐 National NIN Registry ({groupedDirectoryData?.allPlatformPatients.length || 0})
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
               </CardHeader>
+
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left">
-                    <thead className="bg-muted/50 border-y border-border text-muted-foreground uppercase text-[10px] font-bold">
-                      <tr>
-                        <th className="p-3">User Name</th>
-                        <th className="p-3">Email Address</th>
-                        <th className="p-3">Assigned Roles</th>
-                        <th className="p-3">Platform Authority</th>
-                        <th className="p-3">Joined Date</th>
-                        <th className="p-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60">
-                      {isUsersLoading ? (
+                {isGroupedDirectoryLoading ? (
+                  <div className="p-12 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+                    <RefreshCw className="h-6 w-6 animate-spin text-teal-600" />
+                    <span>Loading hospital role directory and national patient index...</span>
+                  </div>
+                ) : userCategoryTab === "all_patients" ? (
+                  /* ========================================================= */
+                  /* ALL NATIONAL PATIENTS (NIN-LINKED REGISTRY)               */
+                  /* ========================================================= */
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-muted/50 border-y border-border text-muted-foreground uppercase text-[10px] font-bold">
                         <tr>
-                          <td colSpan={6} className="p-8 text-center text-muted-foreground">
-                            Loading platform users...
-                          </td>
+                          <th className="p-3">Patient Name</th>
+                          <th className="p-3">National NIN Identity</th>
+                          <th className="p-3">Demographics</th>
+                          <th className="p-3">Clinical Profile</th>
+                          <th className="p-3">Encounters / Admissions</th>
+                          <th className="p-3">Primary Facility</th>
+                          <th className="p-3 text-right">Actions</th>
                         </tr>
-                      ) : !usersData || usersData.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="p-8 text-center text-muted-foreground">
-                            No users match the search criteria.
-                          </td>
-                        </tr>
-                      ) : (
-                        usersData.map((u) => (
-                          <tr key={u.id} className="hover:bg-muted/30 transition-colors">
-                            <td className="p-3 font-bold text-foreground">{u.fullName}</td>
-                            <td className="p-3 font-mono text-muted-foreground">{u.email}</td>
-                            <td className="p-3">
-                              <div className="flex flex-wrap gap-1">
-                                {u.roles.map((r, i) => (
-                                  <Badge
-                                    key={i}
-                                    variant="outline"
-                                    className="text-[10px] uppercase font-semibold"
-                                  >
-                                    {r.role.replace("_", " ")}
-                                    {r.hospitalName ? ` (${r.hospitalName})` : ""}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="p-3">
-                              {u.isSuperAdmin ? (
-                                <Badge className="bg-purple-600 text-white text-[10px]">
-                                  SUPERADMIN
-                                </Badge>
-                              ) : (
-                                <span className="text-muted-foreground">Standard Staff/User</span>
-                              )}
-                            </td>
-                            <td className="p-3 font-mono text-muted-foreground">
-                              {formatDate(u.createdAt)}
-                            </td>
-                            <td className="p-3 text-right">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setManagingUser(u)}
-                                className="text-xs h-7"
-                              >
-                                Edit Roles
-                              </Button>
+                      </thead>
+                      <tbody className="divide-y divide-border/60">
+                        {!groupedDirectoryData?.allPlatformPatients?.length ? (
+                          <tr>
+                            <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                              No patient records found in national database.
                             </td>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                        ) : (
+                          groupedDirectoryData.allPlatformPatients.map((p) => (
+                            <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                              <td className="p-3">
+                                <p className="font-bold text-foreground">{p.fullName}</p>
+                                <p className="text-[10px] text-muted-foreground">{p.phone || p.email || "No direct phone"}</p>
+                              </td>
+                              <td className="p-3">
+                                <Badge className="bg-cyan-500/10 text-cyan-800 dark:text-cyan-200 border-cyan-500/30 font-mono text-[11px]">
+                                  NIN: {p.nin}
+                                </Badge>
+                              </td>
+                              <td className="p-3 text-muted-foreground">
+                                <span className="capitalize">{p.gender || "Unspecified"}</span>
+                                {p.dateOfBirth ? ` • Born ${formatDate(p.dateOfBirth)}` : ""}
+                              </td>
+                              <td className="p-3">
+                                <div className="flex flex-wrap gap-1">
+                                  {p.bloodGroup && (
+                                    <Badge variant="outline" className="text-[9px]">
+                                      {p.bloodGroup}
+                                    </Badge>
+                                  )}
+                                  {p.genotype && (
+                                    <Badge variant="outline" className="text-[9px]">
+                                      {p.genotype}
+                                    </Badge>
+                                  )}
+                                  {p.allergies?.length > 0 && (
+                                    <Badge variant="destructive" className="text-[9px]">
+                                      {p.allergies.length} allergies
+                                    </Badge>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-3 font-mono">
+                                <span className="font-semibold text-foreground">{p.encountersCount}</span> visits
+                                {p.admissionsCount > 0 ? ` • ${p.admissionsCount} adm` : ""}
+                              </td>
+                              <td className="p-3 text-muted-foreground">
+                                {p.primaryHospitalName || "Platform General"}
+                              </td>
+                              <td className="p-3 text-right">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setManagingUser({
+                                      id: p.userId || p.id,
+                                      email: p.email || "patient@hospnest.ng",
+                                      fullName: p.fullName,
+                                      roles: [{ role: "patient", hospitalId: p.primaryHospitalId || null, hospitalName: p.primaryHospitalName, isActive: true }],
+                                      isSuperAdmin: false,
+                                      isStaff: false,
+                                      isPatient: true,
+                                      lastActive: p.lastVisitDate || p.createdAt,
+                                      createdAt: p.createdAt,
+                                    });
+                                  }}
+                                  className="text-xs h-7"
+                                >
+                                  User Account
+                                </Button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  /* ========================================================= */
+                  /* HOSPITAL-BY-HOSPITAL CATEGORIZED DIRECTORY                */
+                  /* ========================================================= */
+                  <div className="divide-y divide-border/60">
+                    {!groupedDirectoryData?.hospitals?.length ? (
+                      <div className="p-8 text-center text-muted-foreground text-xs">
+                        No hospital facilities match the search filter.
+                      </div>
+                    ) : (
+                      groupedDirectoryData.hospitals.map((h) => {
+                        const items: Array<any> =
+                          userCategoryTab === "doctors"
+                            ? h.doctors
+                            : userCategoryTab === "nurses"
+                            ? h.nurses
+                            : userCategoryTab === "admins"
+                            ? h.hospitalAdmins
+                            : userCategoryTab === "lab"
+                            ? h.labTechs
+                            : userCategoryTab === "pharmacy"
+                            ? h.pharmacists
+                            : h.patients;
+
+                        return (
+                          <div key={h.hospitalId} className="p-4 space-y-3">
+                            {/* Hospital Header Strip */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-muted/40 p-3 rounded-xl border border-border/70">
+                              <div className="flex items-center gap-2.5">
+                                <div className="size-8 rounded-lg bg-teal-500/10 text-teal-600 flex items-center justify-center shrink-0">
+                                  <Hospital className="size-4" />
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h4 className="font-bold text-xs sm:text-sm text-foreground">
+                                      {h.hospitalName}
+                                    </h4>
+                                    <Badge
+                                      className={
+                                        h.isVerified
+                                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[9px]"
+                                          : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 text-[9px]"
+                                      }
+                                    >
+                                      {h.isVerified ? "VERIFIED" : "PENDING"}
+                                    </Badge>
+                                    <Badge variant="outline" className="text-[9px]">
+                                      {h.tier}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    📍 {h.state}{h.lga ? `, ${h.lga}` : ""} • Contact: {h.contactPhone || h.contactEmail || "N/A"}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 self-start sm:self-center">
+                                <span className="text-[11px] font-semibold text-muted-foreground">
+                                  {items.length} {userCategoryTab.replace("_", " ")}
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setInspectingHospitalId(h.hospitalId)}
+                                  className="h-7 text-xs text-teal-600 font-semibold"
+                                >
+                                  <Eye className="size-3.5 mr-1" /> Inspect Facility
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Category Items List */}
+                            {items.length === 0 ? (
+                              <div className="py-4 px-3 text-center text-xs text-muted-foreground bg-card/40 rounded-xl border border-dashed border-border">
+                                No {userCategoryTab.replace("_", " ")} currently recorded for this facility.
+                              </div>
+                            ) : userCategoryTab === "patients" ? (
+                              /* Patient Items for this Hospital */
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs text-left">
+                                  <thead className="bg-muted/30 border-y border-border text-muted-foreground uppercase text-[9px] font-bold">
+                                    <tr>
+                                      <th className="p-2.5">Patient Name</th>
+                                      <th className="p-2.5">NIN Identity</th>
+                                      <th className="p-2.5">Demographics</th>
+                                      <th className="p-2.5">Medical Info</th>
+                                      <th className="p-2.5">Encounters</th>
+                                      <th className="p-2.5 text-right">Action</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-border/40">
+                                    {(items as HospitalPatientMember[]).map((pat) => (
+                                      <tr key={pat.id} className="hover:bg-muted/20">
+                                        <td className="p-2.5 font-bold text-foreground">
+                                          {pat.fullName}
+                                          <p className="text-[10px] font-normal text-muted-foreground">
+                                            {pat.phone || pat.email || "No contact"}
+                                          </p>
+                                        </td>
+                                        <td className="p-2.5">
+                                          <Badge className="bg-cyan-500/10 text-cyan-800 dark:text-cyan-200 border-cyan-500/30 font-mono text-[10px]">
+                                            NIN: {pat.nin}
+                                          </Badge>
+                                        </td>
+                                        <td className="p-2.5 text-muted-foreground">
+                                          {pat.gender} {pat.dateOfBirth ? `• ${formatDate(pat.dateOfBirth)}` : ""}
+                                        </td>
+                                        <td className="p-2.5">
+                                          <div className="flex gap-1">
+                                            {pat.bloodGroup && <Badge variant="outline" className="text-[9px]">{pat.bloodGroup}</Badge>}
+                                            {pat.genotype && <Badge variant="outline" className="text-[9px]">{pat.genotype}</Badge>}
+                                          </div>
+                                        </td>
+                                        <td className="p-2.5 font-mono text-foreground font-semibold">
+                                          {pat.encountersCount} visits
+                                        </td>
+                                        <td className="p-2.5 text-right">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {
+                                              setManagingUser({
+                                                id: pat.userId || pat.id,
+                                                email: pat.email || "patient@hospnest.ng",
+                                                fullName: pat.fullName,
+                                                roles: [{ role: "patient", hospitalId: h.hospitalId, hospitalName: h.hospitalName, isActive: true }],
+                                                isSuperAdmin: false,
+                                                isStaff: false,
+                                                isPatient: true,
+                                                lastActive: pat.lastVisitDate || pat.createdAt,
+                                                createdAt: pat.createdAt,
+                                              });
+                                            }}
+                                            className="text-xs h-6 px-2"
+                                          >
+                                            Role
+                                          </Button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              /* Staff Items (Doctors, Nurses, Admins, Lab, Pharmacists) */
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                {(items as HospitalStaffMember[]).map((staff) => (
+                                  <div
+                                    key={staff.id}
+                                    className="p-3 rounded-xl border border-border/80 bg-card flex flex-col justify-between gap-2 text-xs shadow-2xs hover:border-teal-500/30 transition-all"
+                                  >
+                                    <div>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <p className="font-bold text-foreground truncate">{staff.fullName}</p>
+                                        <Badge
+                                          variant="outline"
+                                          className={`text-[9px] font-mono ${
+                                            staff.isActive ? "text-emerald-600" : "text-muted-foreground"
+                                          }`}
+                                        >
+                                          {staff.isActive ? "ACTIVE" : "INACTIVE"}
+                                        </Badge>
+                                      </div>
+                                      <p className="text-[11px] font-mono text-muted-foreground truncate mt-0.5">
+                                        {staff.email}
+                                      </p>
+                                      {staff.staffIdCode && (
+                                        <span className="text-[10px] text-muted-foreground font-mono">
+                                          Code: {staff.staffIdCode}
+                                        </span>
+                                      )}
+                                      {staff.specialization && (
+                                        <p className="text-[10px] text-teal-600 dark:text-teal-400 font-semibold mt-0.5">
+                                          Spec: {staff.specialization}
+                                        </p>
+                                      )}
+                                      {staff.medicalLicenseNumber && (
+                                        <p className="text-[9px] text-muted-foreground font-mono">
+                                          Lic: {staff.medicalLicenseNumber}
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    <div className="flex items-center justify-between pt-2 border-t border-border/60">
+                                      <span className="text-[10px] text-muted-foreground capitalize">
+                                        {staff.departmentName || staff.role.replace("_", " ")}
+                                      </span>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          setManagingUser({
+                                            id: staff.userId,
+                                            email: staff.email,
+                                            fullName: staff.fullName,
+                                            roles: [{ role: staff.role, hospitalId: h.hospitalId, hospitalName: h.hospitalName, isActive: staff.isActive }],
+                                            isSuperAdmin: false,
+                                            isStaff: true,
+                                            isPatient: false,
+                                            lastActive: staff.joinedAt,
+                                            createdAt: staff.joinedAt,
+                                          });
+                                        }}
+                                        className="text-[10px] h-6 px-2"
+                                      >
+                                        Manage Role
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

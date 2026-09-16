@@ -44,7 +44,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
 
     if (roleError) throw new Error(roleError.message);
 
-    const isPatient = (roleRows ?? []).some((r: any) => r.role === "patient");
+    let isPatient = (roleRows ?? []).some((r: any) => r.role === "patient");
     const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin" || r.role === "superadmin");
 
     const workplaces: Workplace[] = (roleRows ?? [])
@@ -55,6 +55,28 @@ export const getAppShellData = createServerFn({ method: "GET" })
         slug: (r.hospitals?.slug as string) ?? "hospital",
         role: r.role as StaffRole,
       }));
+
+    // If user has no staff workplaces and not superadmin, check if they are a patient
+    if (workplaces.length === 0 && !isSuperAdmin) {
+      if (!isPatient) {
+        let pQuery = supabase.from("patients").select("id, first_name, last_name, user_id").limit(1);
+        if (email) {
+          pQuery = pQuery.or(`user_id.eq.${userId},email.eq.${email}`);
+        } else {
+          pQuery = pQuery.eq("user_id", userId);
+        }
+        const { data: pData } = await pQuery;
+        if (pData && pData.length > 0) {
+          isPatient = true;
+          if (!pData[0].user_id) {
+            await supabase.from("patients").update({ user_id: userId }).eq("id", pData[0].id);
+          }
+        } else {
+          // If no staff roles exist, default to patient mode to prevent showing hospital registration
+          isPatient = true;
+        }
+      }
+    }
 
     // 3. Fetch staff or patient record name if available
     let fullName = userMetaName;
@@ -73,7 +95,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
       const { data: patientRow } = await supabase
         .from("patients")
         .select("first_name, last_name")
-        .eq("user_id", userId)
+        .or(`user_id.eq.${userId},email.eq.${email}`)
         .limit(1)
         .maybeSingle();
 

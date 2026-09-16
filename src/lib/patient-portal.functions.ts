@@ -520,6 +520,7 @@ export const getAuthUserRoleRedirect = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
+    // 1. Check existing roles
     const { data: roleRows } = await supabase
       .from("user_roles")
       .select("role, hospital_id")
@@ -532,13 +533,72 @@ export const getAuthUserRoleRedirect = createServerFn({ method: "GET" })
       return { redirectPath: "/superadmin", isSuperAdmin: true, isPatient: false };
     }
 
-    const isPatientOnly = roles.length > 0 && roles.every((r: any) => r.role === "patient");
+    const hasStaffRole = roles.some((r: any) =>
+      ["hospital_admin", "doctor", "nurse", "pharmacist", "lab_tech"].includes(r.role)
+    );
 
-    if (isPatientOnly) {
+    const isPatientRole = roles.some((r: any) => r.role === "patient");
+
+    if (hasStaffRole) {
+      return { redirectPath: "/dashboard", isPatient: false };
+    }
+
+    if (isPatientRole) {
       return { redirectPath: "/portal", isPatient: true };
     }
 
-    return { redirectPath: "/dashboard", isPatient: false };
+    // 2. If no staff role, check if user matches a patient record by user_id or email
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData?.user?.email;
+
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      let matchedPatient = null;
+
+      if (email) {
+        const { data: pData } = await supabaseAdmin
+          .from("patients")
+          .select("id, user_id, email")
+          .or(`user_id.eq.${userId},email.eq.${email}`)
+          .limit(1);
+        matchedPatient = pData?.[0];
+      } else {
+        const { data: pData } = await supabaseAdmin
+          .from("patients")
+          .select("id, user_id")
+          .eq("user_id", userId)
+          .limit(1);
+        matchedPatient = pData?.[0];
+      }
+
+      if (matchedPatient) {
+        // Link user_id if not linked
+        if (!matchedPatient.user_id) {
+          await supabaseAdmin
+            .from("patients")
+            .update({ user_id: userId })
+            .eq("id", matchedPatient.id);
+        }
+        // Ensure user_roles has patient entry
+        await supabaseAdmin
+          .from("user_roles")
+          .upsert(
+            {
+              user_id: userId,
+              role: "patient",
+              is_active: true,
+            },
+            { onConflict: "user_id,hospital_id,role" }
+          );
+
+        return { redirectPath: "/portal", isPatient: true };
+      }
+    } catch (e) {
+      console.warn("Patient lookup warning in redirect:", e);
+    }
+
+    // 3. Default to patient portal for users without staff roles to avoid leaking hospital admin setup
+    return { redirectPath: "/portal", isPatient: true };
   });
 
 /**

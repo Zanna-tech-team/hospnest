@@ -95,11 +95,15 @@ export function DashboardPage() {
   const getDashboardDataFn = useServerFn(getRoleDashboardData);
 
   useEffect(() => {
+    if (shellData?.isPatient) {
+      navigate({ to: "/portal" });
+      return;
+    }
     // If user is superadmin and not actively inspecting a specific hospital, send them to global command center
     if (shellData?.isSuperAdmin && !activeHospitalId) {
       navigate({ to: "/superadmin" });
     }
-  }, [shellData?.isSuperAdmin, activeHospitalId, navigate]);
+  }, [shellData?.isPatient, shellData?.isSuperAdmin, activeHospitalId, navigate]);
 
   const [activeQueueTab, setActiveQueueTab] = useState<"waiting_doctor" | "waiting_triage" | "in_consultation" | "diagnostic_hold" | "pharmacy_hold">("waiting_doctor");
   const [activeReviewLabOrder, setActiveReviewLabOrder] = useState<any | null>(null);
@@ -111,6 +115,17 @@ export function DashboardPage() {
     enabled: Boolean(activeHospitalId),
     refetchInterval: 20000,
   });
+
+  if (shellData?.isPatient) {
+    return (
+      <div className="flex h-[80vh] flex-col items-center justify-center gap-3">
+        <RefreshCw className="h-8 w-8 animate-spin text-teal-600" />
+        <p className="text-sm font-medium text-muted-foreground">
+          Redirecting to Patient Health Portal...
+        </p>
+      </div>
+    );
+  }
 
   if (shellData?.isSuperAdmin && !activeHospitalId) {
     return (

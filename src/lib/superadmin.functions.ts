@@ -110,10 +110,10 @@ export const getSuperadminPlatformOverview = createServerFn({ method: "GET" })
       { data: rolesData },
       { data: latestAuditLog },
     ] = await Promise.all([
-      // 1. Hospitals overview
+      // 1. Hospitals overview (select * to be robust to schema variations)
       supabaseAdmin
         .from("hospitals")
-        .select("id, name, state, hospital_type, is_verified, tier, created_at")
+        .select("*")
         .order("created_at", { ascending: false }),
 
       // 2. Patients count
@@ -128,8 +128,8 @@ export const getSuperadminPlatformOverview = createServerFn({ method: "GET" })
       // 5. Lab orders count
       supabaseAdmin.from("lab_orders").select("id", { count: "exact", head: true }),
 
-      // 6. Inpatient admissions count
-      supabaseAdmin.from("inpatient_admissions").select("id", { count: "exact", head: true }),
+      // 6. Inpatient admissions count (public.admissions table)
+      supabaseAdmin.from("admissions").select("id", { count: "exact", head: true }),
 
       // 7. Payments total
       supabaseAdmin.from("payments").select("amount_paid"),
@@ -315,10 +315,7 @@ export const getSuperadminHospitalsList = createServerFn({ method: "POST" })
 
     let query = supabaseAdmin
       .from("hospitals")
-      .select(`
-        id, name, slug, state, lga, address, phone, email, hospital_type,
-        is_verified, tier, onboarding_step, max_beds, max_staff, created_at
-      `)
+      .select("*")
       .order("created_at", { ascending: false });
 
     if (input.stateFilter && input.stateFilter !== "all") {
@@ -330,7 +327,7 @@ export const getSuperadminHospitalsList = createServerFn({ method: "POST" })
       query = query.eq("is_verified", false);
     }
     if (input.tierFilter && input.tierFilter !== "all") {
-      query = query.eq("tier", input.tierFilter);
+      query = query.or(`subscription_tier.eq.${input.tierFilter},tier.eq.${input.tierFilter}`);
     }
 
     const { data: rawHospitals, error } = await query;
@@ -345,7 +342,10 @@ export const getSuperadminHospitalsList = createServerFn({ method: "POST" })
           h.state?.toLowerCase().includes(q) ||
           h.lga?.toLowerCase().includes(q) ||
           h.slug?.toLowerCase().includes(q) ||
-          h.phone?.toLowerCase().includes(q),
+          (h.contact_phone && h.contact_phone.toLowerCase().includes(q)) ||
+          (h.phone && h.phone.toLowerCase().includes(q)) ||
+          (h.contact_email && h.contact_email.toLowerCase().includes(q)) ||
+          (h.email && h.email.toLowerCase().includes(q)),
       );
     }
 
@@ -361,7 +361,7 @@ export const getSuperadminHospitalsList = createServerFn({ method: "POST" })
           ? supabaseAdmin.from("encounters").select("hospital_id")
           : { data: [] },
         hospitalIds.length > 0
-          ? supabaseAdmin.from("inpatient_admissions").select("hospital_id")
+          ? supabaseAdmin.from("admissions").select("hospital_id")
           : { data: [] },
         hospitalIds.length > 0
           ? supabaseAdmin.from("payments").select("hospital_id, amount_paid")
@@ -393,13 +393,13 @@ export const getSuperadminHospitalsList = createServerFn({ method: "POST" })
       name: h.name,
       slug: h.slug,
       state: h.state || "Nigeria",
-      lga: h.lga,
-      address: h.address,
-      phone: h.phone,
-      email: h.email,
+      lga: h.lga || null,
+      address: h.address || null,
+      phone: h.contact_phone || h.phone || null,
+      email: h.contact_email || h.email || null,
       hospitalType: h.hospital_type || "general",
       isVerified: Boolean(h.is_verified),
-      tier: h.tier || "Community",
+      tier: h.subscription_tier || h.tier || "Community",
       onboardingStep: h.onboarding_step ?? 10,
       maxBeds: h.max_beds ?? 50,
       maxStaff: h.max_staff ?? 30,
@@ -704,12 +704,12 @@ export const getSuperadminHospitalDetail = createServerFn({ method: "POST" })
         state: hospitalRow.state || "Nigeria",
         lga: hospitalRow.lga || null,
         address: hospitalRow.address || null,
-        phone: hospitalRow.phone || null,
-        email: hospitalRow.email || null,
+        phone: hospitalRow.contact_phone || hospitalRow.phone || null,
+        email: hospitalRow.contact_email || hospitalRow.email || null,
         hospitalType: hospitalRow.hospital_type || "general",
         isVerified: Boolean(hospitalRow.is_verified),
         isSuspended: Boolean((hospitalRow as any).is_suspended),
-        tier: hospitalRow.tier || "Community",
+        tier: hospitalRow.subscription_tier || hospitalRow.tier || "Community",
         onboardingStep: hospitalRow.onboarding_step ?? 10,
         maxBeds: hospitalRow.max_beds ?? 50,
         maxStaff: hospitalRow.max_staff ?? 30,
@@ -735,6 +735,378 @@ export const getSuperadminHospitalDetail = createServerFn({ method: "POST" })
       staffRoster,
       recentEncounters,
       wards,
+    };
+  });
+
+// ----------------------------------------------------------------------
+// 3. HOSPITAL-CENTRIC USER & ROLE GOVERNANCE DIRECTORY
+// ----------------------------------------------------------------------
+
+export type HospitalStaffMember = {
+  id: string;
+  userId: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  staffIdCode: string | null;
+  medicalLicenseNumber?: string | null;
+  specialization?: string | null;
+  departmentName?: string | null;
+  role: string;
+  isActive: boolean;
+  joinedAt: string;
+};
+
+export type HospitalPatientMember = {
+  id: string;
+  userId: string | null;
+  nin: string;
+  fullName: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string | null;
+  gender: string | null;
+  phone: string | null;
+  email: string | null;
+  bloodGroup: string | null;
+  genotype: string | null;
+  allergies: string[];
+  chronicConditions: string[];
+  emergencyContact: any;
+  encountersCount: number;
+  admissionsCount: number;
+  lastVisitDate: string | null;
+  primaryHospitalId?: string | null;
+  primaryHospitalName?: string | null;
+  createdAt: string;
+};
+
+export type HospitalGroupedSection = {
+  hospitalId: string;
+  hospitalName: string;
+  hospitalSlug: string;
+  state: string;
+  lga: string | null;
+  hospitalType: string;
+  tier: string;
+  isVerified: boolean;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  totalMembers: number;
+  doctors: HospitalStaffMember[];
+  nurses: HospitalStaffMember[];
+  hospitalAdmins: HospitalStaffMember[];
+  labTechs: HospitalStaffMember[];
+  pharmacists: HospitalStaffMember[];
+  patients: HospitalPatientMember[];
+};
+
+export type SuperadminGroupedDirectoryData = {
+  platformSuperadmins: Array<{
+    id: string;
+    userId: string;
+    email: string;
+    fullName: string;
+    isActive: boolean;
+    createdAt: string;
+  }>;
+  hospitals: HospitalGroupedSection[];
+  allPlatformPatients: HospitalPatientMember[];
+};
+
+export const getSuperadminHospitalGroupedDirectory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input?: {
+      searchQuery?: string | undefined;
+      hospitalIdFilter?: string | undefined;
+    }) => ({
+      searchQuery: input?.searchQuery?.trim() || "",
+      hospitalIdFilter: input?.hospitalIdFilter || "all",
+    }),
+  )
+  .handler(async ({ context, data: input }): Promise<SuperadminGroupedDirectoryData> => {
+    const { supabase, userId } = context;
+    await assertSuperAdmin(supabase, userId);
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Fetch all foundational records in parallel
+    const [
+      { data: rawHospitals },
+      { data: rawStaff },
+      { data: rawRoles },
+      { data: rawPatients },
+      { data: rawEncounters },
+      { data: rawAdmissions },
+    ] = await Promise.all([
+      supabaseAdmin.from("hospitals").select("*").order("name", { ascending: true }),
+      supabaseAdmin
+        .from("staff")
+        .select("id, user_id, hospital_id, full_name, staff_id_code, medical_license_number, specialization, phone, is_active, created_at, department:department_id(name)")
+        .order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("user_roles")
+        .select("id, user_id, hospital_id, role, is_active, created_at"),
+      supabaseAdmin
+        .from("patients")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("encounters")
+        .select("id, hospital_id, patient_id, created_at")
+        .order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("admissions")
+        .select("id, hospital_id, patient_id"),
+    ]);
+
+    const hospitalsList = rawHospitals ?? [];
+    const staffList = rawStaff ?? [];
+    const rolesList = rawRoles ?? [];
+    const patientsList = rawPatients ?? [];
+    const encountersList = rawEncounters ?? [];
+    const admissionsList = rawAdmissions ?? [];
+
+    // Map patient encounters and admissions per hospital
+    const patientHospitalEncounterMap = new Map<string, number>();
+    const patientTotalEncounterMap = new Map<string, number>();
+    const patientLastVisitMap = new Map<string, string>();
+    const patientHospitalAffiliationMap = new Map<string, Set<string>>();
+
+    encountersList.forEach((e: any) => {
+      if (e.patient_id) {
+        // Total
+        patientTotalEncounterMap.set(e.patient_id, (patientTotalEncounterMap.get(e.patient_id) || 0) + 1);
+        if (e.created_at && !patientLastVisitMap.has(e.patient_id)) {
+          patientLastVisitMap.set(e.patient_id, e.created_at);
+        }
+        // Per Hospital
+        if (e.hospital_id) {
+          const key = `${e.hospital_id}_${e.patient_id}`;
+          patientHospitalEncounterMap.set(key, (patientHospitalEncounterMap.get(key) || 0) + 1);
+          if (!patientHospitalAffiliationMap.has(e.patient_id)) {
+            patientHospitalAffiliationMap.set(e.patient_id, new Set());
+          }
+          patientHospitalAffiliationMap.get(e.patient_id)!.add(e.hospital_id);
+        }
+      }
+    });
+
+    const patientHospitalAdmissionMap = new Map<string, number>();
+    const patientTotalAdmissionMap = new Map<string, number>();
+    admissionsList.forEach((a: any) => {
+      if (a.patient_id) {
+        patientTotalAdmissionMap.set(a.patient_id, (patientTotalAdmissionMap.get(a.patient_id) || 0) + 1);
+        if (a.hospital_id) {
+          const key = `${a.hospital_id}_${a.patient_id}`;
+          patientHospitalAdmissionMap.set(key, (patientHospitalAdmissionMap.get(key) || 0) + 1);
+          if (!patientHospitalAffiliationMap.has(a.patient_id)) {
+            patientHospitalAffiliationMap.set(a.patient_id, new Set());
+          }
+          patientHospitalAffiliationMap.get(a.patient_id)!.add(a.hospital_id);
+        }
+      }
+    });
+
+    // 1. Platform Superadmins
+    const superAdminUserIds = new Set(
+      rolesList
+        .filter((r: any) => r.role === "super_admin" || r.role === "superadmin")
+        .map((r: any) => r.user_id)
+    );
+
+    const platformSuperadmins: SuperadminGroupedDirectoryData["platformSuperadmins"] = [];
+    superAdminUserIds.forEach((uid) => {
+      const sMatch = staffList.find((s: any) => s.user_id === uid);
+      const pMatch = patientsList.find((p: any) => p.user_id === uid);
+      const rMatch = rolesList.find((r: any) => r.user_id === uid && (r.role === "super_admin" || r.role === "superadmin"));
+
+      platformSuperadmins.push({
+        id: rMatch?.id || uid,
+        userId: uid,
+        email: sMatch?.phone ? `${sMatch.full_name.toLowerCase().replace(/\s+/g, ".")}@hospnest.ng` : "superadmin@hospnest.ng",
+        fullName: sMatch?.full_name || (pMatch ? `${pMatch.first_name} ${pMatch.last_name}` : "Platform Super Admin"),
+        isActive: rMatch?.is_active ?? true,
+        createdAt: rMatch?.created_at || new Date().toISOString(),
+      });
+    });
+
+    // 2. All Platform Patients
+    const hospitalNameMap = new Map<string, string>(hospitalsList.map((h: any) => [h.id, h.name]));
+    const allPlatformPatients: HospitalPatientMember[] = patientsList.map((p: any) => {
+      const affHospIds = Array.from(patientHospitalAffiliationMap.get(p.id) || []);
+      const primaryHospId = affHospIds[0] || null;
+      const primaryHospName = primaryHospId ? hospitalNameMap.get(primaryHospId) || "General Hospital" : null;
+
+      return {
+        id: p.id,
+        userId: p.user_id,
+        nin: p.nin || "UNREGISTERED",
+        fullName: `${p.first_name} ${p.last_name}`.trim(),
+        firstName: p.first_name,
+        lastName: p.last_name,
+        dateOfBirth: p.date_of_birth || null,
+        gender: p.gender || "Unspecified",
+        phone: p.phone || null,
+        email: p.email || null,
+        bloodGroup: p.blood_group || null,
+        genotype: p.genotype || null,
+        allergies: Array.isArray(p.allergies) ? p.allergies : [],
+        chronicConditions: Array.isArray(p.chronic_conditions) ? p.chronic_conditions : [],
+        emergencyContact: p.emergency_contact || {},
+        encountersCount: patientTotalEncounterMap.get(p.id) || 0,
+        admissionsCount: patientTotalAdmissionMap.get(p.id) || 0,
+        lastVisitDate: patientLastVisitMap.get(p.id) || null,
+        primaryHospitalId: primaryHospId,
+        primaryHospitalName: primaryHospName,
+        createdAt: p.created_at,
+      };
+    });
+
+    // 3. Group users by Hospital
+    const groupedHospitals: HospitalGroupedSection[] = hospitalsList.map((h: any) => {
+      const hStaff = staffList.filter((s: any) => s.hospital_id === h.id);
+      const hRoles = rolesList.filter((r: any) => r.hospital_id === h.id);
+
+      // Map roles by user_id
+      const userRoleMap = new Map<string, string>();
+      hRoles.forEach((r: any) => {
+        if (r.user_id) userRoleMap.set(r.user_id, r.role);
+      });
+
+      const doctors: HospitalStaffMember[] = [];
+      const nurses: HospitalStaffMember[] = [];
+      const hospitalAdmins: HospitalStaffMember[] = [];
+      const labTechs: HospitalStaffMember[] = [];
+      const pharmacists: HospitalStaffMember[] = [];
+
+      // Process explicit staff records
+      hStaff.forEach((s: any) => {
+        const assignedRole = userRoleMap.get(s.user_id) || "doctor";
+        const staffObj: HospitalStaffMember = {
+          id: s.id,
+          userId: s.user_id || s.id,
+          fullName: s.full_name || "Staff Member",
+          email: `${s.full_name?.toLowerCase().replace(/[^a-z0-9]/g, ".") || "staff"}@${h.slug || "hospital"}.ng`,
+          phone: s.phone || null,
+          staffIdCode: s.staff_id_code || null,
+          medicalLicenseNumber: s.medical_license_number || null,
+          specialization: s.specialization || null,
+          departmentName: (s.department as any)?.name || null,
+          role: assignedRole,
+          isActive: Boolean(s.is_active),
+          joinedAt: s.created_at,
+        };
+
+        if (assignedRole === "doctor" || s.medical_license_number || s.specialization) {
+          doctors.push(staffObj);
+        } else if (assignedRole === "nurse") {
+          nurses.push(staffObj);
+        } else if (assignedRole === "hospital_admin" || s.staff_id_code?.startsWith("ADM")) {
+          hospitalAdmins.push(staffObj);
+        } else if (assignedRole === "lab_tech") {
+          labTechs.push(staffObj);
+        } else if (assignedRole === "pharmacist") {
+          pharmacists.push(staffObj);
+        } else {
+          doctors.push(staffObj);
+        }
+      });
+
+      // Process any user_roles without staff row
+      const existingStaffUserIds = new Set(hStaff.map((s: any) => s.user_id));
+      hRoles.forEach((r: any) => {
+        if (!existingStaffUserIds.has(r.user_id) && r.role !== "patient" && r.role !== "super_admin" && r.role !== "superadmin") {
+          const staffObj: HospitalStaffMember = {
+            id: r.id,
+            userId: r.user_id,
+            fullName: `Staff (${r.role.replace("_", " ")})`,
+            email: `user.${r.user_id.slice(0, 6)}@${h.slug || "hospnest"}.ng`,
+            phone: null,
+            staffIdCode: `AUTO-${r.user_id.slice(0, 4).toUpperCase()}`,
+            role: r.role,
+            isActive: Boolean(r.is_active),
+            joinedAt: r.created_at,
+          };
+
+          if (r.role === "doctor") doctors.push(staffObj);
+          else if (r.role === "nurse") nurses.push(staffObj);
+          else if (r.role === "hospital_admin") hospitalAdmins.push(staffObj);
+          else if (r.role === "lab_tech") labTechs.push(staffObj);
+          else if (r.role === "pharmacist") pharmacists.push(staffObj);
+        }
+      });
+
+      // Hospital Patients (Patients with encounters or admissions at this hospital, or linked)
+      const hPatients: HospitalPatientMember[] = allPlatformPatients.filter((p) => {
+        const affSet = patientHospitalAffiliationMap.get(p.id);
+        const hasEncounter = affSet?.has(h.id);
+        // If single hospital on platform or explicitly affiliated
+        return hasEncounter || (hospitalsList.length === 1);
+      }).map((p) => ({
+        ...p,
+        encountersCount: patientHospitalEncounterMap.get(`${h.id}_${p.id}`) || p.encountersCount,
+        admissionsCount: patientHospitalAdmissionMap.get(`${h.id}_${p.id}`) || p.admissionsCount,
+      }));
+
+      const totalMembers =
+        doctors.length +
+        nurses.length +
+        hospitalAdmins.length +
+        labTechs.length +
+        pharmacists.length +
+        hPatients.length;
+
+      return {
+        hospitalId: h.id,
+        hospitalName: h.name,
+        hospitalSlug: h.slug,
+        state: h.state || "Nigeria",
+        lga: h.lga || null,
+        hospitalType: h.hospital_type || "general",
+        tier: h.subscription_tier || h.tier || "Community",
+        isVerified: Boolean(h.is_verified),
+        contactEmail: h.contact_email || h.email || null,
+        contactPhone: h.contact_phone || h.phone || null,
+        totalMembers,
+        doctors,
+        nurses,
+        hospitalAdmins,
+        labTechs,
+        pharmacists,
+        patients: hPatients,
+      };
+    });
+
+    let filteredHospitals = groupedHospitals;
+    if (input.hospitalIdFilter && input.hospitalIdFilter !== "all") {
+      filteredHospitals = filteredHospitals.filter((h) => h.hospitalId === input.hospitalIdFilter);
+    }
+
+    if (input.searchQuery) {
+      const q = input.searchQuery.toLowerCase();
+      filteredHospitals = filteredHospitals.map((h) => ({
+        ...h,
+        doctors: h.doctors.filter((d) => d.fullName.toLowerCase().includes(q) || d.email.toLowerCase().includes(q) || (d.specialization && d.specialization.toLowerCase().includes(q))),
+        nurses: h.nurses.filter((n) => n.fullName.toLowerCase().includes(q) || n.email.toLowerCase().includes(q)),
+        hospitalAdmins: h.hospitalAdmins.filter((a) => a.fullName.toLowerCase().includes(q) || a.email.toLowerCase().includes(q)),
+        labTechs: h.labTechs.filter((l) => l.fullName.toLowerCase().includes(q) || l.email.toLowerCase().includes(q)),
+        pharmacists: h.pharmacists.filter((ph) => ph.fullName.toLowerCase().includes(q) || ph.email.toLowerCase().includes(q)),
+        patients: h.patients.filter((p) => p.fullName.toLowerCase().includes(q) || p.nin.toLowerCase().includes(q) || (p.phone && p.phone.toLowerCase().includes(q))),
+      }));
+    }
+
+    await writeSuperadminAudit(supabaseAdmin, {
+      accessor_id: userId,
+      action: "READ",
+      justification: "Superadmin viewed hospital-centric user and role governance directory",
+    });
+
+    return {
+      platformSuperadmins,
+      hospitals: filteredHospitals,
+      allPlatformPatients,
     };
   });
 
