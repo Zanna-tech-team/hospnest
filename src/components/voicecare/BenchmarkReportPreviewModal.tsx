@@ -122,8 +122,199 @@ export function BenchmarkReportPreviewModal({
       ? (saharaMetric.averageTaskAccuracy - baselineMetric.averageTaskAccuracy).toFixed(1)
       : "0";
 
-  const handlePrint = () => {
-    window.print();
+  const page1Ref = React.useRef<HTMLDivElement>(null);
+  const page2Ref = React.useRef<HTMLDivElement>(null);
+  const page3Ref = React.useRef<HTMLDivElement>(null);
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollToPage = (pageNumber: 1 | 2 | 3 | "all") => {
+    setCurrentPage(pageNumber);
+    if (pageNumber === "all" || pageNumber === 1) {
+      if (pageNumber === "all") {
+        scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        page1Ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    } else if (pageNumber === 2) {
+      page2Ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (pageNumber === 3) {
+      page3Ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  const handlePrintPdf = () => {
+    toast.info("Preparing 3-Page Official PDF...");
+    const page1 = document.getElementById("pdf-report-page-1");
+    const page2 = document.getElementById("pdf-report-page-2");
+    const page3 = document.getElementById("pdf-report-page-3");
+
+    if (!page1 || !page2 || !page3) {
+      window.print();
+      return;
+    }
+
+    let iframe = document.getElementById("voicecare-pdf-print-frame") as HTMLIFrameElement;
+    if (!iframe) {
+      iframe = document.createElement("iframe");
+      iframe.id = "voicecare-pdf-print-frame";
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      document.body.appendChild(iframe);
+    }
+
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    const printHtml = `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <title>${reportTitle}</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 8mm 10mm;
+          }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+            box-sizing: border-box;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+          }
+          html, body {
+            margin: 0;
+            padding: 0;
+            background: #ffffff !important;
+            color: #0f172a !important;
+          }
+          .pdf-sheet {
+            page-break-after: always;
+            break-after: page;
+            page-break-inside: avoid;
+            break-inside: avoid;
+            width: 100%;
+            min-height: 277mm;
+            max-height: 277mm;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: #ffffff;
+            overflow: hidden;
+            box-sizing: border-box;
+          }
+          .pdf-sheet:last-child {
+            page-break-after: auto;
+            break-after: auto;
+          }
+          table {
+            border-collapse: collapse;
+            width: 100%;
+          }
+          .no-print {
+            display: none !important;
+          }
+        </style>
+      </head>
+      <body class="bg-white text-slate-900">
+        <div class="pdf-sheet">
+          ${page1.innerHTML}
+        </div>
+        <div class="pdf-sheet">
+          ${page2.innerHTML}
+        </div>
+        <div class="pdf-sheet">
+          ${page3.innerHTML}
+        </div>
+      </body>
+      </html>
+    `;
+
+    doc.open();
+    doc.write(printHtml);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (err) {
+        console.warn("Print frame fallback:", err);
+        window.print();
+      }
+    }, 450);
+  };
+
+  const handleDownloadHtml = () => {
+    const page1 = document.getElementById("pdf-report-page-1");
+    const page2 = document.getElementById("pdf-report-page-2");
+    const page3 = document.getElementById("pdf-report-page-3");
+
+    if (!page1 || !page2 || !page3) {
+      toast.error("Report pages not ready for export.");
+      return;
+    }
+
+    const standaloneDoc = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${reportTitle}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    @page { size: A4 portrait; margin: 8mm 10mm; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+    body { background: #0f172a; color: #0f172a; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 32px; }
+    .pdf-sheet { width: 100%; max-width: 820px; min-height: 1120px; background: #ffffff; padding: 32px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; justify-content: space-between; }
+    @media print {
+      body { background: #ffffff !important; padding: 0 !important; }
+      .pdf-sheet { page-break-after: always; break-after: page; box-shadow: none !important; border-radius: 0 !important; padding: 16px 20px !important; min-height: 277mm !important; max-height: 277mm !important; }
+      .pdf-sheet:last-child { page-break-after: auto; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print bg-slate-900 border border-teal-500/40 text-white px-6 py-4 rounded-xl flex items-center justify-between w-full max-w-[820px]">
+    <div>
+      <h3 class="font-bold text-sm text-teal-400">HospNest VoiceCare — Sahara CodeSwitch Africa Benchmark Report</h3>
+      <p class="text-xs text-slate-300">Offline Standalone Document • Ready to Print to PDF (Ctrl+P or Cmd+P)</p>
+    </div>
+    <button onclick="window.print()" style="background:#0d9488;color:#fff;font-weight:600;font-size:12px;padding:8px 16px;border-radius:8px;border:none;cursor:pointer;">
+      Print / Save PDF
+    </button>
+  </div>
+  <div class="pdf-sheet">${page1.innerHTML}</div>
+  <div class="pdf-sheet">${page2.innerHTML}</div>
+  <div class="pdf-sheet">${page3.innerHTML}</div>
+</body>
+</html>`;
+
+    const blob = new Blob([standaloneDoc], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `hospnest-voicecare-benchmark-report-${run.id}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Downloaded Standalone Printable HTML Report!");
   };
 
   const handleSave = async () => {
@@ -192,36 +383,36 @@ export function BenchmarkReportPreviewModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-6xl w-full h-[92vh] max-h-[95vh] p-0 flex flex-col overflow-hidden bg-slate-950 text-slate-100 border-slate-800">
+      <DialogContent className="w-[96vw] max-w-6xl h-[92dvh] max-h-[95vh] p-0 flex flex-col overflow-hidden bg-slate-950 text-slate-100 border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl">
         {/* Modal Top Control Bar (Hidden in Print) */}
-        <div className="no-print p-4 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
+        <div className="no-print p-3 sm:p-4 border-b border-slate-800 bg-slate-900/95 backdrop-blur-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30 flex items-center justify-center">
+            <div className="h-9 w-9 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30 flex items-center justify-center shrink-0">
               <Award className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-slate-100">
-                  3-Page Competition Benchmark Report
+                <h2 className="text-sm sm:text-base font-bold text-slate-100">
+                  Official 3-Page Benchmark Report
                 </h2>
                 <Badge className="bg-purple-600/30 text-purple-300 border-purple-500/40 text-[10px]">
-                  Sahara Challenge Ready
+                  Sahara Challenge
                 </Badge>
               </div>
-              <p className="text-xs text-slate-400">
-                Run #{run.id} • {run.totalSamples} Multi-lingual Code-Switch Samples Evaluated
+              <p className="text-[11px] text-slate-400">
+                Run #{run.id} • {run.totalSamples} Multi-lingual Code-Switch Samples
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Page View Toggles */}
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-between sm:justify-end">
+            {/* Smooth Page Jump Toggles */}
             <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700">
               <Button
                 variant={currentPage === "all" ? "secondary" : "ghost"}
                 size="sm"
                 className="text-xs h-7 px-2.5"
-                onClick={() => setCurrentPage("all")}
+                onClick={() => scrollToPage("all")}
               >
                 All 3 Pages
               </Button>
@@ -229,7 +420,7 @@ export function BenchmarkReportPreviewModal({
                 variant={currentPage === 1 ? "secondary" : "ghost"}
                 size="sm"
                 className="text-xs h-7 px-2"
-                onClick={() => setCurrentPage(1)}
+                onClick={() => scrollToPage(1)}
               >
                 Page 1
               </Button>
@@ -237,7 +428,7 @@ export function BenchmarkReportPreviewModal({
                 variant={currentPage === 2 ? "secondary" : "ghost"}
                 size="sm"
                 className="text-xs h-7 px-2"
-                onClick={() => setCurrentPage(2)}
+                onClick={() => scrollToPage(2)}
               >
                 Page 2
               </Button>
@@ -245,7 +436,7 @@ export function BenchmarkReportPreviewModal({
                 variant={currentPage === 3 ? "secondary" : "ghost"}
                 size="sm"
                 className="text-xs h-7 px-2"
-                onClick={() => setCurrentPage(3)}
+                onClick={() => scrollToPage(3)}
               >
                 Page 3
               </Button>
@@ -264,27 +455,41 @@ export function BenchmarkReportPreviewModal({
             <Button
               variant="outline"
               size="sm"
+              onClick={handleDownloadHtml}
+              title="Download Standalone Offline HTML Report"
+              className="text-xs h-8 bg-slate-800/80 border-slate-700 text-slate-200 hover:bg-slate-700"
+            >
+              <Download className="h-3.5 w-3.5 mr-1 text-emerald-400" />
+              HTML
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleDownloadJson}
               className="text-xs h-8 bg-slate-800/80 border-slate-700 text-slate-200 hover:bg-slate-700"
             >
-              <Download className="h-3.5 w-3.5 mr-1" />
-              JSON Data
+              <FileText className="h-3.5 w-3.5 mr-1 text-purple-400" />
+              JSON
             </Button>
 
             <Button
               size="sm"
-              onClick={handlePrint}
-              className="text-xs h-8 bg-teal-600 hover:bg-teal-700 text-white font-medium shadow-md shadow-teal-900/30"
+              onClick={handlePrintPdf}
+              className="text-xs h-8 bg-teal-600 hover:bg-teal-700 text-white font-semibold shadow-md shadow-teal-900/30 gap-1.5"
             >
-              <Printer className="h-3.5 w-3.5 mr-1.5" />
+              <Printer className="h-3.5 w-3.5" />
               Print / Save 3-Page PDF
             </Button>
           </div>
         </div>
 
-        {/* Modal Scrollable Workspace */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-950/80 flex justify-center custom-scrollbar">
-          <div className="w-full max-w-4xl space-y-8 print:p-0 print:m-0 print:max-w-none print:w-full">
+        {/* Modal Scrollable Workspace (Always contains all 3 rendered pages) */}
+        <div
+          ref={scrollContainerRef}
+          className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-950/95 flex justify-center custom-scrollbar scroll-smooth"
+        >
+          <div className="w-full max-w-4xl space-y-8">
             {/* Edit Drawer when editing is enabled */}
             {isEditingNotes && (
               <div className="no-print bg-slate-900 border border-teal-500/30 rounded-2xl p-5 mb-6 space-y-4 shadow-xl">
@@ -387,8 +592,20 @@ export function BenchmarkReportPreviewModal({
             {/* ========================================================================= */}
             {/* PAGE 1: TITLE, EXECUTIVE SUMMARY, MODELS & METHODOLOGY                   */}
             {/* ========================================================================= */}
-            {(currentPage === "all" || currentPage === 1) && (
-              <div className="print-page bg-white text-slate-900 rounded-lg shadow-2xl p-8 sm:p-10 border border-slate-200 print:border-none print:shadow-none print:rounded-none relative flex flex-col justify-between min-h-[1050px] print:min-h-[277mm] print:h-[277mm]">
+            <div className="space-y-2">
+              <div className="no-print flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider px-1">
+                <span className="flex items-center gap-1.5 text-teal-400">
+                  <FileText className="h-3.5 w-3.5" /> Page 1 of 3 — Executive Summary & Methodology
+                </span>
+                <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">
+                  A4 Page 1
+                </span>
+              </div>
+              <div
+                id="pdf-report-page-1"
+                ref={page1Ref}
+                className="print-page bg-white text-slate-900 rounded-xl shadow-2xl p-6 sm:p-10 border border-slate-200 relative flex flex-col justify-between min-h-[960px] sm:min-h-[1050px]"
+              >
                 <div>
                   {/* Header Strip */}
                   <div className="border-b-2 border-teal-600 pb-4 flex items-start justify-between">
@@ -397,7 +614,7 @@ export function BenchmarkReportPreviewModal({
                         <Activity className="h-4 w-4" />
                         HospNest VoiceCare • Competition Benchmark
                       </div>
-                      <h1 className="text-2xl font-black text-slate-900 mt-1 leading-tight tracking-tight">
+                      <h1 className="text-xl sm:text-2xl font-black text-slate-900 mt-1 leading-tight tracking-tight">
                         {reportTitle}
                       </h1>
                       <p className="text-xs text-slate-500 mt-0.5 font-medium">
@@ -417,7 +634,7 @@ export function BenchmarkReportPreviewModal({
                   </div>
 
                   {/* Metadata Grid */}
-                  <div className="grid grid-cols-4 gap-3 my-4 p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px]">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 my-4 p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px]">
                     <div>
                       <span className="text-slate-400 block font-semibold text-[9px] uppercase">Evaluator</span>
                       <span className="font-bold text-slate-800">{preparedBy}</span>
@@ -454,8 +671,8 @@ export function BenchmarkReportPreviewModal({
                       <Layers className="h-3.5 w-3.5 text-slate-600" />
                       1. Speech Models Under Evaluation
                     </h3>
-                    <div className="border border-slate-200 rounded-lg overflow-hidden text-[11px]">
-                      <table className="w-full text-left">
+                    <div className="border border-slate-200 rounded-lg overflow-x-auto text-[11px]">
+                      <table className="w-full text-left min-w-[500px]">
                         <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                           <tr>
                             <th className="p-2">Model Name</th>
@@ -501,7 +718,7 @@ export function BenchmarkReportPreviewModal({
                     <p className="text-[11px] text-slate-600 mb-2 leading-relaxed">
                       {datasetNote}
                     </p>
-                    <div className="grid grid-cols-5 gap-2 text-[10px]">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[10px]">
                       <div className="p-2 bg-slate-50 rounded border border-slate-200 text-center">
                         <span className="font-bold block text-slate-900">Nigerian Pidgin</span>
                         <span className="text-slate-500">Lagos / Niger Delta</span>
@@ -518,7 +735,7 @@ export function BenchmarkReportPreviewModal({
                         <span className="font-bold block text-slate-900">Igbo + English</span>
                         <span className="text-slate-500">South-East Regional</span>
                       </div>
-                      <div className="p-2 bg-slate-50 rounded border border-slate-200 text-center">
+                      <div className="p-2 bg-slate-50 rounded border border-slate-200 text-center col-span-2 sm:col-span-1">
                         <span className="font-bold block text-slate-900">Clinician English</span>
                         <span className="text-slate-500">Medical Notes & Dictation</span>
                       </div>
@@ -544,13 +761,25 @@ export function BenchmarkReportPreviewModal({
                   <span>Confidential & Competition Certified</span>
                 </div>
               </div>
-            )}
+            </div>
 
             {/* ========================================================================= */}
             {/* PAGE 2: QUANTITATIVE EVALUATION & DOWNSTREAM ACCURACY                    */}
             {/* ========================================================================= */}
-            {(currentPage === "all" || currentPage === 2) && (
-              <div className="print-page bg-white text-slate-900 rounded-lg shadow-2xl p-8 sm:p-10 border border-slate-200 print:border-none print:shadow-none print:rounded-none relative flex flex-col justify-between min-h-[1050px] print:min-h-[277mm] print:h-[277mm]">
+            <div className="space-y-2">
+              <div className="no-print flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider px-1">
+                <span className="flex items-center gap-1.5 text-teal-400">
+                  <Layers className="h-3.5 w-3.5" /> Page 2 of 3 — Quantitative Benchmarks & Downstream Accuracy
+                </span>
+                <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">
+                  A4 Page 2
+                </span>
+              </div>
+              <div
+                id="pdf-report-page-2"
+                ref={page2Ref}
+                className="print-page bg-white text-slate-900 rounded-xl shadow-2xl p-6 sm:p-10 border border-slate-200 relative flex flex-col justify-between min-h-[960px] sm:min-h-[1050px]"
+              >
                 <div>
                   {/* Header Strip */}
                   <div className="border-b-2 border-teal-600 pb-3 flex items-start justify-between">
@@ -558,7 +787,7 @@ export function BenchmarkReportPreviewModal({
                       <div className="text-teal-700 font-extrabold text-[11px] uppercase tracking-wider">
                         Quantitative Speech & Slot Performance
                       </div>
-                      <h2 className="text-xl font-black text-slate-900 mt-0.5">
+                      <h2 className="text-lg sm:text-xl font-black text-slate-900 mt-0.5">
                         Word Error Rate, Latency & Hospital Task Extraction
                       </h2>
                     </div>
@@ -572,8 +801,8 @@ export function BenchmarkReportPreviewModal({
                     <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
                       1. Overall Speech & Task Performance Metrics
                     </h3>
-                    <div className="border border-slate-200 rounded-lg overflow-hidden text-[11px]">
-                      <table className="w-full text-left">
+                    <div className="border border-slate-200 rounded-lg overflow-x-auto text-[11px]">
+                      <table className="w-full text-left min-w-[500px]">
                         <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                           <tr>
                             <th className="p-2">Evaluated Model</th>
@@ -625,8 +854,8 @@ export function BenchmarkReportPreviewModal({
                     <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
                       2. Language & Dialect Performance Breakdown (WER & Task Accuracy)
                     </h3>
-                    <div className="border border-slate-200 rounded-lg overflow-hidden text-[10px]">
-                      <table className="w-full text-left">
+                    <div className="border border-slate-200 rounded-lg overflow-x-auto text-[10px]">
+                      <table className="w-full text-left min-w-[500px]">
                         <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                           <tr>
                             <th className="p-1.5">Language / Dialect Pair</th>
@@ -670,7 +899,7 @@ export function BenchmarkReportPreviewModal({
                     <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
                       3. Downstream Clinical Slot & Action Extraction Breakdown
                     </h3>
-                    <div className="grid grid-cols-5 gap-2 text-[10px]">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[10px]">
                       <div className="p-2.5 bg-slate-50 rounded border border-slate-200">
                         <span className="text-slate-500 block font-semibold text-[9px]">INTENT ACCURACY</span>
                         <div className="mt-1 flex items-baseline justify-between">
@@ -719,7 +948,7 @@ export function BenchmarkReportPreviewModal({
                         </div>
                       </div>
 
-                      <div className="p-2.5 bg-slate-50 rounded border border-slate-200">
+                      <div className="p-2.5 bg-slate-50 rounded border border-slate-200 col-span-2 sm:col-span-1">
                         <span className="text-slate-500 block font-semibold text-[9px]">CHIEF COMPLAINT</span>
                         <div className="mt-1 flex items-baseline justify-between">
                           <span className="font-black text-sm text-teal-700">
@@ -747,13 +976,25 @@ export function BenchmarkReportPreviewModal({
                   <span>Confidential & Competition Certified</span>
                 </div>
               </div>
-            )}
+            </div>
 
             {/* ========================================================================= */}
             {/* PAGE 3: QUALITATIVE ANALYSIS, ERROR PATTERNS & RESPONSIBLE AI            */}
             {/* ========================================================================= */}
-            {(currentPage === "all" || currentPage === 3) && (
-              <div className="print-page bg-white text-slate-900 rounded-lg shadow-2xl p-8 sm:p-10 border border-slate-200 print:border-none print:shadow-none print:rounded-none relative flex flex-col justify-between min-h-[1050px] print:min-h-[277mm] print:h-[277mm]">
+            <div className="space-y-2">
+              <div className="no-print flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider px-1">
+                <span className="flex items-center gap-1.5 text-teal-400">
+                  <ShieldCheck className="h-3.5 w-3.5" /> Page 3 of 3 — Qualitative Analysis & Clinical Governance
+                </span>
+                <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">
+                  A4 Page 3
+                </span>
+              </div>
+              <div
+                id="pdf-report-page-3"
+                ref={page3Ref}
+                className="print-page bg-white text-slate-900 rounded-xl shadow-2xl p-6 sm:p-10 border border-slate-200 relative flex flex-col justify-between min-h-[960px] sm:min-h-[1050px]"
+              >
                 <div>
                   {/* Header Strip */}
                   <div className="border-b-2 border-teal-600 pb-3 flex items-start justify-between">
@@ -761,7 +1002,7 @@ export function BenchmarkReportPreviewModal({
                       <div className="text-teal-700 font-extrabold text-[11px] uppercase tracking-wider">
                         Qualitative & Ethical Analysis
                       </div>
-                      <h2 className="text-xl font-black text-slate-900 mt-0.5">
+                      <h2 className="text-lg sm:text-xl font-black text-slate-900 mt-0.5">
                         Code-Switch Error Patterns, Clinical Safety & Responsible AI
                       </h2>
                     </div>
@@ -859,15 +1100,16 @@ export function BenchmarkReportPreviewModal({
                   <span>Confidential & Competition Certified</span>
                 </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
 
         {/* Modal Footer (Hidden in Print) */}
-        <div className="no-print p-4 border-t border-slate-800 bg-slate-900 flex items-center justify-between shrink-0">
+        <div className="no-print p-3 sm:p-4 border-t border-slate-800 bg-slate-900 flex items-center justify-between shrink-0">
           <div className="text-xs text-slate-400 flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-            Competition PDF Template (Strict 3-Page Constraint Enforced)
+            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            <span className="hidden sm:inline">Competition PDF Template (Strict 3-Page Constraint Enforced)</span>
+            <span className="sm:hidden">3-Page PDF Template</span>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -880,10 +1122,10 @@ export function BenchmarkReportPreviewModal({
             </Button>
             <Button
               size="sm"
-              onClick={handlePrint}
-              className="text-xs bg-teal-600 hover:bg-teal-700 text-white"
+              onClick={handlePrintPdf}
+              className="text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold gap-1.5"
             >
-              <Printer className="h-3.5 w-3.5 mr-1.5" />
+              <Printer className="h-3.5 w-3.5" />
               Print / Save 3-Page PDF
             </Button>
           </div>
