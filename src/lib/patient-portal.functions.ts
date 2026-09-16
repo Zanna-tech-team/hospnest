@@ -527,13 +527,18 @@ export const getAuthUserRoleRedirect = createServerFn({ method: "GET" })
       .eq("is_active", true);
 
     const roles = roleRows ?? [];
+    const isSuperAdmin = roles.some((r: any) => r.role === "super_admin" || r.role === "superadmin");
+    if (isSuperAdmin) {
+      return { redirectPath: "/superadmin", isSuperAdmin: true, isPatient: false };
+    }
+
     const isPatientOnly = roles.length > 0 && roles.every((r: any) => r.role === "patient");
 
     if (isPatientOnly) {
       return { redirectPath: "/portal", isPatient: true };
     }
 
-    return { redirectPath: "/front-desk", isPatient: false };
+    return { redirectPath: "/dashboard", isPatient: false };
   });
 
 /**

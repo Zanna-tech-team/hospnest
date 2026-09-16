@@ -1,5 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -90,8 +90,16 @@ function formatCurrency(amount: number) {
 const DEPT_COLORS = ["#0d9488", "#3b82f6", "#8b5cf6", "#f59e0b", "#ec4899", "#10b981"];
 
 export function DashboardPage() {
-  const { activeHospitalId } = useAppShell();
+  const navigate = useNavigate();
+  const { activeHospitalId, shellData } = useAppShell();
   const getDashboardDataFn = useServerFn(getRoleDashboardData);
+
+  useEffect(() => {
+    // If user is superadmin and not actively inspecting a specific hospital, send them to global command center
+    if (shellData?.isSuperAdmin && !activeHospitalId) {
+      navigate({ to: "/superadmin" });
+    }
+  }, [shellData?.isSuperAdmin, activeHospitalId, navigate]);
 
   const [activeQueueTab, setActiveQueueTab] = useState<"waiting_doctor" | "waiting_triage" | "in_consultation" | "diagnostic_hold" | "pharmacy_hold">("waiting_doctor");
   const [activeReviewLabOrder, setActiveReviewLabOrder] = useState<any | null>(null);
@@ -103,6 +111,17 @@ export function DashboardPage() {
     enabled: Boolean(activeHospitalId),
     refetchInterval: 20000,
   });
+
+  if (shellData?.isSuperAdmin && !activeHospitalId) {
+    return (
+      <div className="flex h-[80vh] flex-col items-center justify-center gap-3">
+        <RefreshCw className="h-8 w-8 animate-spin text-purple-600" />
+        <p className="text-sm font-medium text-muted-foreground">
+          Redirecting to Super Admin Global Command Center...
+        </p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

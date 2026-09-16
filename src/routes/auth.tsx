@@ -123,9 +123,9 @@ function AuthPage() {
     }
     try {
       const { redirectPath } = await getRoleRedirectFn();
-      navigate({ to: redirectPath || "/front-desk" });
+      navigate({ to: redirectPath || "/dashboard" });
     } catch {
-      navigate({ to: "/front-desk" });
+      navigate({ to: "/dashboard" });
     }
   };
 

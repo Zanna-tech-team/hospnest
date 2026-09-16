@@ -45,6 +45,8 @@ import {
   Users,
   X,
   Mic,
+  Crown,
+  Globe,
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -253,6 +255,56 @@ const NAVIGATION_ITEMS: NavItem[] = [
   },
 ];
 
+const SUPERADMIN_NAVIGATION_ITEMS: NavItem[] = [
+  {
+    label: "Global Command Center",
+    href: "/superadmin",
+    icon: LayoutDashboard,
+    badge: "GLOBAL",
+    category: "admin",
+  },
+  {
+    label: "Hospitals & Clinics Network",
+    href: "/superadmin?tab=hospitals",
+    icon: Building2,
+    badge: "NETWORK",
+    category: "admin",
+  },
+  {
+    label: "VoiceCare Platform & Labs",
+    href: "/voicecare",
+    icon: Mic,
+    badge: "VOICE",
+    category: "core",
+  },
+  {
+    label: "Platform Users & Roles",
+    href: "/superadmin?tab=users",
+    icon: Users,
+    category: "admin",
+  },
+  {
+    label: "Emergency Break-Glass Ledger",
+    href: "/superadmin?tab=breakglass",
+    icon: ShieldAlert,
+    badge: "OVERSIGHT",
+    category: "admin",
+  },
+  {
+    label: "Cryptographic Audit Ledger",
+    href: "/superadmin?tab=audit",
+    icon: ShieldCheck,
+    badge: "SHA-256",
+    category: "admin",
+  },
+  {
+    label: "Platform Tiers & Policies",
+    href: "/superadmin?tab=settings",
+    icon: Settings,
+    category: "admin",
+  },
+];
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouterState();
   const currentPath = router.location.pathname;
@@ -261,6 +313,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
+  const [superadminInspectionMode, setSuperadminInspectionMode] = useState<boolean>(false);
 
   const shellFn = useServerFn(getAppShellData);
   const { data: shellData, isLoading } = useQuery({
@@ -280,20 +333,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.location.href = "/auth";
   };
 
+  // Determine if Super Admin is in Global View or inspecting a single hospital's clinical workspace
+  const isGlobalSuperAdminView = isSuperAdmin && (!superadminInspectionMode || currentPath.startsWith("/superadmin") || currentPath.startsWith("/voicecare"));
+
   // Filter navigation items by role
-  const visibleNavItems = NAVIGATION_ITEMS.filter((item) => {
-    if (item.href === "/superadmin") {
-      return isSuperAdmin;
-    }
-    if (item.patientOnly) {
-      return isPatientUser || !hasStaffWorkplaces;
-    }
-    if (!hasStaffWorkplaces && isPatientUser) {
-      return false;
-    }
-    if (!item.roles) return true;
-    return item.roles.includes(currentRole as StaffRole) || (isAdmin && item.roles.includes("hospital_admin"));
-  });
+  const visibleNavItems = isGlobalSuperAdminView
+    ? SUPERADMIN_NAVIGATION_ITEMS
+    : NAVIGATION_ITEMS.filter((item) => {
+        if (item.href === "/superadmin") {
+          return isSuperAdmin;
+        }
+        if (item.patientOnly) {
+          return isPatientUser || !hasStaffWorkplaces;
+        }
+        if (!hasStaffWorkplaces && isPatientUser) {
+          return false;
+        }
+        if (!item.roles) return true;
+        return item.roles.includes(currentRole as StaffRole) || (isAdmin && item.roles.includes("hospital_admin"));
+      });
 
   const roleMeta = ROLE_DISPLAY[currentRole] || {
     label: currentRole,
@@ -305,7 +363,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const currentNav = visibleNavItems.find(
     (item) => item.href === currentPath || (item.href !== "/" && currentPath.startsWith(item.href)),
   );
-  const currentTitle = currentNav?.label || "Workspace";
+  const currentTitle = isGlobalSuperAdminView && currentPath.startsWith("/superadmin")
+    ? "National Platform Control Center"
+    : currentNav?.label || "Workspace";
 
   return (
     <AppShellContext.Provider
@@ -360,16 +420,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </div>
 
-          {/* Hospital Workspace Switcher */}
+          {/* Hospital / Platform Workspace Switcher */}
           <div className="p-3 border-b border-border/60">
             {isLoading ? (
               <div className="h-10 animate-pulse rounded-xl bg-muted" />
             ) : isCollapsed ? (
               <div
-                className="flex size-10 mx-auto items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 font-bold text-xs"
-                title={shellData?.activeWorkplace?.name || "Active Hospital"}
+                className={`flex size-10 mx-auto items-center justify-center rounded-xl font-bold text-xs ${
+                  isGlobalSuperAdminView
+                    ? "bg-purple-500/10 text-purple-600"
+                    : "bg-teal-500/10 text-teal-600"
+                }`}
+                title={isGlobalSuperAdminView ? "Superadmin Command Center" : (shellData?.activeWorkplace?.name || "Active Hospital")}
               >
-                <Building2 className="size-4" />
+                {isGlobalSuperAdminView ? <Crown className="size-4" /> : <Building2 className="size-4" />}
+              </div>
+            ) : isGlobalSuperAdminView ? (
+              <div className="flex items-center gap-2.5 rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 py-2 shadow-2xs">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-purple-600 text-white shadow-xs">
+                  <Crown className="size-4" />
+                </div>
+                <div className="overflow-hidden">
+                  <p className="truncate text-xs font-bold text-foreground">
+                    National Platform
+                  </p>
+                  <p className="text-[9px] text-purple-700 dark:text-purple-300 uppercase font-mono tracking-wider">
+                    SUPERADMIN COMMAND
+                  </p>
+                </div>
               </div>
             ) : (shellData?.workplaces?.length ?? 0) > 1 ? (
               <DropdownMenu>
@@ -447,7 +525,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <nav className="flex-1 space-y-1 overflow-y-auto px-2.5 py-4 scrollbar-thin">
             {!isCollapsed && (
               <p className="px-3 pb-2 text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
-                Clinical Modules
+                {isGlobalSuperAdminView ? "National Governance" : "Clinical Modules"}
               </p>
             )}
             {visibleNavItems.map((item) => {
@@ -713,6 +791,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
 
           {/* Dynamic Page Content Viewport */}
+          {isSuperAdmin && !isGlobalSuperAdminView && (
+            <div className="bg-purple-950/80 border-b border-purple-500/40 px-4 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-purple-100 shadow-md">
+              <div className="flex items-center gap-2">
+                <Crown className="size-4 text-purple-400 shrink-0" />
+                <span>
+                  <strong>Superadmin Facility Inspection:</strong> You are viewing clinical workspace for{" "}
+                  <strong className="text-white underline">{shellData?.activeWorkplace?.name || "Selected Facility"}</strong>
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setSuperadminInspectionMode(false);
+                  window.location.href = "/superadmin";
+                }}
+                className="h-7 text-[11px] bg-purple-600 hover:bg-purple-700 text-white font-semibold shrink-0"
+              >
+                Return to Global Command Center
+              </Button>
+            </div>
+          )}
           <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
             {children}
           </main>

@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   getSuperadminPlatformOverview,
   getSuperadminHospitalsList,
+  getSuperadminHospitalDetail,
   updateSuperadminHospital,
   getSuperadminPlatformUsers,
   updateSuperadminUserRole,
@@ -12,6 +13,7 @@ import {
   verifyPlatformAuditChainIntegrity,
   type PlatformOverviewData,
   type SuperadminHospitalItem,
+  type SuperadminHospitalDetail,
   type SuperadminPlatformUser,
   type SuperadminBreakGlassLog,
   type AuditChainValidationResult,
@@ -104,6 +106,10 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/superadmin")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: typeof search["tab"] === "string" ? (search["tab"] as string) : undefined,
+    hospitalId: typeof search["hospitalId"] === "string" ? (search["hospitalId"] as string) : undefined,
+  }),
   component: SuperadminDashboardPage,
 });
 
@@ -146,9 +152,11 @@ function formatDateTime(dateStr?: string | null) {
 
 export function SuperadminDashboardPage() {
   const queryClient = useQueryClient();
+  const search = Route.useSearch();
 
   const getOverviewFn = useServerFn(getSuperadminPlatformOverview);
   const getHospitalsFn = useServerFn(getSuperadminHospitalsList);
+  const getHospitalDetailFn = useServerFn(getSuperadminHospitalDetail);
   const updateHospitalFn = useServerFn(updateSuperadminHospital);
   const getUsersFn = useServerFn(getSuperadminPlatformUsers);
   const updateUserRoleFn = useServerFn(updateSuperadminUserRole);
@@ -157,7 +165,13 @@ export function SuperadminDashboardPage() {
 
   const [activeTab, setActiveTab] = useState<
     "overview" | "hospitals" | "users" | "breakglass" | "audit" | "settings" | "voicecare-lab"
-  >("overview");
+  >((search.tab as any) || "overview");
+
+  useEffect(() => {
+    if (search.tab) {
+      setActiveTab(search.tab as any);
+    }
+  }, [search.tab]);
 
   // Filters
   const [hospitalSearch, setHospitalSearch] = useState("");
@@ -168,7 +182,11 @@ export function SuperadminDashboardPage() {
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState("all");
 
-  // Modal: Edit Hospital
+  // In-Depth Hospital Inspector State
+  const [inspectingHospitalId, setInspectingHospitalId] = useState<string | null>(search.hospitalId || null);
+  const [inspectorSubTab, setInspectorSubTab] = useState<"overview" | "staff" | "patients" | "infrastructure" | "diagnostics">("overview");
+
+  // Modal: Edit Hospital Limits
   const [editingHospital, setEditingHospital] = useState<SuperadminHospitalItem | null>(null);
   const [editTier, setEditTier] = useState("Community");
   const [editMaxBeds, setEditMaxBeds] = useState(50);
@@ -182,6 +200,17 @@ export function SuperadminDashboardPage() {
 
   // Audit Chain state
   const [chainAuditResult, setChainAuditResult] = useState<AuditChainValidationResult | null>(null);
+
+  // 0. Hospital Detail Inspector Query
+  const {
+    data: hospitalDetailData,
+    isLoading: isHospitalDetailLoading,
+    refetch: refetchHospitalDetail,
+  } = useQuery({
+    queryKey: ["superadmin-hospital-detail", inspectingHospitalId],
+    queryFn: () => getHospitalDetailFn({ data: { hospitalId: inspectingHospitalId! } }),
+    enabled: Boolean(inspectingHospitalId),
+  });
 
   // 1. Overview Query
   const {
@@ -746,14 +775,15 @@ export function SuperadminDashboardPage() {
                   {(overviewData?.recentHospitals || []).map((h) => (
                     <div
                       key={h.id}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl border border-border/80 bg-card/60 gap-2 text-xs"
+                      onClick={() => setInspectingHospitalId(h.id)}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl border border-border/80 bg-card/60 gap-2 text-xs hover:border-teal-500/50 hover:bg-muted/40 cursor-pointer transition-all"
                     >
                       <div className="flex items-center gap-2.5">
                         <div className="h-8 w-8 rounded-lg bg-teal-500/10 text-teal-600 flex items-center justify-center shrink-0">
                           <Hospital className="h-4 w-4" />
                         </div>
                         <div>
-                          <p className="font-bold text-foreground">{h.name}</p>
+                          <p className="font-bold text-foreground group-hover:text-teal-600">{h.name}</p>
                           <p className="text-[11px] text-muted-foreground">
                             {h.state} • Tier: {h.tier}
                           </p>
@@ -773,6 +803,9 @@ export function SuperadminDashboardPage() {
                         <span className="text-[11px] text-muted-foreground font-mono">
                           {formatDate(h.createdAt)}
                         </span>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] text-teal-600 font-semibold">
+                          <Eye className="size-3 mr-1" /> Inspect
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -790,10 +823,10 @@ export function SuperadminDashboardPage() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
                     <CardTitle className="text-base font-bold text-foreground">
-                      Hospital Facilities Directory
+                      Hospital Facilities Directory & Deep Inspector
                     </CardTitle>
                     <CardDescription className="text-xs">
-                      Manage verification, capacity limits, and subscription tiers across all hospitals
+                      Click any facility to inspect in-depth staff rosters, patient volume, ward occupancy, and diagnostic activity
                     </CardDescription>
                   </div>
 
@@ -851,9 +884,15 @@ export function SuperadminDashboardPage() {
                         </tr>
                       ) : (
                         hospitalsData.map((h) => (
-                          <tr key={h.id} className="hover:bg-muted/30 transition-colors">
+                          <tr
+                            key={h.id}
+                            className="hover:bg-muted/40 transition-colors cursor-pointer group"
+                            onClick={() => setInspectingHospitalId(h.id)}
+                          >
                             <td className="p-3">
-                              <p className="font-bold text-foreground">{h.name}</p>
+                              <p className="font-bold text-foreground group-hover:text-teal-600 transition-colors">
+                                {h.name}
+                              </p>
                               <span className="font-mono text-[10px] text-muted-foreground">
                                 slug: /{h.slug}
                               </span>
@@ -889,21 +928,32 @@ export function SuperadminDashboardPage() {
                             <td className="p-3 font-mono font-semibold text-emerald-600 dark:text-emerald-400">
                               {formatCurrency(h.revenueTotal)}
                             </td>
-                            <td className="p-3 text-right">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setEditingHospital(h);
-                                  setEditTier(h.tier);
-                                  setEditMaxBeds(h.maxBeds);
-                                  setEditMaxStaff(h.maxStaff);
-                                  setEditVerified(h.isVerified);
-                                }}
-                                className="text-xs h-7"
-                              >
-                                Manage
-                              </Button>
+                            <td className="p-3 text-right" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => setInspectingHospitalId(h.id)}
+                                  className="text-xs h-7 gap-1 bg-teal-500/10 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300 font-semibold"
+                                >
+                                  <Eye className="size-3" />
+                                  Inspect
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingHospital(h);
+                                    setEditTier(h.tier);
+                                    setEditMaxBeds(h.maxBeds);
+                                    setEditMaxStaff(h.maxStaff);
+                                    setEditVerified(h.isVerified);
+                                  }}
+                                  className="text-xs h-7"
+                                >
+                                  Limits
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         ))
@@ -1260,6 +1310,407 @@ export function SuperadminDashboardPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* ========================================================= */}
+      {/* MODAL: In-Depth Hospital Facility Inspector Dossier      */}
+      {/* ========================================================= */}
+      <Dialog open={Boolean(inspectingHospitalId)} onOpenChange={(open) => !open && setInspectingHospitalId(null)}>
+        <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl border-border bg-card">
+          {isHospitalDetailLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <RefreshCw className="h-8 w-8 animate-spin text-teal-600" />
+              <p className="text-xs font-semibold text-muted-foreground">Loading facility dossier...</p>
+            </div>
+          ) : !hospitalDetailData ? (
+            <div className="p-8 text-center text-xs text-muted-foreground">
+              Hospital facility information not available.
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Header Strip */}
+              <div className="p-6 bg-gradient-to-r from-teal-950/40 via-background to-purple-950/30 border-b border-border">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3.5">
+                    <div className="size-12 rounded-2xl bg-teal-500/10 text-teal-600 flex items-center justify-center border border-teal-500/30 shrink-0 shadow-sm">
+                      <Building2 className="size-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="font-display text-xl font-bold text-foreground">
+                          {hospitalDetailData.hospital.name}
+                        </h2>
+                        <Badge
+                          className={
+                            hospitalDetailData.hospital.isVerified
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px]"
+                              : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 text-[10px]"
+                          }
+                        >
+                          {hospitalDetailData.hospital.isVerified ? "VERIFIED FACILITY" : "PENDING REVIEW"}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                          Tier: {hospitalDetailData.hospital.tier}
+                        </Badge>
+                        <Badge variant="secondary" className="text-[10px] capitalize">
+                          {hospitalDetailData.hospital.hospitalType}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
+                        <span>📍 {hospitalDetailData.hospital.state}{hospitalDetailData.hospital.lga ? `, ${hospitalDetailData.hospital.lga}` : ""}</span>
+                        <span>•</span>
+                        <span className="font-mono">slug: /{hospitalDetailData.hospital.slug}</span>
+                        <span>•</span>
+                        <span>Registered: {formatDate(hospitalDetailData.hospital.createdAt)}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const blob = new Blob([JSON.stringify(hospitalDetailData, null, 2)], {
+                          type: "application/json",
+                        });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `hospital-dossier-${hospitalDetailData.hospital.slug}.json`;
+                        a.click();
+                        toast.success("Facility dossier JSON exported");
+                      }}
+                      className="text-xs h-8 gap-1.5"
+                    >
+                      <Download className="size-3.5" />
+                      Export Dossier
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setEditingHospital({
+                          id: hospitalDetailData.hospital.id,
+                          name: hospitalDetailData.hospital.name,
+                          slug: hospitalDetailData.hospital.slug,
+                          state: hospitalDetailData.hospital.state,
+                          lga: hospitalDetailData.hospital.lga,
+                          address: hospitalDetailData.hospital.address,
+                          phone: hospitalDetailData.hospital.phone,
+                          email: hospitalDetailData.hospital.email,
+                          hospitalType: hospitalDetailData.hospital.hospitalType,
+                          isVerified: hospitalDetailData.hospital.isVerified,
+                          tier: hospitalDetailData.hospital.tier,
+                          onboardingStep: hospitalDetailData.hospital.onboardingStep,
+                          maxBeds: hospitalDetailData.hospital.maxBeds,
+                          maxStaff: hospitalDetailData.hospital.maxStaff,
+                          staffCount: hospitalDetailData.metrics.totalStaff,
+                          encountersCount: hospitalDetailData.metrics.totalEncounters,
+                          admissionsCount: hospitalDetailData.metrics.totalAdmissions,
+                          revenueTotal: hospitalDetailData.metrics.totalRevenue,
+                          createdAt: hospitalDetailData.hospital.createdAt,
+                        });
+                        setEditTier(hospitalDetailData.hospital.tier);
+                        setEditMaxBeds(hospitalDetailData.hospital.maxBeds);
+                        setEditMaxStaff(hospitalDetailData.hospital.maxStaff);
+                        setEditVerified(hospitalDetailData.hospital.isVerified);
+                      }}
+                      className="text-xs h-8 bg-teal-600 hover:bg-teal-700 text-white font-semibold gap-1.5"
+                    >
+                      <Settings className="size-3.5" />
+                      Edit Limits & Tier
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-6 space-y-6">
+                {/* Quick Metrics Strip */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div className="p-3.5 rounded-xl border border-border bg-card/60">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Clinical Staff</span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="text-lg font-black text-foreground">{hospitalDetailData.metrics.totalStaff}</span>
+                      <span className="text-[10px] text-muted-foreground font-mono">/ {hospitalDetailData.hospital.maxStaff} max</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border border-border bg-card/60">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Enrolled Patients</span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="text-lg font-black text-foreground">{hospitalDetailData.metrics.totalPatients}</span>
+                      <span className="text-[10px] text-teal-600 font-semibold">Active Records</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border border-border bg-card/60">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Encounters / Visits</span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="text-lg font-black text-foreground">{hospitalDetailData.metrics.totalEncounters}</span>
+                      <span className="text-[10px] text-muted-foreground font-semibold">{hospitalDetailData.metrics.totalAdmissions} Inpatients</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border border-border bg-card/60">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Bed Occupancy</span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="text-lg font-black text-foreground">
+                        {hospitalDetailData.metrics.bedOccupancy.occupancyRate}%
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {hospitalDetailData.metrics.bedOccupancy.occupiedBeds}/{hospitalDetailData.metrics.bedOccupancy.totalBeds} beds
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border border-border bg-card/60 col-span-2 sm:col-span-1">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Revenue Processed</span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                        {formatCurrency(hospitalDetailData.metrics.totalRevenue)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub Tabs inside Inspector */}
+                <Tabs value={inspectorSubTab} onValueChange={(v) => setInspectorSubTab(v as any)} className="space-y-4">
+                  <TabsList className="bg-muted/80 p-1 rounded-xl flex flex-wrap h-auto gap-1">
+                    <TabsTrigger value="overview" className="text-xs font-semibold py-1.5 px-3">
+                      Facility Dossier
+                    </TabsTrigger>
+                    <TabsTrigger value="staff" className="text-xs font-semibold py-1.5 px-3">
+                      Workforce Roster ({hospitalDetailData.staffRoster.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="patients" className="text-xs font-semibold py-1.5 px-3">
+                      Patient Encounters ({hospitalDetailData.recentEncounters.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="infrastructure" className="text-xs font-semibold py-1.5 px-3">
+                      Wards & Beds ({hospitalDetailData.wards.length} Wards)
+                    </TabsTrigger>
+                    <TabsTrigger value="diagnostics" className="text-xs font-semibold py-1.5 px-3">
+                      Diagnostics & Pharmacy
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {/* SubTab 1: Overview */}
+                  <TabsContent value="overview" className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      <div className="p-4 rounded-xl border border-border bg-card/60 space-y-3">
+                        <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                          <Hospital className="size-4 text-teal-600" /> Facility Contact & Location
+                        </h4>
+                        <div className="space-y-2 text-muted-foreground">
+                          <div className="flex justify-between py-1 border-b border-border/50">
+                            <span className="font-semibold text-foreground">Physical Address:</span>
+                            <span>{hospitalDetailData.hospital.address || "Not specified"}</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-border/50">
+                            <span className="font-semibold text-foreground">State / LGA:</span>
+                            <span>{hospitalDetailData.hospital.state} ({hospitalDetailData.hospital.lga || "N/A"})</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-border/50">
+                            <span className="font-semibold text-foreground">Official Phone:</span>
+                            <span>{hospitalDetailData.hospital.phone || "N/A"}</span>
+                          </div>
+                          <div className="flex justify-between py-1">
+                            <span className="font-semibold text-foreground">Official Email:</span>
+                            <span>{hospitalDetailData.hospital.email || "N/A"}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 rounded-xl border border-border bg-card/60 space-y-3">
+                        <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                          <ShieldCheck className="size-4 text-teal-600" /> Platform Licensing & Limits
+                        </h4>
+                        <div className="space-y-2 text-muted-foreground">
+                          <div className="flex justify-between py-1 border-b border-border/50">
+                            <span className="font-semibold text-foreground">Accreditation Tier:</span>
+                            <span className="font-bold text-teal-600">{hospitalDetailData.hospital.tier}</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-border/50">
+                            <span className="font-semibold text-foreground">Max Bed Quota:</span>
+                            <span>{hospitalDetailData.hospital.maxBeds} beds</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-border/50">
+                            <span className="font-semibold text-foreground">Max Staff Quota:</span>
+                            <span>{hospitalDetailData.hospital.maxStaff} staff seats</span>
+                          </div>
+                          <div className="flex justify-between py-1">
+                            <span className="font-semibold text-foreground">Verification State:</span>
+                            <span className={hospitalDetailData.hospital.isVerified ? "text-emerald-600 font-bold" : "text-amber-600 font-bold"}>
+                              {hospitalDetailData.hospital.isVerified ? "Verified & Licensed" : "Pending Verification"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  {/* SubTab 2: Staff */}
+                  <TabsContent value="staff" className="space-y-3">
+                    <div className="rounded-xl border border-border overflow-hidden">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-muted/50 border-b border-border text-muted-foreground uppercase text-[10px] font-bold">
+                          <tr>
+                            <th className="p-3">Staff Name</th>
+                            <th className="p-3">Assigned Role</th>
+                            <th className="p-3">Email</th>
+                            <th className="p-3">Phone</th>
+                            <th className="p-3">Status</th>
+                            <th className="p-3">Joined Date</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/60">
+                          {hospitalDetailData.staffRoster.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="p-6 text-center text-muted-foreground">
+                                No staff registered under this facility yet.
+                              </td>
+                            </tr>
+                          ) : (
+                            hospitalDetailData.staffRoster.map((s) => (
+                              <tr key={s.id} className="hover:bg-muted/30">
+                                <td className="p-3 font-bold text-foreground">{s.fullName}</td>
+                                <td className="p-3">
+                                  <Badge variant="outline" className="text-[10px] uppercase font-semibold">
+                                    {s.role.replace("_", " ")}
+                                  </Badge>
+                                </td>
+                                <td className="p-3 font-mono text-muted-foreground">{s.email}</td>
+                                <td className="p-3 text-muted-foreground">{s.phone || "—"}</td>
+                                <td className="p-3">
+                                  <Badge className={s.isActive ? "bg-emerald-500/10 text-emerald-600 text-[10px]" : "bg-muted text-muted-foreground text-[10px]"}>
+                                    {s.isActive ? "ACTIVE" : "INACTIVE"}
+                                  </Badge>
+                                </td>
+                                <td className="p-3 text-muted-foreground font-mono">{formatDate(s.joinedAt)}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </TabsContent>
+
+                  {/* SubTab 3: Patients & Encounters */}
+                  <TabsContent value="patients" className="space-y-3">
+                    <div className="rounded-xl border border-border overflow-hidden">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-muted/50 border-b border-border text-muted-foreground uppercase text-[10px] font-bold">
+                          <tr>
+                            <th className="p-3">Patient Name</th>
+                            <th className="p-3">NIN</th>
+                            <th className="p-3">Attending Doctor</th>
+                            <th className="p-3">Chief Complaint</th>
+                            <th className="p-3">Status</th>
+                            <th className="p-3">Encounter Date</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/60">
+                          {hospitalDetailData.recentEncounters.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="p-6 text-center text-muted-foreground">
+                                No patient encounters recorded for this facility yet.
+                              </td>
+                            </tr>
+                          ) : (
+                            hospitalDetailData.recentEncounters.map((e) => (
+                              <tr key={e.id} className="hover:bg-muted/30">
+                                <td className="p-3 font-bold text-foreground">{e.patientName}</td>
+                                <td className="p-3 font-mono text-[11px] text-muted-foreground">{e.nin}</td>
+                                <td className="p-3 text-foreground font-medium">{e.doctorName || "Unassigned"}</td>
+                                <td className="p-3 text-muted-foreground">{e.chiefComplaint}</td>
+                                <td className="p-3">
+                                  <Badge variant="outline" className="text-[10px] capitalize">
+                                    {e.status}
+                                  </Badge>
+                                </td>
+                                <td className="p-3 text-muted-foreground font-mono">{formatDate(e.createdAt)}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </TabsContent>
+
+                  {/* SubTab 4: Infrastructure */}
+                  <TabsContent value="infrastructure" className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {hospitalDetailData.wards.length === 0 ? (
+                        <div className="col-span-3 p-6 text-center text-muted-foreground rounded-xl border border-border">
+                          No active wards configured for this facility.
+                        </div>
+                      ) : (
+                        hospitalDetailData.wards.map((w) => (
+                          <div key={w.id} className="p-4 rounded-xl border border-border bg-card/60 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-foreground text-sm">{w.name}</span>
+                              <Badge variant="outline" className="text-[10px]">{w.type}</Badge>
+                            </div>
+                            <div className="flex items-baseline justify-between text-xs text-muted-foreground">
+                              <span>Occupied: <strong className="text-foreground">{w.occupiedCount}</strong> / {w.bedCount} beds</span>
+                              <span className="font-semibold text-teal-600">
+                                {w.bedCount > 0 ? Math.round((w.occupiedCount / w.bedCount) * 100) : 0}%
+                              </span>
+                            </div>
+                            <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className="bg-teal-600 h-full rounded-full transition-all"
+                                style={{ width: `${w.bedCount > 0 ? Math.min(100, Math.round((w.occupiedCount / w.bedCount) * 100)) : 0}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </TabsContent>
+
+                  {/* SubTab 5: Diagnostics & Pharmacy */}
+                  <TabsContent value="diagnostics" className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                      <div className="p-4 rounded-xl border border-border bg-card/60 space-y-1">
+                        <span className="text-muted-foreground font-medium">Laboratory Orders</span>
+                        <p className="text-2xl font-black text-foreground">{hospitalDetailData.metrics.totalLabOrders}</p>
+                        <span className="text-[10px] text-teal-600">Diagnostic investigations</span>
+                      </div>
+
+                      <div className="p-4 rounded-xl border border-border bg-card/60 space-y-1">
+                        <span className="text-muted-foreground font-medium">Radiology & Imaging</span>
+                        <p className="text-2xl font-black text-foreground">{hospitalDetailData.metrics.totalRadiologyRequests}</p>
+                        <span className="text-[10px] text-blue-600">X-Ray, Ultrasound, CT</span>
+                      </div>
+
+                      <div className="p-4 rounded-xl border border-border bg-card/60 space-y-1">
+                        <span className="text-muted-foreground font-medium">Pharmacy Prescriptions</span>
+                        <p className="text-2xl font-black text-foreground">{hospitalDetailData.metrics.totalPrescriptions}</p>
+                        <span className="text-[10px] text-purple-600">Dispensed & Active</span>
+                      </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-border bg-muted/30 flex items-center justify-between">
+                <span className="text-[11px] text-muted-foreground">
+                  Facility ID: <code className="font-mono text-foreground">{hospitalDetailData.hospital.id}</code>
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setInspectingHospitalId(null)}
+                  className="text-xs"
+                >
+                  Close Dossier
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* MODAL: Edit Hospital Configuration */}
       <Dialog open={Boolean(editingHospital)} onOpenChange={(open) => !open && setEditingHospital(null)}>

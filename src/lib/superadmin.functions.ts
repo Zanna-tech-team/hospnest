@@ -458,6 +458,286 @@ export const updateSuperadminHospital = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+export type SuperadminHospitalDetail = {
+  hospital: {
+    id: string;
+    name: string;
+    slug: string;
+    state: string;
+    lga: string | null;
+    address: string | null;
+    phone: string | null;
+    email: string | null;
+    hospitalType: string;
+    isVerified: boolean;
+    isSuspended: boolean;
+    tier: string;
+    onboardingStep: number;
+    maxBeds: number;
+    maxStaff: number;
+    createdAt: string;
+    updatedAt?: string;
+  };
+  metrics: {
+    totalStaff: number;
+    totalPatients: number;
+    totalEncounters: number;
+    totalAdmissions: number;
+    totalLabOrders: number;
+    totalRadiologyRequests: number;
+    totalPrescriptions: number;
+    totalRevenue: number;
+    bedOccupancy: {
+      totalBeds: number;
+      occupiedBeds: number;
+      occupancyRate: number;
+    };
+    wardCount: number;
+  };
+  staffRoster: Array<{
+    id: string;
+    userId: string;
+    fullName: string;
+    email: string;
+    phone: string | null;
+    role: string;
+    isActive: boolean;
+    joinedAt: string;
+  }>;
+  recentEncounters: Array<{
+    id: string;
+    patientId: string;
+    patientName: string;
+    nin: string;
+    doctorName: string | null;
+    chiefComplaint: string | null;
+    status: string;
+    createdAt: string;
+  }>;
+  wards: Array<{
+    id: string;
+    name: string;
+    type: string;
+    bedCount: number;
+    occupiedCount: number;
+  }>;
+};
+
+export const getSuperadminHospitalDetail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { hospitalId: string }) => {
+    if (!input.hospitalId) throw new Error("Hospital ID is required.");
+    return input;
+  })
+  .handler(async ({ context, data: input }): Promise<SuperadminHospitalDetail> => {
+    const { supabase, userId } = context;
+    await assertSuperAdmin(supabase, userId);
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 1. Fetch Hospital master record
+    const { data: hospitalRow, error: hErr } = await supabaseAdmin
+      .from("hospitals")
+      .select("*")
+      .eq("id", input.hospitalId)
+      .single();
+
+    if (hErr || !hospitalRow) {
+      throw new Error(`Hospital not found: ${hErr?.message || input.hospitalId}`);
+    }
+
+    // 2. Fetch parallel hospital-scoped resources
+    const [
+      { data: staffRows },
+      { data: rolesRows },
+      { data: encountersRows },
+      { data: admissionsRows },
+      { data: wardsRows },
+      { data: bedsRows },
+      { count: labOrdersCount },
+      { count: radiologyCount },
+      { count: prescriptionsCount },
+      { data: paymentsRows },
+    ] = await Promise.all([
+      supabaseAdmin
+        .from("staff")
+        .select("id, user_id, full_name, email, phone, role, is_active, created_at")
+        .eq("hospital_id", input.hospitalId)
+        .order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("user_roles")
+        .select("user_id, role, is_active")
+        .eq("hospital_id", input.hospitalId),
+      supabaseAdmin
+        .from("encounters")
+        .select(`
+          id, patient_id, doctor_id, chief_complaint, status, created_at,
+          patient:patient_id (first_name, last_name, nin),
+          doctor:doctor_id (full_name)
+        `)
+        .eq("hospital_id", input.hospitalId)
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabaseAdmin
+        .from("admissions")
+        .select("id, status, bed_id, admission_date")
+        .eq("hospital_id", input.hospitalId),
+      supabaseAdmin
+        .from("wards")
+        .select("id, name, type, total_beds, is_active")
+        .eq("hospital_id", input.hospitalId),
+      supabaseAdmin
+        .from("beds")
+        .select("id, ward_id, bed_number, status")
+        .eq("hospital_id", input.hospitalId),
+      supabaseAdmin
+        .from("lab_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("hospital_id", input.hospitalId),
+      supabaseAdmin
+        .from("radiology_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("hospital_id", input.hospitalId),
+      supabaseAdmin
+        .from("prescriptions")
+        .select("id", { count: "exact", head: true })
+        .eq("hospital_id", input.hospitalId),
+      supabaseAdmin
+        .from("payments")
+        .select("amount_paid")
+        .eq("hospital_id", input.hospitalId),
+    ]);
+
+    // Build Staff Roster
+    const staffRoster = (staffRows ?? []).map((s: any) => ({
+      id: s.id,
+      userId: s.user_id,
+      fullName: s.full_name || "Staff Member",
+      email: s.email || "staff@hospnest.ng",
+      phone: s.phone || null,
+      role: s.role || "doctor",
+      isActive: Boolean(s.is_active),
+      joinedAt: s.created_at,
+    }));
+
+    // If staff table didn't have all role holders, enrich from user_roles
+    const existingUserIds = new Set(staffRoster.map((s) => s.userId));
+    (rolesRows ?? []).forEach((r: any) => {
+      if (!existingUserIds.has(r.user_id) && r.role !== "patient") {
+        staffRoster.push({
+          id: r.user_id,
+          userId: r.user_id,
+          fullName: `User ${r.user_id.slice(0, 6)}`,
+          email: "user@hospnest.ng",
+          phone: null,
+          role: r.role,
+          isActive: Boolean(r.is_active),
+          joinedAt: new Date().toISOString(),
+        });
+        existingUserIds.add(r.user_id);
+      }
+    });
+
+    // Build recent encounters
+    const uniquePatientIds = new Set<string>();
+    const recentEncounters = (encountersRows ?? []).map((e: any) => {
+      if (e.patient_id) uniquePatientIds.add(e.patient_id);
+      const p = e.patient || {};
+      const d = e.doctor || {};
+      return {
+        id: e.id,
+        patientId: e.patient_id,
+        patientName: p.first_name ? `${p.first_name} ${p.last_name}` : "Patient",
+        nin: p.nin || "N/A",
+        doctorName: d.full_name || null,
+        chiefComplaint: e.chief_complaint || "Routine Consultation",
+        status: e.status || "completed",
+        createdAt: e.created_at,
+      };
+    });
+
+    // Bed metrics
+    const totalBedsCount = (bedsRows ?? []).length || (hospitalRow.max_beds ?? 0);
+    const occupiedBedsCount = (bedsRows ?? []).filter((b: any) => b.status === "occupied").length ||
+      (admissionsRows ?? []).filter((a: any) => a.status === "admitted").length;
+    const occupancyRate = totalBedsCount > 0 ? Math.round((occupiedBedsCount / totalBedsCount) * 100) : 0;
+
+    // Ward breakdown
+    const bedsByWardMap = new Map<string, { total: number; occupied: number }>();
+    (bedsRows ?? []).forEach((b: any) => {
+      if (b.ward_id) {
+        const cur = bedsByWardMap.get(b.ward_id) || { total: 0, occupied: 0 };
+        cur.total += 1;
+        if (b.status === "occupied") cur.occupied += 1;
+        bedsByWardMap.set(b.ward_id, cur);
+      }
+    });
+
+    const wards = (wardsRows ?? []).map((w: any) => {
+      const stats = bedsByWardMap.get(w.id) || { total: w.total_beds || 0, occupied: 0 };
+      return {
+        id: w.id,
+        name: w.name,
+        type: w.type || "General",
+        bedCount: stats.total,
+        occupiedCount: stats.occupied,
+      };
+    });
+
+    const totalRevenue = (paymentsRows ?? []).reduce(
+      (sum: number, p: any) => sum + Number(p.amount_paid || 0),
+      0,
+    );
+
+    await writeSuperadminAudit(supabaseAdmin, {
+      accessor_id: userId,
+      hospital_id: input.hospitalId,
+      action: "READ",
+      justification: `Superadmin inspected in-depth hospital facility dossier for '${hospitalRow.name}' (${input.hospitalId})`,
+    });
+
+    return {
+      hospital: {
+        id: hospitalRow.id,
+        name: hospitalRow.name,
+        slug: hospitalRow.slug,
+        state: hospitalRow.state || "Nigeria",
+        lga: hospitalRow.lga || null,
+        address: hospitalRow.address || null,
+        phone: hospitalRow.phone || null,
+        email: hospitalRow.email || null,
+        hospitalType: hospitalRow.hospital_type || "general",
+        isVerified: Boolean(hospitalRow.is_verified),
+        isSuspended: Boolean((hospitalRow as any).is_suspended),
+        tier: hospitalRow.tier || "Community",
+        onboardingStep: hospitalRow.onboarding_step ?? 10,
+        maxBeds: hospitalRow.max_beds ?? 50,
+        maxStaff: hospitalRow.max_staff ?? 30,
+        createdAt: hospitalRow.created_at,
+        updatedAt: hospitalRow.updated_at,
+      },
+      metrics: {
+        totalStaff: staffRoster.length,
+        totalPatients: Math.max(uniquePatientIds.size, recentEncounters.length),
+        totalEncounters: (encountersRows ?? []).length,
+        totalAdmissions: (admissionsRows ?? []).length,
+        totalLabOrders: labOrdersCount ?? 0,
+        totalRadiologyRequests: radiologyCount ?? 0,
+        totalPrescriptions: prescriptionsCount ?? 0,
+        totalRevenue,
+        bedOccupancy: {
+          totalBeds: totalBedsCount,
+          occupiedBeds: occupiedBedsCount,
+          occupancyRate,
+        },
+        wardCount: wards.length,
+      },
+      staffRoster,
+      recentEncounters,
+      wards,
+    };
+  });
+
 // ----------------------------------------------------------------------
 // 3. GLOBAL USERS & ROLE GOVERNANCE
 // ----------------------------------------------------------------------
