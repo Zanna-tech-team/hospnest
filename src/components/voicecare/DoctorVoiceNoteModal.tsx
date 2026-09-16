@@ -13,31 +13,52 @@ import {
   Stethoscope,
   Globe2,
   ShieldAlert,
+  User,
+  Building2,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { saveVoiceCareClinicalEncounter } from "@/lib/voicecare/voicecare.functions";
 import { AudioRecorderModal } from "./AudioRecorderModal";
 
 interface DoctorVoiceNoteModalProps {
   isOpen: boolean;
   onClose: () => void;
+  patientId?: string;
   patientName?: string;
+  patientNin?: string;
+  hospitalId?: string;
+  hospitalName?: string;
+  appointmentId?: string;
   onApplyNotes: (notes: {
     chiefComplaint: string;
     history: string;
     observations: string;
     plan: string;
     rawTranscript: string;
+    encounterId?: string;
+    patientName?: string;
+    savedAt?: string;
   }) => void;
 }
 
 export function DoctorVoiceNoteModal({
   isOpen,
   onClose,
+  patientId,
   patientName,
+  patientNin,
+  hospitalId,
+  hospitalName,
+  appointmentId,
   onApplyNotes,
 }: DoctorVoiceNoteModalProps) {
+  const saveClinicalEncounterFn = useServerFn(saveVoiceCareClinicalEncounter);
+
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
   const [hasProcessed, setHasProcessed] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [rawTranscript, setRawTranscript] = useState("");
   const [detectedLang, setDetectedLang] = useState("");
 
@@ -61,16 +82,44 @@ export function DoctorVoiceNoteModal({
     setHasProcessed(true);
   }
 
-  function handleSave() {
-    onApplyNotes({
-      chiefComplaint,
-      history: `${history} ${relevantInfo ? `\n\n[Medical History / Allergies]: ${relevantInfo}` : ""}`.trim(),
-      observations,
-      plan,
-      rawTranscript,
-    });
-    toast.success("Voice clinical documentation applied to encounter notes!");
-    onClose();
+  async function handleSave() {
+    setSaving(true);
+    try {
+      let encounterId: string | undefined;
+      if (patientId && hospitalId) {
+        const res = await saveClinicalEncounterFn({
+          data: {
+            patientId,
+            hospitalId,
+            appointmentId,
+            chiefComplaint: chiefComplaint || "Patient Consultation",
+            history: `${history} ${relevantInfo ? `\n\n[Medical History / Allergies]: ${relevantInfo}` : ""}`.trim(),
+            observations,
+            plan,
+            rawTranscript,
+            detectedLanguage: detectedLang,
+          },
+        });
+        encounterId = res.encounterId;
+      }
+
+      onApplyNotes({
+        chiefComplaint: chiefComplaint || "Patient Consultation",
+        history: `${history} ${relevantInfo ? `\n\n[Medical History / Allergies]: ${relevantInfo}` : ""}`.trim(),
+        observations,
+        plan,
+        rawTranscript,
+        encounterId,
+        patientName: patientName || "Registered Patient",
+        savedAt: new Date().toISOString(),
+      });
+      toast.success("Voice clinical documentation saved to official medical record!");
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save clinical encounter note");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -88,6 +137,23 @@ export function DoctorVoiceNoteModal({
             <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
               Dictate your examination findings, patient history, and plan. HospNest organizes speech into structured clinical SOAP notes.
             </DialogDescription>
+
+            {(patientName || hospitalName) && (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {patientName && (
+                  <Badge variant="outline" className="bg-muted/50 text-foreground text-xs gap-1 py-1">
+                    <User className="h-3 w-3 text-emerald-600" />
+                    <span>Patient: <strong>{patientName}</strong> {patientNin ? `(${patientNin})` : ""}</span>
+                  </Badge>
+                )}
+                {hospitalName && (
+                  <Badge variant="outline" className="bg-muted/50 text-foreground text-xs gap-1 py-1">
+                    <Building2 className="h-3 w-3 text-emerald-600" />
+                    <span>Facility: <strong>{hospitalName}</strong></span>
+                  </Badge>
+                )}
+              </div>
+            )}
           </DialogHeader>
 
           {/* Mandatory Safety Banner */}

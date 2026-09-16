@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,10 +17,11 @@ import {
   Globe2,
   Printer,
   ShieldCheck,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { confirmVoiceCareAction } from "@/lib/voicecare/voicecare.functions";
+import { confirmVoiceCareAction, bookVoiceCareAppointment } from "@/lib/voicecare/voicecare.functions";
 import { bookDirectOnlineAppointment } from "@/lib/patient-portal.functions";
 
 interface VoiceBookingCardProps {
@@ -41,6 +42,9 @@ interface VoiceBookingCardProps {
   auditId?: string;
   hospitalId: string;
   hospitalName?: string;
+  patientId?: string;
+  patientName?: string;
+  patientNin?: string;
   onConfirmed: (appointmentData: any) => void;
   onSpeakAgain: () => void;
   onCancel: () => void;
@@ -53,11 +57,15 @@ export function VoiceBookingCard({
   auditId,
   hospitalId,
   hospitalName,
+  patientId,
+  patientName,
+  patientNin,
   onConfirmed,
   onSpeakAgain,
   onCancel,
 }: VoiceBookingCardProps) {
   const confirmVoiceFn = useServerFn(confirmVoiceCareAction);
+  const bookVoiceCareApptFn = useServerFn(bookVoiceCareAppointment);
   const bookDirectApptFn = useServerFn(bookDirectOnlineAppointment);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -72,22 +80,41 @@ export function VoiceBookingCard({
 
   async function handleConfirmBooking() {
     if (!hospitalId) {
-      toast.error("Please select a hospital first.");
+      toast.error("Please select a hospital facility first.");
       return;
     }
 
     setSubmitting(true);
     try {
-      // 1. Create appointment in database
       const reasonSummary = `${editedComplaint} ${editedDuration ? `(${editedDuration})` : ""}`.trim();
-      const res = await bookDirectApptFn({
-        data: {
-          hospitalId,
-          date: editedDate,
-          timeSlot: editedTime,
-          symptomsSummary: `[VoiceCare Booking] ${reasonSummary}. Spoken: "${transcript}"`,
-        },
-      });
+      let res: any;
+
+      if (patientId) {
+        // Book genuine appointment using patientId & hospitalId
+        res = await bookVoiceCareApptFn({
+          data: {
+            hospitalId,
+            patientId,
+            date: editedDate,
+            timeSlot: editedTime,
+            departmentName: editedDept,
+            symptomsSummary: reasonSummary,
+            transcript,
+            detectedLanguage: detectedLanguageLabel,
+            auditId,
+          },
+        });
+      } else {
+        // Fallback for patient portal authenticated user session
+        res = await bookDirectApptFn({
+          data: {
+            hospitalId,
+            date: editedDate,
+            timeSlot: editedTime,
+            symptomsSummary: `[VoiceCare Booking] ${reasonSummary}. Spoken: "${transcript}"`,
+          },
+        });
+      }
 
       // 2. Audit confirmation
       if (auditId) {
@@ -106,17 +133,19 @@ export function VoiceBookingCard({
         });
       }
 
-      toast.success("Appointment successfully confirmed and scheduled!");
+      toast.success("Appointment successfully confirmed and scheduled in database!");
       onConfirmed({
         ...res,
         date: editedDate,
         time: editedTime,
         department: editedDept,
         complaint: reasonSummary,
-        hospitalName: hospitalName || "Selected Hospital",
+        patientName: patientName || res.patientName || "Registered Patient",
+        patientNin: patientNin || res.patientNin || "",
+        hospitalName: hospitalName || res.hospitalName || "Selected Hospital",
       });
     } catch (err: any) {
-      toast.error(err.message || "Failed to book appointment. Please check availability.");
+      toast.error(err.message || "Failed to book appointment. Please verify details.");
     } finally {
       setSubmitting(false);
     }
@@ -155,6 +184,25 @@ export function VoiceBookingCard({
           </p>
           <p className="italic text-foreground/90">"{transcript}"</p>
         </div>
+
+        {/* Patient and Hospital Destination Info */}
+        {(patientName || hospitalName) && (
+          <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-200">
+            {patientName && (
+              <span className="flex items-center gap-1 font-medium">
+                <User className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Patient: <strong>{patientName}</strong> {patientNin ? `(NIN: ${patientNin})` : ""}</span>
+              </span>
+            )}
+            {patientName && hospitalName && <span className="text-muted-foreground">•</span>}
+            {hospitalName && (
+              <span className="flex items-center gap-1 font-medium">
+                <Building2 className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Facility: <strong>{hospitalName}</strong></span>
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Urgency Alert if Detected */}
         {intent.urgencyWarning && (

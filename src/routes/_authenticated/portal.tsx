@@ -1292,27 +1292,27 @@ export function PatientPortalPage() {
           </TabsContent>
 
           {/* TAB 7: PRIVACY & RECORD SHARING (Prompt 43) */}
-          <TabsContent value="privacy" className="space-y-6">
+          <TabsContent value="privacy" className="space-y-4 sm:space-y-6">
             {/* Global Master Consent Switch */}
             <Card className="border-border overflow-hidden shadow-soft">
-              <div className="bg-gradient-to-r from-teal-500/10 via-emerald-500/10 to-transparent p-6 border-b border-border">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="bg-gradient-to-r from-teal-500/10 via-emerald-500/10 to-transparent p-4 sm:p-6 border-b border-border">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <div className="p-2 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
-                        <ShieldCheck className="h-5 w-5" />
+                      <div className="p-1.5 sm:p-2 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 shrink-0">
+                        <ShieldCheck className="h-4 w-4 sm:h-5 sm:w-5" />
                       </div>
-                      <CardTitle className="text-lg font-bold text-foreground">
+                      <CardTitle className="text-base sm:text-lg font-bold text-foreground">
                         Global Health Record Sharing
                       </CardTitle>
                     </div>
-                    <CardDescription className="text-xs text-muted-foreground max-w-2xl mt-1">
-                      Control whether verified healthcare providers across the HospNest network can seamlessly access your longitudinal clinical records, allergies, and test history during consultations.
+                    <CardDescription className="text-xs text-muted-foreground max-w-2xl">
+                      Control whether verified healthcare providers across the HospNest network can access your longitudinal clinical records, allergies, and test history.
                     </CardDescription>
                   </div>
 
-                  <div className="flex items-center gap-3 bg-background/80 backdrop-blur-xs border border-border p-3 rounded-2xl shadow-xs shrink-0">
-                    <div className="text-right">
+                  <div className="flex items-center justify-between sm:justify-end gap-3 bg-background/90 backdrop-blur-xs border border-border p-2.5 sm:p-3 rounded-xl sm:rounded-2xl shadow-xs shrink-0 w-full sm:w-auto">
+                    <div className="text-left sm:text-right">
                       <p className="text-xs font-bold text-foreground">
                         {privacyData?.isGlobalShare ? "Sharing Enabled" : "Sharing Disabled"}
                       </p>
@@ -1328,29 +1328,29 @@ export function PatientPortalPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-border/60 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1.5 font-medium text-foreground">
-                    <Shield className="h-3.5 w-3.5 text-teal-600" />
+                <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-border/60 flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2 sm:gap-4 text-[11px] text-muted-foreground">
+                  <span className="flex items-center gap-1.5 font-semibold text-foreground">
+                    <Shield className="h-3.5 w-3.5 text-teal-600 shrink-0" />
                     NDPR 2019 & Medical Confidentiality Compliant
                   </span>
-                  <span>•</span>
-                  <span>Patient data is cryptographically protected and never sold</span>
-                  <span>•</span>
-                  <span>Emergency trauma access is governed by audited break-glass overrides</span>
+                  <span className="hidden sm:inline">•</span>
+                  <span>Cryptographically protected & never monetized</span>
+                  <span className="hidden sm:inline">•</span>
+                  <span>Emergency trauma access governed by audited overrides</span>
                 </div>
               </div>
             </Card>
 
             {/* Hospital-by-Hospital Granular Sharing Permissions */}
             <Card className="border-border shadow-soft">
-              <CardHeader>
-                <div className="flex items-center justify-between">
+              <CardHeader className="p-4 sm:p-6 pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <CardTitle className="text-base font-bold text-foreground">
+                    <CardTitle className="text-sm sm:text-base font-bold text-foreground">
                       Hospital-by-Hospital Sharing Permissions
                     </CardTitle>
                     <CardDescription className="text-xs">
-                      Customize exactly what data each hospital facility and doctor can view from your records
+                      Customize exactly what clinical records each hospital facility and doctor can view
                     </CardDescription>
                   </div>
                   <Button
@@ -1358,16 +1358,16 @@ export function PatientPortalPage() {
                     variant="outline"
                     onClick={() => refetchPrivacy()}
                     disabled={isPrivacyLoading}
-                    className="text-xs"
+                    className="text-xs h-8 w-fit"
                   >
                     <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isPrivacyLoading ? "animate-spin" : ""}`} />
-                    Refresh
+                    Refresh Permissions
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="p-4 sm:p-6 pt-0 space-y-3 sm:space-y-4">
                 {(!privacyData?.hospitals || privacyData.hospitals.length === 0) ? (
-                  <div className="rounded-2xl border border-dashed border-border p-8 text-center">
+                  <div className="rounded-2xl border border-dashed border-border p-6 sm:p-8 text-center">
                     <Hospital className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
                     <p className="text-sm font-medium text-foreground">No hospitals connected yet</p>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -1375,7 +1375,7 @@ export function PatientPortalPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-4">
+                  <div className="grid grid-cols-1 gap-3 sm:gap-4">
                     {privacyData.hospitals.map((h) => {
                       const localState = hospitalConsentState[h.hospitalId] ?? {
                         isSharingActive: h.isSharingActive,
@@ -1402,25 +1402,25 @@ export function PatientPortalPage() {
                       return (
                         <div
                           key={h.hospitalId}
-                          className={`rounded-2xl border transition-all p-5 ${
+                          className={`rounded-2xl border transition-all p-3.5 sm:p-5 ${
                             localState.isSharingActive
-                              ? "border-border bg-card/80 shadow-xs"
+                              ? "border-border bg-card shadow-xs"
                               : "border-border/60 bg-muted/20 opacity-85"
                           }`}
                         >
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-border/60">
-                            <div className="flex items-center gap-3">
-                              <div className="h-10 w-10 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center shrink-0">
-                                <Hospital className="h-5 w-5" />
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-border/60">
+                            <div className="flex items-start sm:items-center gap-2.5 sm:gap-3">
+                              <div className="size-9 sm:size-10 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+                                <Hospital className="size-4 sm:size-5" />
                               </div>
                               <div>
-                                <div className="flex items-center gap-2">
-                                  <h4 className="font-bold text-sm text-foreground">{h.hospitalName}</h4>
-                                  <Badge variant="outline" className="text-[10px]">
+                                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                                  <h4 className="font-bold text-xs sm:text-sm text-foreground">{h.hospitalName}</h4>
+                                  <Badge variant="outline" className="text-[9px] sm:text-[10px]">
                                     {h.state}
                                   </Badge>
                                 </div>
-                                <p className="text-xs text-muted-foreground mt-0.5">
+                                <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">
                                   {localState.isSharingActive
                                     ? "Access permitted according to selected categories below"
                                     : "Access revoked — records hidden from this hospital"}
@@ -1428,7 +1428,7 @@ export function PatientPortalPage() {
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-between sm:justify-end gap-2.5 bg-muted/40 sm:bg-transparent p-2 sm:p-0 rounded-xl">
                               <span className="text-xs font-semibold text-muted-foreground">
                                 {localState.isSharingActive ? "Sharing Active" : "Access Blocked"}
                               </span>
@@ -1440,96 +1440,96 @@ export function PatientPortalPage() {
                           </div>
 
                           {localState.isSharingActive && (
-                            <div className="pt-4 space-y-4">
+                            <div className="pt-3 sm:pt-4 space-y-3 sm:space-y-4">
                               <div>
-                                <p className="text-xs font-bold text-foreground mb-2.5">
+                                <p className="text-xs font-bold text-foreground mb-2">
                                   Allowed Record Categories:
                                 </p>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-background/60 text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                  <label className="flex items-center justify-between sm:justify-start gap-2.5 p-2 sm:p-2.5 rounded-xl border border-border/70 bg-background text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                    <span className="truncate">Consultations & Notes</span>
                                     <Switch
-                                      className="scale-75"
+                                      className="scale-75 shrink-0"
                                       checked={localState.allowClinicalNotes}
                                       onCheckedChange={(val) => updateLocalState("allowClinicalNotes", val)}
                                     />
-                                    <span>Consultations & Notes</span>
                                   </label>
 
-                                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-background/60 text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                  <label className="flex items-center justify-between sm:justify-start gap-2.5 p-2 sm:p-2.5 rounded-xl border border-border/70 bg-background text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                    <span className="truncate">Lab Test Results</span>
                                     <Switch
-                                      className="scale-75"
+                                      className="scale-75 shrink-0"
                                       checked={localState.allowLabs}
                                       onCheckedChange={(val) => updateLocalState("allowLabs", val)}
                                     />
-                                    <span>Lab Test Results</span>
                                   </label>
 
-                                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-background/60 text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                  <label className="flex items-center justify-between sm:justify-start gap-2.5 p-2 sm:p-2.5 rounded-xl border border-border/70 bg-background text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                    <span className="truncate">Imaging & Radiology</span>
                                     <Switch
-                                      className="scale-75"
+                                      className="scale-75 shrink-0"
                                       checked={localState.allowImaging}
                                       onCheckedChange={(val) => updateLocalState("allowImaging", val)}
                                     />
-                                    <span>Imaging & Radiology</span>
                                   </label>
 
-                                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-background/60 text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                  <label className="flex items-center justify-between sm:justify-start gap-2.5 p-2 sm:p-2.5 rounded-xl border border-border/70 bg-background text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                    <span className="truncate">Medications & Prescriptions</span>
                                     <Switch
-                                      className="scale-75"
+                                      className="scale-75 shrink-0"
                                       checked={localState.allowPrescriptions}
                                       onCheckedChange={(val) => updateLocalState("allowPrescriptions", val)}
                                     />
-                                    <span>Medications & Rx</span>
                                   </label>
 
-                                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-background/60 text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                  <label className="flex items-center justify-between sm:justify-start gap-2.5 p-2 sm:p-2.5 rounded-xl border border-border/70 bg-background text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                    <span className="truncate">Maternity & Antenatal</span>
                                     <Switch
-                                      className="scale-75"
+                                      className="scale-75 shrink-0"
                                       checked={localState.allowMaternity}
                                       onCheckedChange={(val) => updateLocalState("allowMaternity", val)}
                                     />
-                                    <span>Maternity & Antenatal</span>
                                   </label>
 
-                                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-background/60 text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                  <label className="flex items-center justify-between sm:justify-start gap-2.5 p-2 sm:p-2.5 rounded-xl border border-border/70 bg-background text-xs font-medium cursor-pointer hover:bg-muted/40 transition-colors">
+                                    <span className="truncate">Surgeries & Procedures</span>
                                     <Switch
-                                      className="scale-75"
+                                      className="scale-75 shrink-0"
                                       checked={localState.allowSurgeries}
                                       onCheckedChange={(val) => updateLocalState("allowSurgeries", val)}
                                     />
-                                    <span>Surgeries & Procedures</span>
                                   </label>
                                 </div>
                               </div>
 
                               {/* Sensitive Categories Section */}
-                              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-3">
+                              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 sm:p-3.5 space-y-2.5">
                                 <div className="flex items-center gap-2">
-                                  <Lock className="h-4 w-4 text-amber-600" />
+                                  <Lock className="h-4 w-4 text-amber-600 shrink-0" />
                                   <div>
                                     <p className="text-xs font-bold text-foreground">
                                       Sensitive Health Records (Explicit Opt-In Required)
                                     </p>
-                                    <p className="text-[11px] text-muted-foreground">
-                                      By default, psychiatric and sexual health records remain hidden unless explicitly unlocked.
+                                    <p className="text-[10px] sm:text-[11px] text-muted-foreground">
+                                      Psychiatric and sexual health records remain confidential unless unlocked.
                                     </p>
                                   </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                                  <label className="flex items-center justify-between p-2.5 rounded-lg border border-amber-500/20 bg-background/80 text-xs font-medium cursor-pointer">
-                                    <span className="text-foreground">Psychiatric & Mental Health Notes</span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+                                  <label className="flex items-center justify-between gap-2 p-2 sm:p-2.5 rounded-lg border border-amber-500/20 bg-background text-xs font-medium cursor-pointer">
+                                    <span className="text-foreground truncate">Psychiatric & Mental Health</span>
                                     <Switch
-                                      className="scale-75"
+                                      className="scale-75 shrink-0"
                                       checked={localState.allowPsychiatricNotes}
                                       onCheckedChange={(val) => updateLocalState("allowPsychiatricNotes", val)}
                                     />
                                   </label>
 
-                                  <label className="flex items-center justify-between p-2.5 rounded-lg border border-amber-500/20 bg-background/80 text-xs font-medium cursor-pointer">
-                                    <span className="text-foreground">Sexual & Reproductive Health</span>
+                                  <label className="flex items-center justify-between gap-2 p-2 sm:p-2.5 rounded-lg border border-amber-500/20 bg-background text-xs font-medium cursor-pointer">
+                                    <span className="text-foreground truncate">Sexual & Reproductive Health</span>
                                     <Switch
-                                      className="scale-75"
+                                      className="scale-75 shrink-0"
                                       checked={localState.allowSexualHealthNotes}
                                       onCheckedChange={(val) => updateLocalState("allowSexualHealthNotes", val)}
                                     />
@@ -1547,7 +1547,7 @@ export function PatientPortalPage() {
                                       ...localState,
                                     });
                                   }}
-                                  className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs"
+                                  className="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs h-8"
                                 >
                                   {saveHospitalConsentMutation.isPending ? "Saving..." : "Save Hospital Permissions"}
                                 </Button>

@@ -136,57 +136,8 @@ export const getPatientImagingStudies = createServerFn({ method: "POST" })
       query = query.eq("modality", input.modality);
     }
 
-    const { data: studiesRaw, error: studiesErr } = await query;
-
-    let rawList = studiesRaw ?? [];
-
-    // If no studies exist in database, provide representative clinical sample studies for preview
-    if (rawList.length === 0 && !studiesErr) {
-      rawList = [
-        {
-          id: "demo-rad-1",
-          hospital_id: activeHospitalId,
-          patient_id: input.patientId,
-          encounter_id: input.encounterId || null,
-          modality: "xray",
-          body_part: "Chest (PA & Lateral)",
-          clinical_indication: "Chronic cough, low-grade pyrexia, evaluate for consolidation or effusion",
-          image_url: "https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&fit=crop&w=1200&q=80",
-          thumbnail_url: "https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&fit=crop&w=300&q=80",
-          study_date: new Date(Date.now() - 86400000 * 2).toISOString(),
-          radiologist_id: null,
-          radiologist: { full_name: "Dr. B. Danjuma (Consultant Radiologist)" },
-          technician: { full_name: "T. Adeleke (Radiographer)" },
-          findings: "The cardiac silhouette is within normal limits. Normal pulmonary vascularity. No focal parenchymal consolidation, pneumothorax, or pleural effusion identified. Visualized osseous structures intact.",
-          impression: "Clear chest radiograph. No acute cardiopulmonary pathology identified.",
-          radiologist_notes: "Routine follow-up if respiratory symptoms persist beyond 14 days.",
-          is_critical: false,
-          status: "reported",
-          created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-        },
-        {
-          id: "demo-rad-2",
-          hospital_id: activeHospitalId,
-          patient_id: input.patientId,
-          encounter_id: input.encounterId || null,
-          modality: "ultrasound",
-          body_part: "Abdominal & Pelvic",
-          clinical_indication: "Right upper quadrant epigastric discomfort, rule out cholelithiasis",
-          image_url: "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?auto=format&fit=crop&w=1200&q=80",
-          thumbnail_url: "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?auto=format&fit=crop&w=300&q=80",
-          study_date: new Date().toISOString(),
-          radiologist_id: null,
-          radiologist: { full_name: "Dr. B. Danjuma (Consultant Radiologist)" },
-          technician: { full_name: "S. Ibrahim (Sonographer)" },
-          findings: "Liver is normal in size, smooth contour and uniform echogenicity without focal lesions. Gallbladder wall is thin and intact; no acoustic shadowing calculi seen. Spleen, pancreas, and kidneys within normal limits.",
-          impression: "Normal abdominal ultrasound study. No sonographic evidence of cholecystitis or biliary dilatation.",
-          radiologist_notes: null,
-          is_critical: false,
-          status: "reviewed",
-          created_at: new Date().toISOString(),
-        },
-      ];
-    }
+    const { data: studiesRaw } = await query;
+    const rawList = studiesRaw ?? [];
 
     const studies: RadiologyStudyItem[] = rawList.map((s: any) => ({
       id: s.id,
