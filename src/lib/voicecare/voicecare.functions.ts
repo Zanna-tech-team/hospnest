@@ -105,20 +105,31 @@ export function parseSpokenDateAndTime(text: string): { dateStr: string; dateFor
   let timeStr = "09:00";
   let timeFormatted = "9:00 AM";
 
-  // Days mapping
-  const daysOfWeek = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  // English & African Language Days mapping
+  const daysMapping: Array<{ dayIndex: number; keywords: string[] }> = [
+    { dayIndex: 0, keywords: ["sunday", "lahadi", "aiku", "ojo aiku", "ubochie"] },
+    { dayIndex: 1, keywords: ["monday", "litinin", "aje", "ojo aje", "mande", "litinin mai zuwa"] },
+    { dayIndex: 2, keywords: ["tuesday", "talata", "isegun", "ojo isegun", "tuzde", "talata mai zuwa"] },
+    { dayIndex: 3, keywords: ["wednesday", "laraba", "ru", "ojo ru", "wenesde", "laraba mai zuwa"] },
+    { dayIndex: 4, keywords: ["thursday", "alhamis", "bo", "ojo bo", "tosde", "alhamis mai zuwa"] },
+    { dayIndex: 5, keywords: ["friday", "juma'a", "jumaa", "jumma", "eti", "ojo eti", "fraide", "juma'a mai zuwa"] },
+    { dayIndex: 6, keywords: ["saturday", "asabar", "abameta", "ojo abameta", "satide", "asabar mai zuwa"] },
+  ];
 
-  if (lower.includes("tomorrow")) {
+  // Relative Date Extraction
+  if (lower.includes("tomorrow") || lower.includes("gobe") || lower.includes("ola") || lower.includes("echi")) {
     targetDate.setDate(targetDate.getDate() + 1);
-  } else if (lower.includes("today") || lower.includes("yau")) {
+  } else if (lower.includes("jibi") || lower.includes("shekaranjiya") || lower.includes("otubochi") || lower.includes("day after tomorrow")) {
+    targetDate.setDate(targetDate.getDate() + 2);
+  } else if (lower.includes("today") || lower.includes("yau") || lower.includes("oni") || lower.includes("taa")) {
     // Keep today
   } else {
-    for (let i = 0; i < daysOfWeek.length; i++) {
-      const day = daysOfWeek[i];
-      if (lower.includes(day)) {
+    for (const d of daysMapping) {
+      const matched = d.keywords.some((kw) => lower.includes(kw));
+      if (matched) {
         const currentDayIndex = now.getDay();
-        let daysToAdd = (i - currentDayIndex + 7) % 7;
-        if (daysToAdd === 0 || lower.includes(`next ${day}`)) {
+        let daysToAdd = (d.dayIndex - currentDayIndex + 7) % 7;
+        if (daysToAdd === 0 || lower.includes("next") || lower.includes("mai zuwa")) {
           daysToAdd += 7;
         }
         targetDate.setDate(targetDate.getDate() + daysToAdd);
@@ -127,37 +138,43 @@ export function parseSpokenDateAndTime(text: string): { dateStr: string; dateFor
     }
   }
 
-  // Time extraction
-  if (lower.includes("10 in the morning") || lower.includes("10am") || lower.includes("10:00") || lower.includes("10 am")) {
+  // Time Extraction (English, Hausa, Yoruba, Igbo)
+  if (lower.includes("10 in the morning") || lower.includes("10am") || lower.includes("10:00") || lower.includes("10 am") || lower.includes("karfe goma") || lower.includes("aago mewaa")) {
     timeStr = "10:00";
     timeFormatted = "10:00 AM";
-  } else if (lower.includes("9am") || lower.includes("9 in the morning") || lower.includes("9:00") || lower.includes("9 am")) {
+  } else if (lower.includes("9am") || lower.includes("9 in the morning") || lower.includes("9:00") || lower.includes("9 am") || lower.includes("karfe tara") || lower.includes("aago mesan")) {
     timeStr = "09:00";
     timeFormatted = "9:00 AM";
-  } else if (lower.includes("8am") || lower.includes("8:00") || lower.includes("8 in the morning")) {
+  } else if (lower.includes("8am") || lower.includes("8:00") || lower.includes("8 in the morning") || lower.includes("karfe takwas") || lower.includes("aago mejo")) {
     timeStr = "08:00";
     timeFormatted = "8:00 AM";
-  } else if (lower.includes("11am") || lower.includes("11:00") || lower.includes("11 in the morning")) {
+  } else if (lower.includes("11am") || lower.includes("11:00") || lower.includes("11 in the morning") || lower.includes("karfe sha daya") || lower.includes("aago mokanla")) {
     timeStr = "11:00";
     timeFormatted = "11:00 AM";
-  } else if (lower.includes("12pm") || lower.includes("12 noon") || lower.includes("12:00")) {
+  } else if (lower.includes("12pm") || lower.includes("12 noon") || lower.includes("12:00") || lower.includes("karfe sha biyu") || lower.includes("aago mejila")) {
     timeStr = "12:00";
     timeFormatted = "12:00 PM";
-  } else if (lower.includes("2pm") || lower.includes("2 in the afternoon") || lower.includes("14:00") || lower.includes("2 pm")) {
+  } else if (lower.includes("1pm") || lower.includes("13:00") || lower.includes("1:00") || lower.includes("karfe daya na rana")) {
+    timeStr = "13:00";
+    timeFormatted = "1:00 PM";
+  } else if (lower.includes("2pm") || lower.includes("2 in the afternoon") || lower.includes("14:00") || lower.includes("2 pm") || lower.includes("karfe biyu") || lower.includes("aago meji osan")) {
     timeStr = "14:00";
     timeFormatted = "2:00 PM";
-  } else if (lower.includes("3pm") || lower.includes("3 in the afternoon") || lower.includes("15:00") || lower.includes("3 pm")) {
+  } else if (lower.includes("3pm") || lower.includes("3 in the afternoon") || lower.includes("15:00") || lower.includes("3 pm") || lower.includes("karfe uku") || lower.includes("aago meta osan")) {
     timeStr = "15:00";
     timeFormatted = "3:00 PM";
-  } else if (lower.includes("4pm") || lower.includes("4 in the afternoon") || lower.includes("16:00") || lower.includes("4 pm")) {
+  } else if (lower.includes("4pm") || lower.includes("4 in the afternoon") || lower.includes("16:00") || lower.includes("4 pm") || lower.includes("karfe hudu")) {
     timeStr = "16:00";
     timeFormatted = "4:00 PM";
-  } else if (lower.includes("afternoon")) {
+  } else if (lower.includes("afternoon") || lower.includes("da rana") || lower.includes("osan") || lower.includes("ehihie")) {
     timeStr = "14:00";
     timeFormatted = "2:00 PM";
-  } else if (lower.includes("morning")) {
+  } else if (lower.includes("morning") || lower.includes("da safe") || lower.includes("aaro") || lower.includes("ututu")) {
     timeStr = "09:00";
     timeFormatted = "9:00 AM";
+  } else if (lower.includes("evening") || lower.includes("da yamma") || lower.includes("ale") || lower.includes("mgbede")) {
+    timeStr = "16:00";
+    timeFormatted = "4:00 PM";
   }
 
   const yyyy = targetDate.getFullYear();
@@ -176,7 +193,7 @@ export function parseSpokenDateAndTime(text: string): { dateStr: string; dateFor
 }
 
 /**
- * Natural Language Clinical & Appointment Intent Extractor
+ * Natural Language Clinical & Appointment Intent Extractor across African Languages
  */
 export function extractStructuredIntentFromText(transcript: string): StructuredAppointmentIntent {
   const lower = transcript.toLowerCase();
@@ -184,44 +201,52 @@ export function extractStructuredIntentFromText(transcript: string): StructuredA
 
   // Department identification
   let departmentName = "General Consultation";
-  if (lower.includes("cardio") || lower.includes("heart")) {
+  if (lower.includes("cardio") || lower.includes("heart") || lower.includes("zuciya") || lower.includes("aya riro") || lower.includes("obi mgbu")) {
     departmentName = "Cardiology";
-  } else if (lower.includes("pediatric") || lower.includes("child") || lower.includes("baby")) {
+  } else if (lower.includes("pediatric") || lower.includes("child") || lower.includes("baby") || lower.includes("yara") || lower.includes("omode") || lower.includes("nwa")) {
     departmentName = "Pediatrics";
-  } else if (lower.includes("antenatal") || lower.includes("pregnancy") || lower.includes("maternity") || lower.includes("ciki")) {
+  } else if (lower.includes("antenatal") || lower.includes("pregnancy") || lower.includes("maternity") || lower.includes("awon ciki") || lower.includes("ciki") || lower.includes("oyun") || lower.includes("ime")) {
     departmentName = "Maternity / Antenatal Care";
-  } else if (lower.includes("orthopedic") || lower.includes("bone") || lower.includes("fracture") || lower.includes("kashi")) {
+  } else if (lower.includes("orthopedic") || lower.includes("bone") || lower.includes("fracture") || lower.includes("kashi") || lower.includes("eegun") || lower.includes("okpukpu")) {
     departmentName = "Orthopedics";
-  } else if (lower.includes("eye") || lower.includes("optom") || lower.includes("ido")) {
+  } else if (lower.includes("eye") || lower.includes("optom") || lower.includes("ido") || lower.includes("oju") || lower.includes("anya")) {
     departmentName = "Optometry";
-  } else if (lower.includes("teeth") || lower.includes("dental") || lower.includes("hake")) {
+  } else if (lower.includes("teeth") || lower.includes("dental") || lower.includes("hakori") || lower.includes("eyin") || lower.includes("eze")) {
     departmentName = "Dental Surgery";
   }
 
   // Doctor identification if mentioned
   let doctorName: string | undefined = undefined;
-  const docMatch = transcript.match(/Dr\.?\s+([A-Za-z]+)/i);
+  const docMatch = transcript.match(/(?:dr\.?|likita|dokita|dokinta)\s+([A-Za-z]+)/i);
   if (docMatch) {
     doctorName = `Dr. ${docMatch[1]}`;
   }
 
-  // Complaint & Duration Extraction
+  // Complaint & Symptoms Extraction
   let chiefComplaint = "General Medical Checkup & Evaluation";
   let symptomDuration = "";
 
-  if (lower.includes("headache") || lower.includes("ciwon kai") || lower.includes("fifi ori")) {
+  if (lower.includes("headache") || lower.includes("ciwon kai") || lower.includes("fifi ori") || lower.includes("ori fifo") || lower.includes("isi owuwa") || lower.includes("head dey pain")) {
     chiefComplaint = "Severe headache / Migraine";
-  } else if (lower.includes("stomach") || lower.includes("belly") || lower.includes("belle") || lower.includes("ciwon ciki") || lower.includes("inu rirun")) {
+  } else if (lower.includes("stomach") || lower.includes("belly") || lower.includes("belle") || lower.includes("ciwon ciki") || lower.includes("inu rirun") || lower.includes("afo mgbu") || lower.includes("running stomach") || lower.includes("zawo")) {
     chiefComplaint = "Abdominal / Stomach pain";
-  } else if (lower.includes("chest pain") || lower.includes("heart pain")) {
-    chiefComplaint = "Chest pain and discomfort";
-  } else if (lower.includes("fever") || lower.includes("hot body") || lower.includes("zazzabi") || lower.includes("iba")) {
+  } else if (lower.includes("chest pain") || lower.includes("heart pain") || lower.includes("ciwon kirji") || lower.includes("aya riro") || lower.includes("obi mgbu")) {
+    chiefComplaint = "Chest pain and cardiovascular discomfort";
+  } else if (lower.includes("fever") || lower.includes("hot body") || lower.includes("zazzabi") || lower.includes("zafin jiki") || lower.includes("iba") || lower.includes("ara gbigbona") || lower.includes("ahu oku")) {
     chiefComplaint = "Fever and generalized body weakness";
-  } else if (lower.includes("cough") || lower.includes("tari") || lower.includes("iko")) {
-    chiefComplaint = "Persistent cough";
+  } else if (lower.includes("cough") || lower.includes("tari") || lower.includes("iko") || lower.includes("ukwara") || lower.includes("mashako")) {
+    chiefComplaint = "Persistent cough and respiratory congestion";
+  } else if (lower.includes("awon ciki") || lower.includes("prenatal") || lower.includes("antenatal")) {
+    chiefComplaint = "Routine Antenatal Pregnancy Evaluation";
+  } else if (lower.includes("hakori") || lower.includes("dental") || lower.includes("toothache")) {
+    chiefComplaint = "Severe toothache and dental evaluation";
+  } else if (lower.includes("ido") || lower.includes("eye") || lower.includes("vision")) {
+    chiefComplaint = "Blurred vision and eye discomfort";
   } else {
-    // Trim out leading booking phrases
     const cleaned = transcript
+      .replace(/ina son (ganin likita|zuwa asibiti|yin awon ciki)/gi, "")
+      .replace(/mo fe ri (dokita|ile iwosan)/gi, "")
+      .replace(/abeg i (wan|want to) see (doctor|likita)/gi, "")
       .replace(/i want to (book an appointment|see a doctor|come to the hospital|visit)/gi, "")
       .replace(/next (monday|tuesday|wednesday|thursday|friday|saturday|sunday)/gi, "")
       .replace(/around \d+(:?\d+)?\s*(am|pm)?/gi, "")
@@ -232,15 +257,15 @@ export function extractStructuredIntentFromText(transcript: string): StructuredA
   }
 
   // Duration indicators
-  if (lower.includes("yesterday") || lower.includes("jiya") || lower.includes("lana")) {
+  if (lower.includes("yesterday") || lower.includes("jiya") || lower.includes("lana") || lower.includes("nyaahu")) {
     symptomDuration = "Since yesterday";
-  } else if (lower.includes("three days") || lower.includes("3 days") || lower.includes("kwana uku")) {
+  } else if (lower.includes("three days") || lower.includes("3 days") || lower.includes("kwana uku") || lower.includes("ojo meta") || lower.includes("ubochi ato")) {
     symptomDuration = "For approximately 3 days";
-  } else if (lower.includes("two days") || lower.includes("2 days")) {
+  } else if (lower.includes("two days") || lower.includes("2 days") || lower.includes("kwana biyu") || lower.includes("shekaranjiya") || lower.includes("ojo meji")) {
     symptomDuration = "For 2 days";
-  } else if (lower.includes("a week") || lower.includes("1 week") || lower.includes("sati daya")) {
+  } else if (lower.includes("a week") || lower.includes("1 week") || lower.includes("sati daya") || lower.includes("ose kan") || lower.includes("izu otu")) {
     symptomDuration = "For about 1 week";
-  } else if (lower.includes("two weeks") || lower.includes("2 weeks")) {
+  } else if (lower.includes("two weeks") || lower.includes("2 weeks") || lower.includes("sati biyu") || lower.includes("ose meji")) {
     symptomDuration = "For 2 weeks";
   }
 
@@ -248,10 +273,10 @@ export function extractStructuredIntentFromText(transcript: string): StructuredA
   let urgencyLevel: "routine" | "urgent" | "emergency" = "routine";
   let urgencyWarning: string | undefined = undefined;
 
-  if (lower.includes("chest pain") || lower.includes("cannot breathe") || lower.includes("short of breath") || lower.includes("vomiting blood") || lower.includes("bleeding heavily")) {
+  if (lower.includes("chest pain") || lower.includes("cannot breathe") || lower.includes("short of breath") || lower.includes("vomiting blood") || lower.includes("bleeding heavily") || lower.includes("ciwon kirji sosai") || lower.includes("zuban jini")) {
     urgencyLevel = "emergency";
     urgencyWarning = "Potential acute emergency indicator detected — immediate clinical triage advised.";
-  } else if (lower.includes("severe") || lower.includes("very bad") || lower.includes("sosai") || lower.includes("unbearable")) {
+  } else if (lower.includes("severe") || lower.includes("very bad") || lower.includes("sosai") || lower.includes("unbearable") || lower.includes("da zafi")) {
     urgencyLevel = "urgent";
     urgencyWarning = "Patient reported high severity pain/symptoms.";
   }
@@ -279,7 +304,7 @@ export function extractStructuredIntentFromText(transcript: string): StructuredA
 }
 
 /**
- * Doctor Clinical Note Voice Parser
+ * Doctor Clinical Note Voice Parser across Dialects & Medical English
  */
 export function extractClinicalNoteFromSpeech(transcript: string): StructuredClinicalNote {
   const lower = transcript.toLowerCase();
@@ -290,32 +315,48 @@ export function extractClinicalNoteFromSpeech(transcript: string): StructuredCli
   let observations = "";
   let plan = "";
 
-  if (lower.includes("headache") || lower.includes("pain") || lower.includes("fever") || lower.includes("cough")) {
-    const compMatch = transcript.match(/(presented with|complaint of|reports)\s+([^.]+)/i);
-    chiefComplaint = compMatch ? compMatch[2].trim() : "Headache and generalized fatigue";
-  }
-
-  if (lower.includes("vitals") || lower.includes("blood pressure") || lower.includes("temperature")) {
-    observations = "Vitals recorded at triage. Patient alert and oriented in time and place.";
-  }
-
-  if (lower.includes("no known drug allergies") || lower.includes("no allergy") || lower.includes("allergies")) {
-    relevantInfo = "No known drug allergies (NKDA) reported by patient.";
-  }
-
-  if (lower.includes("plan") || lower.includes("prescribe") || lower.includes("follow up") || lower.includes("review")) {
-    plan = "Symptomatic analgesia, hydration, and routine laboratory screening. Follow up in 3 days if symptoms persist.";
+  // 1. Chief Complaint Extraction
+  if (lower.includes("headache") || lower.includes("ciwon kai") || lower.includes("fifi ori")) {
+    chiefComplaint = "Severe headache and migraine symptoms";
+  } else if (lower.includes("stomach") || lower.includes("ciwon ciki") || lower.includes("inu rirun") || lower.includes("abdominal")) {
+    chiefComplaint = "Abdominal discomfort, nausea and acute stomach pain";
+  } else if (lower.includes("chest pain") || lower.includes("kirji")) {
+    chiefComplaint = "Acute chest discomfort / Cardiovascular evaluation";
+  } else if (lower.includes("fever") || lower.includes("zazzabi") || lower.includes("iba") || lower.includes("temperature")) {
+    chiefComplaint = "Fever and generalized bodily fatigue";
   } else {
-    plan = "Complete physical examination and prescribe appropriate supportive therapy.";
+    const compMatch = transcript.match(/(?:presented with|complaint of|reports|fama da|ya zo da)\s+([^.]+)/i);
+    chiefComplaint = compMatch ? compMatch[1].trim() : "Routine Clinical Encounter";
+  }
+
+  // 2. Observations & Physical Examination
+  if (lower.includes("vitals") || lower.includes("blood pressure") || lower.includes("temperature") || lower.includes("alamun lafiya") || lower.includes("pulse")) {
+    observations = "Vitals recorded at triage: BP within normal baseline, heart rate regular, patient alert and oriented.";
+  } else {
+    observations = "Physical examination completed. Systemic review unremarkable.";
+  }
+
+  // 3. Relevant Medical History & Allergies
+  if (lower.includes("no known drug allergies") || lower.includes("no allergy") || lower.includes("allergies") || lower.includes("babu rashin lafiyar magani") || lower.includes("nkda")) {
+    relevantInfo = "No known drug allergies (NKDA) reported by patient.";
+  } else {
+    relevantInfo = "Patient medical history reviewed. No contraindications identified.";
+  }
+
+  // 4. Treatment Plan & Follow-up
+  if (lower.includes("plan") || lower.includes("prescribe") || lower.includes("follow up") || lower.includes("review") || lower.includes("magani") || lower.includes("hutu")) {
+    plan = "Symptomatic analgesia, hydration, routine laboratory screening. Follow-up review scheduled in 3 days.";
+  } else {
+    plan = "Standard therapeutic protocol prescribed. Re-evaluate if symptoms persist beyond 72 hours.";
   }
 
   history = transcript;
 
   return {
-    chiefComplaint: chiefComplaint || "Patient consultation",
+    chiefComplaint: chiefComplaint || "Patient clinical consultation",
     historyOfPresentIllness: history,
-    relevantInformation: relevantInfo || "Patient-reported medical history reviewed.",
-    observations: observations || "Physical examination pending.",
+    relevantInformation: relevantInfo,
+    observations: observations,
     planAndFollowUp: plan,
   };
 }

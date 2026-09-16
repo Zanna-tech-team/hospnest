@@ -46,13 +46,28 @@ export function detectAfricanCodeSwitchLanguage(text: string): { code: string; l
   const lower = text.toLowerCase();
 
   // Nigerian Pidgin indicators
-  const pidginMarkers = ["abeg", "dey", "wetin", "fit", "wahala", "na", "body dey", "belle", "sabi", "don", "no be", "small small", "chop", "go come"];
+  const pidginMarkers = [
+    "abeg", "dey", "wetin", "fit", "wahala", "na", "body dey", "belle", "sabi", "don",
+    "no be", "small small", "chop", "go come", "pikin", "komot", "shey", "sef", "no vex"
+  ];
   // Hausa indicators
-  const hausaMarkers = ["ina", "ciwon", "kai", "ciki", "likita", "sosai", "yau", "jiya", "asibiti", "sanadi", "magani", "zazzabi", "lafiya", "dan", "wannan"];
+  const hausaMarkers = [
+    "ina", "ciwon", "kai", "ciki", "likita", "sosai", "yau", "jiya", "asibiti", "sanadi",
+    "magani", "zazzabi", "lafiya", "dan", "wannan", "gobe", "jibi", "safe", "yamma", "rana",
+    "litinin", "talata", "laraba", "alhamis", "juma", "asabar", "lahadi", "masassara", "tari",
+    "kirji", "zawo", "gwiwa", "ido", "hakori", "kashi", "shekaranjiya", "son ganin", "fama da"
+  ];
   // Yoruba indicators
-  const yorubaMarkers = ["ori", "fifi", "inu", "rirun", "dókítà", "dokita", "ile iwosan", "iba", "ara", "mi", "kosi", "pele", "owo", "lana"];
+  const yorubaMarkers = [
+    "ori", "fifi", "inu", "rirun", "dókítà", "dokita", "ile iwosan", "iba", "ara", "mi",
+    "kosi", "pele", "owo", "lana", "ola", "oni", "aaro", "osan", "ale", "aje", "isegun",
+    "ru", "bo", "eti", "abameta", "aiku", "kikan", "gbigbona", "aya", "riro", "mo ni", "fe ri"
+  ];
   // Igbo indicators
-  const igboMarkers = ["isi", "mgbawa", "afo", "ofu", "dokinta", "ulo ogwu", "ahu", "oku", "nwayo", "biko", "nna", "gini"];
+  const igboMarkers = [
+    "isi", "mgbawa", "afo", "ofu", "dokinta", "ulo ogwu", "ahu", "oku", "nwayo", "biko",
+    "nna", "gini", "echi", "taa", "ututu", "ehihie", "mgbede", "owuwa", "mgbu", "anya", "mfe"
+  ];
 
   let pidginScore = pidginMarkers.filter(m => lower.includes(m)).length;
   let hausaScore = hausaMarkers.filter(m => lower.includes(m)).length;

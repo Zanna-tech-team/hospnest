@@ -56,8 +56,8 @@ export function AudioRecorderModal({
   const [audioLevel, setAudioLevel] = useState(0);
   const [manualText, setManualText] = useState("");
   const [isTypingMode, setIsTypingMode] = useState(false);
-  const [detectedLanguage, setDetectedLanguage] = useState<string>("");
-  const [lastTranscript, setLastTranscript] = useState<string>("");
+  const [liveSpokenTranscript, setLiveSpokenTranscript] = useState<string>("");
+  const [selectedLanguageCode, setSelectedLanguageCode] = useState<string>("auto");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -65,28 +65,39 @@ export function AudioRecorderModal({
   const animFrameRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const recognitionRef = useRef<any>(null);
 
-  // Quick preset samples for instant test / demo
+  // High-fidelity African Code-Switch Dialect Presets
   const samplePrompts = [
     {
-      label: "Pidgin + English Booking",
+      label: "Hausa + English Booking",
+      text: "Ina son ganin likita next Tuesday at 10 in the morning. Ina fama da ciwon ciki da zazzabi since yesterday.",
+      lang: "Hausa (ha-NG)",
+      code: "ha",
+    },
+    {
+      label: "Nigerian Pidgin Booking",
       text: "Abeg I want to see a doctor next Monday around 9am. My belle dey pain me for about three days now.",
-      lang: "Nigerian Pidgin + English",
+      lang: "Pidgin (pcm-NG)",
+      code: "pcm",
     },
     {
-      label: "Hausa + English Complaint",
-      text: "Ina son ganin likita next Tuesday at 10 in the morning. Ina fama da ciwon kai da zazzabi since yesterday.",
-      lang: "Hausa + English (Code-Switch)",
-    },
-    {
-      label: "Yoruba + English Booking",
+      label: "Yoruba + English Intake",
       text: "I need to book appointment on Friday around 2pm with doctor. Fifi ori ati inu rirun ni mo ni.",
-      lang: "Yoruba + English (Code-Switch)",
+      lang: "Yoruba (yo-NG)",
+      code: "yo",
     },
     {
-      label: "Doctor Clinical Note",
-      text: "Patient presented today with headache for three days. Vitals have been recorded at triage. Patient reports no known drug allergies. Prescribed routine analgesics and follow-up in 3 days.",
-      lang: "Nigerian-accented English",
+      label: "Igbo + English Intake",
+      text: "Achorom ihu doctor on Wednesday around 11am. Isi owuwa na afo mgbu na-eme m since yesterday.",
+      lang: "Igbo (ig-NG)",
+      code: "ig",
+    },
+    {
+      label: "Doctor Clinical SOAP Note",
+      text: "Patient presented today with acute abdominal pain and fever for 3 days. Vitals recorded at triage: BP 120/80, pulse 78 bpm. No known drug allergies reported. Prescribed analgesics, antipyretics, and review in 3 days.",
+      lang: "Clinical English",
+      code: "en",
     },
   ];
 
@@ -96,6 +107,7 @@ export function AudioRecorderModal({
       setState("idle");
       setRecordingSeconds(0);
       setManualText("");
+      setLiveSpokenTranscript("");
       setIsTypingMode(false);
     }
   }, [isOpen]);
@@ -103,6 +115,12 @@ export function AudioRecorderModal({
   function stopRecordingCleanup() {
     if (timerRef.current) clearInterval(timerRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {}
+      recognitionRef.current = null;
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
@@ -116,8 +134,47 @@ export function AudioRecorderModal({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
+      setLiveSpokenTranscript("");
 
-      // Setup audio analyzer for waveform animation
+      // 1. Setup real Web Speech Recognition if supported
+      const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognitionClass) {
+        try {
+          const recognition = new SpeechRecognitionClass();
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          if (selectedLanguageCode === "ha") {
+            recognition.lang = "ha-NG";
+          } else if (selectedLanguageCode === "yo") {
+            recognition.lang = "yo-NG";
+          } else if (selectedLanguageCode === "ig") {
+            recognition.lang = "ig-NG";
+          } else {
+            recognition.lang = "en-NG";
+          }
+
+          recognition.onresult = (event: any) => {
+            let currentTranscript = "";
+            for (let i = 0; i < event.results.length; i++) {
+              currentTranscript += event.results[i][0].transcript + " ";
+            }
+            if (currentTranscript.trim()) {
+              setLiveSpokenTranscript(currentTranscript.trim());
+            }
+          };
+
+          recognition.onerror = (e: any) => {
+            console.warn("Speech recognition notice:", e?.error);
+          };
+
+          recognition.start();
+          recognitionRef.current = recognition;
+        } catch (recErr) {
+          console.warn("Live Web Speech API not started:", recErr);
+        }
+      }
+
+      // 2. Setup audio analyzer for waveform animation
       try {
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
         const audioCtx = new AudioContextClass();
@@ -177,6 +234,11 @@ export function AudioRecorderModal({
   function stopRecording() {
     if (timerRef.current) clearInterval(timerRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {}
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.stop();
       setState("processing");
@@ -201,15 +263,15 @@ export function AudioRecorderModal({
       const result = await processVoiceFn({
         data: {
           audioBase64: base64Audio,
+          rawText: liveSpokenTranscript.trim() || undefined,
           context,
           patientId,
           hospitalId,
+          languageHint: selectedLanguageCode !== "auto" ? selectedLanguageCode : undefined,
         },
       });
 
       if (result.success) {
-        setLastTranscript(result.transcript);
-        setDetectedLanguage(result.detectedLanguageLabel);
         toast.success(`Voice processed via Intron Sahara (${result.detectedLanguageLabel})`);
         onProcessed(result);
         onClose();
@@ -220,17 +282,12 @@ export function AudioRecorderModal({
     }
   }
 
-  async function handleManualSubmit(e?: React.FormEvent) {
-    if (e) e.preventDefault();
-    if (!manualText.trim()) {
-      toast.error("Please enter your speech or symptoms text.");
-      return;
-    }
+  async function handleDirectPhraseSubmit(textToSubmit: string) {
     setState("processing");
     try {
       const result = await processVoiceFn({
         data: {
-          rawText: manualText.trim(),
+          rawText: textToSubmit.trim(),
           context,
           patientId,
           hospitalId,
@@ -242,9 +299,18 @@ export function AudioRecorderModal({
         onClose();
       }
     } catch (err: any) {
-      toast.error(err.message || "Text processing failed.");
+      toast.error(err.message || "Speech processing failed.");
       setState("idle");
     }
+  }
+
+  async function handleManualSubmit(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    if (!manualText.trim()) {
+      toast.error("Please enter your speech or symptoms text.");
+      return;
+    }
+    await handleDirectPhraseSubmit(manualText);
   }
 
   const formatTimer = (sec: number) => {
@@ -269,15 +335,35 @@ export function AudioRecorderModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Consent / Privacy Tag */}
-        <div className="flex items-center justify-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-muted-foreground/80 bg-muted/40 py-1 px-2.5 sm:py-1.5 sm:px-3 rounded-xl text-center">
-          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-          <span className="line-clamp-2 sm:line-clamp-none">Patient-controlled voice consent & role-based privacy active</span>
+        {/* Dialect Selector Chips */}
+        <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
+          <span className="text-[11px] text-muted-foreground font-medium mr-1">Dialect:</span>
+          {[
+            { code: "auto", label: "Auto-Detect" },
+            { code: "ha", label: "Hausa" },
+            { code: "pcm", label: "Pidgin" },
+            { code: "yo", label: "Yoruba" },
+            { code: "ig", label: "Igbo" },
+            { code: "en", label: "English" },
+          ].map((lang) => (
+            <button
+              key={lang.code}
+              type="button"
+              onClick={() => setSelectedLanguageCode(lang.code)}
+              className={`px-2.5 py-1 rounded-xl text-xs font-medium transition-all ${
+                selectedLanguageCode === lang.code
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "bg-muted/60 text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {lang.label}
+            </button>
+          ))}
         </div>
 
         {/* Main Interactive Mic Interface */}
         {!isTypingMode ? (
-          <div className="flex flex-col items-center justify-center py-3 sm:py-6 space-y-4 sm:space-y-6">
+          <div className="flex flex-col items-center justify-center py-3 sm:py-5 space-y-4 sm:space-y-5">
             {state === "idle" && (
               <div className="flex flex-col items-center space-y-3 sm:space-y-4">
                 <button
@@ -290,13 +376,13 @@ export function AudioRecorderModal({
                 </button>
                 <div className="text-center space-y-0.5 sm:space-y-1">
                   <p className="font-semibold text-foreground text-sm sm:text-base">Tap to speak naturally</p>
-                  <p className="text-[11px] sm:text-xs text-muted-foreground">Hausa, Pidgin, Yoruba, Igbo & English supported</p>
+                  <p className="text-[11px] sm:text-xs text-muted-foreground">Speak in your mother dialect or Nigerian English</p>
                 </div>
               </div>
             )}
 
             {state === "recording" && (
-              <div className="flex flex-col items-center space-y-3 sm:space-y-4">
+              <div className="flex flex-col items-center space-y-3 sm:space-y-4 w-full">
                 <div className="relative flex h-24 w-24 sm:h-28 sm:w-28 items-center justify-center">
                   <span
                     className="absolute inset-0 rounded-full bg-rose-500/20 animate-ping"
@@ -328,8 +414,16 @@ export function AudioRecorderModal({
                   <Badge variant="outline" className="text-rose-600 border-rose-300 dark:border-rose-800 animate-pulse font-mono font-medium">
                     Listening • {formatTimer(recordingSeconds)}
                   </Badge>
-                  <p className="text-xs text-muted-foreground mt-1">Tap red square when done speaking</p>
+                  <p className="text-xs text-muted-foreground mt-1">Tap red square when finished speaking</p>
                 </div>
+
+                {/* Live Transcript Stream */}
+                {liveSpokenTranscript && (
+                  <div className="w-full p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-left animate-in fade-in">
+                    <p className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-300 mb-1">Live Transcribed Speech:</p>
+                    <p className="text-foreground italic">"{liveSpokenTranscript}"</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -337,27 +431,24 @@ export function AudioRecorderModal({
               <div className="flex flex-col items-center py-6 space-y-4">
                 <RefreshCw className="h-12 w-12 text-emerald-600 animate-spin" />
                 <div className="text-center space-y-1">
-                  <p className="font-semibold text-foreground">Understanding your speech...</p>
-                  <p className="text-xs text-muted-foreground">Transcribing code-switch dialect & extracting clinical intent</p>
+                  <p className="font-semibold text-foreground">Extracting real hospital actions...</p>
+                  <p className="text-xs text-muted-foreground">Parsing dialect keywords, appointments, and clinical symptoms</p>
                 </div>
               </div>
             )}
 
-            {/* Quick Demo Code-Switch Phrases */}
+            {/* Quick Dialect Test Prompts */}
             <div className="w-full border-t border-border pt-4">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 text-center">
-                Or try a natural code-switched example:
+                Or tap a natural dialect speech sample:
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {samplePrompts.map((p, idx) => (
                   <button
                     key={idx}
                     type="button"
-                    onClick={() => {
-                      setManualText(p.text);
-                      handleManualSubmit();
-                    }}
-                    className="text-left p-2.5 rounded-xl border border-border bg-card/50 hover:bg-emerald-500/5 hover:border-emerald-500/30 transition-all text-xs group"
+                    onClick={() => handleDirectPhraseSubmit(p.text)}
+                    className="text-left p-2.5 rounded-xl border border-border bg-card/60 hover:bg-emerald-500/10 hover:border-emerald-500/40 transition-all text-xs group"
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-semibold text-foreground group-hover:text-emerald-600">{p.label}</span>
@@ -400,7 +491,7 @@ export function AudioRecorderModal({
               <Textarea
                 value={manualText}
                 onChange={(e) => setManualText(e.target.value)}
-                placeholder="e.g. I want to see a doctor next Tuesday at 10am for stomach pain since yesterday..."
+                placeholder="e.g. Ina son ganin likita ranar Talata karfe goma na safe, ina fama da ciwon ciki da zazzabi..."
                 className="min-h-[120px] rounded-2xl"
               />
             </div>
