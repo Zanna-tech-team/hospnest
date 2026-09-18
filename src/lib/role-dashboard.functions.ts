@@ -319,8 +319,9 @@ function calculateAge(dob: string | null): string {
  */
 export const getRoleDashboardData = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input?: { hospitalId?: string | undefined }) => ({
+  .validator((input?: { hospitalId?: string | undefined; role?: StaffRole | "patient" | undefined }) => ({
     hospitalId: input?.hospitalId ? String(input.hospitalId).trim() : undefined,
+    role: input?.role ? (String(input.role).trim() as StaffRole | "patient") : undefined,
   }))
   .handler(async ({ context, data: input }): Promise<RoleDashboardResult> => {
     const { supabase, userId } = context;
@@ -332,10 +333,34 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
       .eq("user_id", userId)
       .eq("is_active", true);
 
+    const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin" || r.role === "superadmin");
     const staffRoles = (roleRows ?? []).filter((r: any) => r.hospital_id && r.role !== "patient");
     const isPatient = (roleRows ?? []).some((r: any) => r.role === "patient");
 
-    if (staffRoles.length === 0) {
+    // Super Admin global overview handler
+    if (isSuperAdmin && (!input?.hospitalId || input?.role === "super_admin")) {
+      let hospitalName = "National Platform Control Center";
+      if (input?.hospitalId) {
+        const { data: h } = await supabase.from("hospitals").select("name").eq("id", input.hospitalId).maybeSingle();
+        if (h?.name) hospitalName = h.name;
+      }
+      const adminStats = await (async () => {
+        try {
+          const stats = await getAdminDashboardStats({ data: { hospitalId: input?.hospitalId || "" } });
+          return stats;
+        } catch {
+          return undefined;
+        }
+      })();
+      return {
+        role: "super_admin",
+        hospitalName,
+        hospitalId: input?.hospitalId || "",
+        adminData: adminStats,
+      };
+    }
+
+    if (staffRoles.length === 0 && !isSuperAdmin) {
       // Handle patient role dashboard
       const { data: patientRow } = await supabase
         .from("patients")
@@ -433,12 +458,21 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
     }
 
     const matched = input?.hospitalId
-      ? staffRoles.find((r: any) => r.hospital_id === input.hospitalId) || staffRoles[0]
-      : staffRoles[0];
+      ? (input.role
+          ? staffRoles.find((r: any) => r.hospital_id === input.hospitalId && r.role === input.role)
+          : null) ||
+        staffRoles.find((r: any) => r.hospital_id === input.hospitalId) ||
+        staffRoles[0]
+      : (input?.role ? staffRoles.find((r: any) => r.role === input.role) : null) || staffRoles[0];
 
-    const activeHospitalId = (matched?.hospital_id as string) || "";
-    const callerRole = (matched?.role as StaffRole) || "doctor";
-    const hospitalName = (matched?.hospitals as any)?.name || "Hospital";
+    const activeHospitalId = input?.hospitalId || (matched?.hospital_id as string) || "";
+    const callerRole = (input?.role as StaffRole) || (matched?.role as StaffRole) || "doctor";
+    let hospitalName = (matched?.hospitals as any)?.name || "Hospital";
+
+    if (!hospitalName || hospitalName === "Hospital") {
+      const { data: h } = await supabase.from("hospitals").select("name").eq("id", activeHospitalId).maybeSingle();
+      if (h?.name) hospitalName = h.name;
+    }
 
     // Get current staff profile id
     const { data: staffRow } = await supabase

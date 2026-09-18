@@ -107,12 +107,12 @@ export function DashboardPage() {
 
   const [activeQueueTab, setActiveQueueTab] = useState<"waiting_doctor" | "waiting_triage" | "in_consultation" | "diagnostic_hold" | "pharmacy_hold">("waiting_doctor");
   const [activeReviewLabOrder, setActiveReviewLabOrder] = useState<any | null>(null);
-  const [selectedLabPatient, setSelectedLabPatient] = useState<{ id: string; name: string } | null>(null);
+  const userRole = shellData?.activeWorkplace?.role || (shellData?.isPatient ? "patient" : shellData?.isSuperAdmin ? "super_admin" : undefined);
 
   const { data, isLoading, refetch, isRefetching } = useQuery<RoleDashboardResult>({
-    queryKey: ["role-dashboard-data", activeHospitalId],
-    queryFn: () => getDashboardDataFn({ data: { hospitalId: activeHospitalId } }),
-    enabled: Boolean(activeHospitalId),
+    queryKey: ["role-dashboard-data", activeHospitalId, userRole],
+    queryFn: () => getDashboardDataFn({ data: { hospitalId: activeHospitalId, role: userRole } }),
+    enabled: Boolean(activeHospitalId) || Boolean(shellData?.isSuperAdmin),
     refetchInterval: 20000,
   });
 
@@ -149,7 +149,7 @@ export function DashboardPage() {
     );
   }
 
-  const role = data?.role || "hospital_admin";
+  const role = data?.role || userRole || "hospital_admin";
 
   return (
     <div className="space-y-6 pb-16">
@@ -881,6 +881,63 @@ export function DashboardPage() {
               </Card>
             </div>
           </div>
+
+          {/* Nurse Patient Deck & Registration Workstation */}
+          <Card className="shadow-soft border-teal-500/30 bg-teal-500/5">
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3 border-b border-teal-500/20">
+              <div className="space-y-1">
+                <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                  <IdCard className="size-5 text-teal-600" />
+                  Front Desk & Patient Deck Registration Station
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground">
+                  Nurses can enroll new walk-in patients via NIN, verify records, and instantly route patients to triage vitals or doctors.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button asChild size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs gap-1.5 shadow-sm">
+                  <Link to="/front-desk">
+                    <UserPlus className="size-3.5" />
+                    Open Intake Deck (New Patient)
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" size="sm" className="text-xs border-teal-500/30 font-semibold gap-1.5 bg-background">
+                  <Link to="/triage">
+                    <Activity className="size-3.5" />
+                    Triage Workbench
+                  </Link>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <div className="grid gap-3 sm:grid-cols-3 text-xs">
+                <div className="rounded-xl border border-border bg-background p-3 space-y-1">
+                  <span className="font-bold text-foreground flex items-center gap-1.5">
+                    <UserCheck className="size-3.5 text-teal-600" /> Fast NIN Verification
+                  </span>
+                  <p className="text-muted-foreground text-[11px]">
+                    Lookup national demographic & medical histories using verified 11-digit NINs.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-background p-3 space-y-1">
+                  <span className="font-bold text-foreground flex items-center gap-1.5">
+                    <Activity className="size-3.5 text-emerald-600" /> Immediate NEWS2 Scoring
+                  </span>
+                  <p className="text-muted-foreground text-[11px]">
+                    Automatic clinical acuity calculation (BP, HR, RR, SpO2, Temp) to flag emergencies.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-background p-3 space-y-1">
+                  <span className="font-bold text-foreground flex items-center gap-1.5">
+                    <Bed className="size-3.5 text-purple-600" /> Direct Inpatient Ward Bedding
+                  </span>
+                  <p className="text-muted-foreground text-[11px]">
+                    Allocate available general and maternity beds during admission directly.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
