@@ -425,3 +425,193 @@ export const quickOnboardHospital = createServerFn({ method: "POST" })
     };
   });
 
+/**
+ * Public directory of active hospitals for staff sign-up affiliation and public directories.
+ */
+export const getPublicHospitalDirectory = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin
+      .from("hospitals")
+      .select("id, name, state, hospital_type, slug, is_verified, address")
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+
+    if (error) {
+      console.warn("Error fetching public hospital directory:", error);
+      return { hospitals: [] };
+    }
+
+    return {
+      hospitals: (data ?? []).map((h: any) => ({
+        id: h.id as string,
+        name: h.name as string,
+        state: h.state as string,
+        hospitalType: h.hospital_type as string,
+        slug: h.slug as string,
+        isVerified: Boolean(h.is_verified),
+        address: h.address as string | null,
+      })),
+    };
+  });
+
+/**
+ * Direct Self-Registration for Hospital Administrators & Medical Directors.
+ * Immediately provisions the hospital entity, assigns hospital_admin role, and routes to /hospital-setup.
+ */
+export const selfRegisterHospitalAdmin = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      fullName: string;
+      email: string;
+      password?: string | undefined;
+      hospitalName: string;
+      state: string;
+      hospitalType?: "government" | "private" | undefined;
+      licenseNumber?: string | undefined;
+      phone?: string | undefined;
+    }) => {
+      const fullName = String(input?.fullName ?? "").trim();
+      if (fullName.length < 2) throw new Error("Please enter your full name.");
+      const email = String(input?.email ?? "").trim().toLowerCase();
+      if (!email.includes("@")) throw new Error("Please enter a valid work email address.");
+      const hospitalName = String(input?.hospitalName ?? "").trim();
+      if (hospitalName.length < 3) throw new Error("Please enter your hospital or clinic name.");
+      const state = String(input?.state ?? "").trim();
+      if (!state) throw new Error("Please select the state of operation.");
+
+      return {
+        fullName,
+        email,
+        password: input?.password ? String(input.password) : undefined,
+        hospitalName,
+        state,
+        hospitalType: input?.hospitalType === "government" ? ("government" as const) : ("private" as const),
+        licenseNumber: input?.licenseNumber ? String(input.licenseNumber).trim() : `CAC-REG-${Math.floor(100000 + Math.random() * 900000)}`,
+        phone: input?.phone ? String(input.phone).trim() : undefined,
+      };
+    },
+  )
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 1. Create or retrieve auth user
+    let userId: string | null = null;
+
+    const { data: existingUser } = await supabaseAdmin.auth.admin.listUsers();
+    const foundUser = existingUser?.users?.find((u) => u.email?.toLowerCase() === data.email);
+
+    if (foundUser) {
+      userId = foundUser.id;
+    } else if (data.password) {
+      const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+        email: data.email,
+        password: data.password,
+        email_confirm: true,
+        user_metadata: { full_name: data.fullName },
+      });
+      if (createErr) throw new Error(createErr.message);
+      userId = newUser.user.id;
+    } else {
+      throw new Error("Password is required to create a new administrator account.");
+    }
+
+    // 2. Generate unique slug
+    let slug = slugify(data.hospitalName);
+    const { data: clash } = await supabaseAdmin
+      .from("hospitals")
+      .select("id")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (clash) {
+      slug = `${slug}-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+
+    // 3. Create Hospital Record
+    const { data: hospital, error: hospErr } = await supabaseAdmin
+      .from("hospitals")
+      .insert({
+        name: data.hospitalName,
+        slug,
+        hospital_type: data.hospitalType,
+        license_number: data.licenseNumber,
+        state: data.state,
+        contact_email: data.email,
+        contact_phone: data.phone || null,
+        is_verified: true,
+        is_active: true,
+        subscription_tier: "enterprise",
+      })
+      .select()
+      .single();
+
+    if (hospErr || !hospital) {
+      throw new Error(hospErr?.message || "Failed to provision hospital workspace.");
+    }
+
+    // 4. Assign hospital_admin role in user_roles
+    await supabaseAdmin.from("user_roles").upsert(
+      {
+        user_id: userId,
+        hospital_id: hospital.id,
+        role: "hospital_admin",
+        is_active: true,
+      },
+      { onConflict: "user_id,hospital_id,role" },
+    );
+
+    // 5. Create Staff Profile for Medical Director / Hospital Admin
+    const staffIdCode = `CMD-${Math.floor(100 + Math.random() * 900)}`;
+    await supabaseAdmin.from("staff").upsert(
+      {
+        user_id: userId,
+        hospital_id: hospital.id,
+        full_name: data.fullName,
+        staff_id_code: staffIdCode,
+        specialization: "Hospital Administration / Medical Direction",
+        phone: data.phone || null,
+        is_active: true,
+      },
+      { onConflict: "hospital_id,staff_id_code" },
+    );
+
+    // 6. Provision Default Core Departments
+    for (const d of DEFAULT_DEPARTMENTS) {
+      await supabaseAdmin
+        .from("departments")
+        .insert({
+          hospital_id: hospital.id,
+          name: d.name,
+          code: d.code,
+        })
+        .select()
+        .maybeSingle();
+    }
+
+    // 7. Publish Initial Public Microsite Landing Page
+    await supabaseAdmin.from("hospital_landing_pages").insert({
+      hospital_id: hospital.id,
+      hero_headline: `Welcome to ${data.hospitalName}`,
+      hero_subheadline: `Excellence in specialized and primary healthcare in ${data.state}, Nigeria.`,
+      about_us: `${data.hospitalName} is a verified healthcare provider committed to clinical quality, compassionate patient care, and modern diagnostics.`,
+      brand_color_primary: "#0d9488",
+      brand_color_secondary: "#0284c7",
+      is_published: true,
+      public_contact: {
+        emergencyPhone: data.phone || "+234 800 000 9999",
+        generalInquiries: data.email,
+        openingHours: "Open 24 Hours / 7 Days",
+      },
+    }).select().maybeSingle();
+
+    return {
+      success: true,
+      hospitalId: hospital.id as string,
+      name: hospital.name as string,
+      slug,
+      redirectPath: "/hospital-setup",
+    };
+  });
+
+

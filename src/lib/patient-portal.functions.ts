@@ -528,7 +528,7 @@ export const getAuthUserRoleRedirect = createServerFn({ method: "GET" })
     // 1. Check existing roles
     const { data: roleRows } = await supabase
       .from("user_roles")
-      .select("role, hospital_id")
+      .select("role, hospital_id, hospitals(id, name, is_verified)")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -538,26 +538,50 @@ export const getAuthUserRoleRedirect = createServerFn({ method: "GET" })
       return { redirectPath: "/superadmin", isSuperAdmin: true, isPatient: false };
     }
 
-    const hasStaffRole = roles.some((r: any) =>
-      ["hospital_admin", "doctor", "nurse", "pharmacist", "lab_tech"].includes(r.role)
-    );
+    const hospitalAdminRole = roles.find((r: any) => r.role === "hospital_admin");
+    if (hospitalAdminRole) {
+      return { redirectPath: "/dashboard", isPatient: false, isHospitalAdmin: true, hospitalId: hospitalAdminRole.hospital_id };
+    }
 
-    const isPatientRole = roles.some((r: any) => r.role === "patient");
+    const hasStaffRole = roles.some((r: any) =>
+      ["doctor", "nurse", "pharmacist", "lab_tech"].includes(r.role)
+    );
 
     if (hasStaffRole) {
       return { redirectPath: "/dashboard", isPatient: false };
     }
 
+    const isPatientRole = roles.some((r: any) => r.role === "patient");
     if (isPatientRole) {
       return { redirectPath: "/portal", isPatient: true };
     }
 
-    // 2. If no staff role, check if user matches a patient record by user_id or email
+    // 2. Check if user has a pending staff join request
     const { data: userData } = await supabase.auth.getUser();
-    const email = userData?.user?.email;
+    const email = userData?.user?.email?.toLowerCase();
 
     try {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+      const { data: joinReq } = await supabaseAdmin
+        .from("staff_join_requests")
+        .select("id, hospital_id, status, requested_role, hospitals(name)")
+        .or(`user_id.eq.${userId},email.eq.${email}`)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (joinReq && joinReq.status === "pending") {
+        return {
+          redirectPath: "/auth?status=pending_approval",
+          isPendingStaff: true,
+          isPatient: false,
+          hospitalName: (joinReq.hospitals as any)?.name || "the hospital",
+          requestedRole: joinReq.requested_role,
+        };
+      }
+
+      // 3. If no staff role or join request, check if user matches a patient record
       let matchedPatient = null;
 
       if (email) {
@@ -577,14 +601,12 @@ export const getAuthUserRoleRedirect = createServerFn({ method: "GET" })
       }
 
       if (matchedPatient) {
-        // Link user_id if not linked
         if (!matchedPatient.user_id) {
           await supabaseAdmin
             .from("patients")
             .update({ user_id: userId })
             .eq("id", matchedPatient.id);
         }
-        // Ensure user_roles has patient entry
         await supabaseAdmin
           .from("user_roles")
           .upsert(
@@ -599,10 +621,10 @@ export const getAuthUserRoleRedirect = createServerFn({ method: "GET" })
         return { redirectPath: "/portal", isPatient: true };
       }
     } catch (e) {
-      console.warn("Patient lookup warning in redirect:", e);
+      console.warn("User lookup warning in redirect:", e);
     }
 
-    // 3. Default to patient portal for users without staff roles to avoid leaking hospital admin setup
+    // 4. Default to patient portal
     return { redirectPath: "/portal", isPatient: true };
   });
 
