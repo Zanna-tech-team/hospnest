@@ -335,7 +335,7 @@ BEGIN
     IF existing_u_id IS NOT NULL THEN
       u_id := existing_u_id;
       UPDATE auth.users SET
-        encrypted_password = '$2a$10$vI8aWBnW3fID.ZQ4/zo1G.q1lRps.9cGLcZEiGDMVr5yUP1KUOYTa',
+        encrypted_password = extensions.crypt('Password123!', extensions.gen_salt('bf')),
         email_confirmed_at = COALESCE(email_confirmed_at, now()),
         raw_app_meta_data = '{"provider":"email","providers":["email"]}'::jsonb,
         raw_user_meta_data = jsonb_build_object('full_name', s_elem->>'name', 'role', s_elem->>'role')
@@ -364,7 +364,7 @@ BEGIN
         'authenticated',
         'authenticated',
         staff_email,
-        '$2a$10$vI8aWBnW3fID.ZQ4/zo1G.q1lRps.9cGLcZEiGDMVr5yUP1KUOYTa',
+        extensions.crypt('Password123!', extensions.gen_salt('bf')),
         now(),
         '{"provider":"email","providers":["email"]}'::jsonb,
         jsonb_build_object('full_name', s_elem->>'name', 'role', s_elem->>'role'),
@@ -612,7 +612,7 @@ BEGIN
     IF existing_pat_u_id IS NOT NULL THEN
       v_pat_id := existing_pat_u_id;
       UPDATE auth.users SET
-        encrypted_password = '$2a$10$vI8aWBnW3fID.ZQ4/zo1G.q1lRps.9cGLcZEiGDMVr5yUP1KUOYTa',
+        encrypted_password = extensions.crypt('Password123!', extensions.gen_salt('bf')),
         email_confirmed_at = COALESCE(email_confirmed_at, now()),
         raw_app_meta_data = '{"provider":"email","providers":["email"]}'::jsonb,
         raw_user_meta_data = jsonb_build_object('full_name', v_fn || ' ' || v_ln, 'nin', v_nin, 'role', 'patient')
@@ -641,7 +641,7 @@ BEGIN
         'authenticated',
         'authenticated',
         v_email,
-        '$2a$10$vI8aWBnW3fID.ZQ4/zo1G.q1lRps.9cGLcZEiGDMVr5yUP1KUOYTa',
+        extensions.crypt('Password123!', extensions.gen_salt('bf')),
         now(),
         '{"provider":"email","providers":["email"]}'::jsonb,
         jsonb_build_object('full_name', v_fn || ' ' || v_ln, 'nin', v_nin, 'role', 'patient'),
