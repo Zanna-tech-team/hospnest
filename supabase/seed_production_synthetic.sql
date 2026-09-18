@@ -457,24 +457,6 @@ DECLARE
 
   blood_groups CONSTANT TEXT[] := ARRAY['O+', 'A+', 'B+', 'AB+', 'O-', 'A-', 'B-', 'AB-'];
   genotypes    CONSTANT TEXT[] := ARRAY['AA', 'AA', 'AA', 'AS', 'AS', 'SS', 'AC', 'SC'];
-  allergies_list CONSTANT TEXT[][] := ARRAY[
-    ARRAY['Penicillin']::TEXT[],
-    ARRAY['Sulfa Antibiotics']::TEXT[],
-    ARRAY['NSAIDs (Ibuprofen)']::TEXT[],
-    ARRAY['Ciprofloxacin']::TEXT[],
-    ARRAY[]::TEXT[],
-    ARRAY[]::TEXT[],
-    ARRAY[]::TEXT[]
-  ];
-  conditions_list CONSTANT TEXT[][] := ARRAY[
-    ARRAY['Essential Hypertension']::TEXT[],
-    ARRAY['Type 2 Diabetes Mellitus']::TEXT[],
-    ARRAY['Sickle Cell Disease (HbSS)']::TEXT[],
-    ARRAY['Bronchial Asthma']::TEXT[],
-    ARRAY['Peptic Ulcer Disease']::TEXT[],
-    ARRAY[]::TEXT[],
-    ARRAY[]::TEXT[]
-  ];
 
   p_idx INT;
   v_nin CHAR(11);
@@ -504,8 +486,22 @@ BEGIN
     v_email  := lower(v_fn) || '.' || lower(v_ln) || p_idx::text || '@example.com';
     v_bg     := blood_groups[1 + (p_idx % array_length(blood_groups, 1))];
     v_gt     := genotypes[1 + (p_idx % array_length(genotypes, 1))];
-    v_allergies  := allergies_list[1 + (p_idx % array_length(allergies_list, 1))];
-    v_conditions := conditions_list[1 + (p_idx % array_length(conditions_list, 1))];
+    v_allergies  := CASE (p_idx % 7)
+      WHEN 0 THEN ARRAY['Penicillin']::TEXT[]
+      WHEN 1 THEN ARRAY['Sulfa Antibiotics']::TEXT[]
+      WHEN 2 THEN ARRAY['NSAIDs (Ibuprofen)']::TEXT[]
+      WHEN 3 THEN ARRAY['Ciprofloxacin']::TEXT[]
+      WHEN 4 THEN ARRAY['Latex']::TEXT[]
+      ELSE '{}'::TEXT[]
+    END;
+    v_conditions := CASE (p_idx % 7)
+      WHEN 0 THEN ARRAY['Essential Hypertension']::TEXT[]
+      WHEN 1 THEN ARRAY['Type 2 Diabetes Mellitus']::TEXT[]
+      WHEN 2 THEN ARRAY['Sickle Cell Disease (HbSS)']::TEXT[]
+      WHEN 3 THEN ARRAY['Bronchial Asthma']::TEXT[]
+      WHEN 4 THEN ARRAY['Peptic Ulcer Disease']::TEXT[]
+      ELSE '{}'::TEXT[]
+    END;
 
     v_pat_id := gen_random_uuid();
 
@@ -628,16 +624,6 @@ DECLARE
     'Uncontrolled Type 2 Diabetes Mellitus with Hyperglycemia without DKA',
     'Acute Catarrhal Appendicitis (Scheduled for Laparoscopic Appendectomy)',
     'Classical Migraine with Aura and Tension Cephalea'
-  ];
-  icd_codes CONSTANT TEXT[][] := ARRAY[
-    ARRAY['B50.9', 'R50.9']::TEXT[],
-    ARRAY['I50.9', 'I10']::TEXT[],
-    ARRAY['K27.9', 'K29.7']::TEXT[],
-    ARRAY['S20.2', 'R07.89']::TEXT[],
-    ARRAY['O26.89', 'D64.9']::TEXT[],
-    ARRAY['E11.65', 'R73.03']::TEXT[],
-    ARRAY['K35.80']::TEXT[],
-    ARRAY['G43.109']::TEXT[]
   ];
 
 BEGIN
@@ -766,7 +752,16 @@ BEGIN
       'Patient examined thoroughly. Heart sounds S1 S2 present, chest clear bilaterally, abdomen soft with mild tenderness on palpation. Neurological status alert and oriented.',
       CASE WHEN (enc_count % 10 = 0) THEN 'Sensitive psychiatric evaluation: Patient reports moderate situational anxiety and insomnia due to recent bereavement. Prescribed supportive psychotherapy.' ELSE NULL END,
       diagnoses[1 + (enc_count % array_length(diagnoses, 1))],
-      icd_codes[1 + (enc_count % array_length(icd_codes, 1))],
+      CASE (enc_count % 8)
+        WHEN 0 THEN ARRAY['B50.9', 'R50.9']::TEXT[]
+        WHEN 1 THEN ARRAY['I50.9', 'I10']::TEXT[]
+        WHEN 2 THEN ARRAY['K27.9', 'K29.7']::TEXT[]
+        WHEN 3 THEN ARRAY['S20.2', 'R07.89']::TEXT[]
+        WHEN 4 THEN ARRAY['O26.89', 'D64.9']::TEXT[]
+        WHEN 5 THEN ARRAY['E11.65', 'R73.03']::TEXT[]
+        WHEN 6 THEN ARRAY['K35.80']::TEXT[]
+        ELSE ARRAY['G43.109']::TEXT[]
+      END,
       'Clinician SOAP Assessment: Confirmed diagnosis based on physical exam and diagnostic investigations. Stable for outpatient monitoring.',
       'Your doctor has evaluated your symptoms and started you on standard medication. Please take all tablets as directed and rest adequately.',
       ARRAY['Stable vital signs with mild pyrexia', 'Diagnostic laboratory confirmation obtained', 'No acute respiratory distress noted']::TEXT[],
