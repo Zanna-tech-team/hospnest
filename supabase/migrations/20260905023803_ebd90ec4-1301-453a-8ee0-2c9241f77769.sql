@@ -130,8 +130,8 @@ BEGIN
   NEW."timestamp"   := COALESCE(NEW."timestamp", now());
   NEW.previous_hash := prev;
   NEW.record_hash   := encode(
-    digest(prev || COALESCE(NEW.accessor_id::text,'') || NEW.action ||
-           COALESCE(NEW.patient_id::text,'') || NEW."timestamp"::text, 'sha256'), 'hex');
+    sha256((prev || COALESCE(NEW.accessor_id::text,'') || NEW.action ||
+           COALESCE(NEW.patient_id::text,'') || NEW."timestamp"::text)::bytea), 'hex');
 
   IF NEW.action = 'BREAK_GLASS_OVERRIDE'
      AND (NEW.justification IS NULL OR length(btrim(NEW.justification)) < 6) THEN

@@ -549,7 +549,7 @@ CREATE TABLE IF NOT EXISTS public.record_audit_logs (
 
 -- 8.1 Cryptographic SHA-256 Hash Chain Trigger Function
 CREATE OR REPLACE FUNCTION public.audit_log_hash_chain()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions, pg_catalog AS $$
 DECLARE
   prev TEXT;
 BEGIN
@@ -562,14 +562,13 @@ BEGIN
   NEW."timestamp"   := COALESCE(NEW."timestamp", now());
   NEW.previous_hash := prev;
   NEW.record_hash   := encode(
-    digest(
+    sha256((
       prev ||
       COALESCE(NEW.accessor_id::text, '') ||
       NEW.action ||
       COALESCE(NEW.patient_id::text, '') ||
-      NEW."timestamp"::text,
-      'sha256'
-    ),
+      NEW."timestamp"::text
+    )::bytea),
     'hex'
   );
 

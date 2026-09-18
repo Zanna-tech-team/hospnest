@@ -14,6 +14,29 @@
 BEGIN;
 
 -- ============================================================================
+-- 0. COMPATIBILITY & TRIGGER FUNCTIONS
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.audit_log_hash_chain()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE prev TEXT;
+BEGIN
+  SELECT record_hash INTO prev FROM public.record_audit_logs ORDER BY id DESC LIMIT 1;
+  IF prev IS NULL THEN prev := repeat('0', 64); END IF;
+
+  NEW."timestamp"   := COALESCE(NEW."timestamp", now());
+  NEW.previous_hash := prev;
+  NEW.record_hash   := encode(
+    sha256((prev || COALESCE(NEW.accessor_id::text,'') || NEW.action ||
+           COALESCE(NEW.patient_id::text,'') || NEW."timestamp"::text)::bytea), 'hex');
+
+  IF NEW.action = 'BREAK_GLASS_OVERRIDE'
+     AND (NEW.justification IS NULL OR length(btrim(NEW.justification)) < 6) THEN
+    RAISE EXCEPTION 'A written justification is required for a break-glass override';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+-- ============================================================================
 -- 1. SEED INSTITUTIONS (TENANTS)
 -- ============================================================================
 
@@ -215,61 +238,62 @@ DECLARE
   gopd_a UUID; er_a UUID; med_a UUID; obgyn_a UUID; ped_a UUID; surg_a UUID;
   gopd_b UUID; er_b UUID; med_b UUID; obgyn_b UUID; ped_b UUID; surg_b UUID;
   u_id UUID;
+  existing_u_id UUID;
   s_id UUID;
-  i INT;
+  staff_email TEXT;
   
-  -- Staff Seed Metadata (50 members)
+  -- Staff Seed Metadata (50 members) with Dedicated Pilot & Demo Accounts
   staff_specs CONSTANT JSONB := '[
-    {"name": "Prof. Aminu Bello", "role": "super_admin", "hosp": "a", "spec": "Neurosurgery", "lic": "MDCN/8492/FCT", "code": "NHA-SA-01", "phone": "+2348030010001"},
-    {"name": "Dr. Zainab Abubakar", "role": "super_admin", "hosp": "b", "spec": "Healthcare Informatics", "lic": "MDCN/9912/HQ", "code": "HNP-SA-02", "phone": "+2348030010002"},
-    {"name": "Dr. Ibrahim Danladi", "role": "hospital_admin", "hosp": "a", "spec": "Hospital Administration", "lic": "MDCN/7123/A", "code": "NHA-ADM-01", "phone": "+2348030010003"},
-    {"name": "Hajiya Maryam Yakubu", "role": "hospital_admin", "hosp": "a", "spec": "Clinical Operations", "lic": "MCN/5512/A", "code": "NHA-ADM-02", "phone": "+2348030010004"},
-    {"name": "Dr. Adebayo Adeleke", "role": "hospital_admin", "hosp": "b", "spec": "Orthopedic Surgery", "lic": "MDCN/6102/L", "code": "CMH-ADM-01", "phone": "+2348030010005"},
-    {"name": "Mrs. Olufunke Williams", "role": "hospital_admin", "hosp": "b", "spec": "Healthcare Operations", "lic": "NMCN/4412/L", "code": "CMH-ADM-02", "phone": "+2348030010006"},
-    {"name": "Dr. Halima Sanusi", "role": "doctor", "hosp": "a", "dept": "OBGYN", "spec": "Obstetrics & Gynaecology", "lic": "MDCN/10291", "code": "NHA-DOC-01", "phone": "+2348030010007"},
-    {"name": "Dr. Obinna Eze", "role": "doctor", "hosp": "a", "dept": "MED", "spec": "Cardiology", "lic": "MDCN/11244", "code": "NHA-DOC-02", "phone": "+2348030010008"},
-    {"name": "Dr. Musa Garba", "role": "doctor", "hosp": "a", "dept": "ER", "spec": "Trauma & Emergency", "lic": "MDCN/12093", "code": "NHA-DOC-03", "phone": "+2348030010009"},
-    {"name": "Dr. Fatima Aliyu", "role": "doctor", "hosp": "a", "dept": "PED", "spec": "Pediatrics", "lic": "MDCN/13490", "code": "NHA-DOC-04", "phone": "+2348030010010"},
-    {"name": "Dr. Chukwudi Okafor", "role": "doctor", "hosp": "a", "dept": "SURG", "spec": "General Surgery", "lic": "MDCN/14820", "code": "NHA-DOC-05", "phone": "+2348030010011"},
-    {"name": "Dr. Aisha Mohammed", "role": "doctor", "hosp": "a", "dept": "GOPD", "spec": "Family Medicine", "lic": "MDCN/15911", "code": "NHA-DOC-06", "phone": "+2348030010012"},
-    {"name": "Dr. David Osagie", "role": "doctor", "hosp": "a", "dept": "MED", "spec": "Endocrinology", "lic": "MDCN/16281", "code": "NHA-DOC-07", "phone": "+2348030010013"},
-    {"name": "Dr. Folashade Adeleke", "role": "doctor", "hosp": "b", "dept": "MED", "spec": "Nephrology", "lic": "MDCN/20192", "code": "CMH-DOC-01", "phone": "+2348030010014"},
-    {"name": "Dr. Emeka Nnamdi", "role": "doctor", "hosp": "b", "dept": "PED", "spec": "Neonatology", "lic": "MDCN/21839", "code": "CMH-DOC-02", "phone": "+2348030010015"},
-    {"name": "Dr. Babatunde Balogun", "role": "doctor", "hosp": "b", "dept": "SURG", "spec": "Orthopedic Surgery", "lic": "MDCN/22910", "code": "CMH-DOC-03", "phone": "+2348030010016"},
-    {"name": "Dr. Yetunde Oladipo", "role": "doctor", "hosp": "b", "dept": "OBGYN", "spec": "Reproductive Endocrinology", "lic": "MDCN/23118", "code": "CMH-DOC-04", "phone": "+2348030010017"},
-    {"name": "Dr. Kalu Okoro", "role": "doctor", "hosp": "b", "dept": "ER", "spec": "Emergency Medicine", "lic": "MDCN/24901", "code": "CMH-DOC-05", "phone": "+2348030010018"},
-    {"name": "Dr. Ngozi Anya", "role": "doctor", "hosp": "b", "dept": "GOPD", "spec": "Family Practice", "lic": "MDCN/25102", "code": "CMH-DOC-06", "phone": "+2348030010019"},
-    {"name": "Dr. Tunde Fashola", "role": "doctor", "hosp": "b", "dept": "MED", "spec": "Pulmonology", "lic": "MDCN/26401", "code": "CMH-DOC-07", "phone": "+2348030010020"},
-    {"name": "Nurse Blessing Okon", "role": "nurse", "hosp": "a", "dept": "ER", "spec": "Triage & Trauma Nursing", "lic": "NMCN/30112", "code": "NHA-NUR-01", "phone": "+2348030010021"},
-    {"name": "Nurse Hauwa Umar", "role": "nurse", "hosp": "a", "dept": "MED", "spec": "Critical Care Nursing", "lic": "NMCN/31902", "code": "NHA-NUR-02", "phone": "+2348030010022"},
-    {"name": "Nurse Chiamaka Obi", "role": "nurse", "hosp": "a", "dept": "OBGYN", "spec": "Midwifery & Maternal Care", "lic": "NMCN/32481", "code": "NHA-NUR-03", "phone": "+2348030010023"},
-    {"name": "Nurse Amina Idris", "role": "nurse", "hosp": "a", "dept": "PED", "spec": "Pediatric Nursing", "lic": "NMCN/33910", "code": "NHA-NUR-04", "phone": "+2348030010024"},
-    {"name": "Nurse Samuel Bassey", "role": "nurse", "hosp": "a", "dept": "SURG", "spec": "Perioperative Nursing", "lic": "NMCN/34102", "code": "NHA-NUR-05", "phone": "+2348030010025"},
-    {"name": "Nurse Rahila Bako", "role": "nurse", "hosp": "a", "dept": "GOPD", "spec": "Outpatient Triage", "lic": "NMCN/35920", "code": "NHA-NUR-06", "phone": "+2348030010026"},
-    {"name": "Nurse Gloria Danjuma", "role": "nurse", "hosp": "a", "dept": "MED", "spec": "Inpatient Ward Nursing", "lic": "NMCN/36111", "code": "NHA-NUR-07", "phone": "+2348030010027"},
-    {"name": "Nurse Titilayo Ogunleye", "role": "nurse", "hosp": "b", "dept": "ER", "spec": "Emergency Nursing", "lic": "NMCN/40192", "code": "CMH-NUR-01", "phone": "+2348030010028"},
-    {"name": "Nurse Ijeoma Nwosu", "role": "nurse", "hosp": "b", "dept": "OBGYN", "spec": "Certified Nurse-Midwife", "lic": "NMCN/41283", "code": "CMH-NUR-02", "phone": "+2348030010029"},
-    {"name": "Nurse Bukola Adeyemi", "role": "nurse", "hosp": "b", "dept": "MED", "spec": "Renal & Dialysis Nursing", "lic": "NMCN/42910", "code": "CMH-NUR-03", "phone": "+2348030010030"},
-    {"name": "Nurse Funmilayo Bankole", "role": "nurse", "hosp": "b", "dept": "PED", "spec": "Neonatal Care", "lic": "NMCN/43118", "code": "CMH-NUR-04", "phone": "+2348030010031"},
-    {"name": "Nurse Emmanuel Peters", "role": "nurse", "hosp": "b", "dept": "SURG", "spec": "Anesthesia Nursing", "lic": "NMCN/44901", "code": "CMH-NUR-05", "phone": "+2348030010032"},
-    {"name": "Nurse Joy Chukwuma", "role": "nurse", "hosp": "b", "dept": "GOPD", "spec": "Clinical Triage", "lic": "NMCN/45201", "code": "CMH-NUR-06", "phone": "+2348030010033"},
-    {"name": "Nurse Damilola Jinadu", "role": "nurse", "hosp": "b", "dept": "MED", "spec": "Medical Ward Care", "lic": "NMCN/46829", "code": "CMH-NUR-07", "phone": "+2348030010034"},
-    {"name": "Tech Usman Shehu", "role": "lab_tech", "hosp": "a", "dept": "GOPD", "spec": "Hematology & Blood Transfusion", "lic": "MLSCN/50192", "code": "NHA-LAB-01", "phone": "+2348030010035"},
-    {"name": "Tech Nkechi Udoh", "role": "lab_tech", "hosp": "a", "dept": "GOPD", "spec": "Clinical Chemistry", "lic": "MLSCN/51203", "code": "NHA-LAB-02", "phone": "+2348030010036"},
-    {"name": "Tech Farouk Gambo", "role": "lab_tech", "hosp": "a", "dept": "GOPD", "spec": "Medical Microbiology", "lic": "MLSCN/52918", "code": "NHA-LAB-03", "phone": "+2348030010037"},
-    {"name": "Tech Sola Ajayi", "role": "lab_tech", "hosp": "b", "dept": "GOPD", "spec": "Histopathology & Serology", "lic": "MLSCN/60112", "code": "CMH-LAB-01", "phone": "+2348030010038"},
-    {"name": "Tech Chioma Eke", "role": "lab_tech", "hosp": "b", "dept": "GOPD", "spec": "Automated Hematology", "lic": "MLSCN/61902", "code": "CMH-LAB-02", "phone": "+2348030010039"},
-    {"name": "Tech Gboyega Olaniyan", "role": "lab_tech", "hosp": "b", "dept": "GOPD", "spec": "Molecular Virology", "lic": "MLSCN/62491", "code": "CMH-LAB-03", "phone": "+2348030010040"},
-    {"name": "Pharm. Kabir Mustapha", "role": "pharmacist", "hosp": "a", "dept": "GOPD", "spec": "Hospital & Clinical Pharmacy", "lic": "PCN/70192", "code": "NHA-PHM-01", "phone": "+2348030010041"},
-    {"name": "Pharm. Ifeoma Madu", "role": "pharmacist", "hosp": "a", "dept": "GOPD", "spec": "Inpatient Formulary Management", "lic": "PCN/71283", "code": "NHA-PHM-02", "phone": "+2348030010042"},
-    {"name": "Pharm. Bashir Galadima", "role": "pharmacist", "hosp": "a", "dept": "GOPD", "spec": "Inventory & Logistics", "lic": "PCN/72910", "code": "NHA-PHM-03", "phone": "+2348030010043"},
-    {"name": "Pharm. Olumide Bakare", "role": "pharmacist", "hosp": "b", "dept": "GOPD", "spec": "Pharmacotherapy Specialist", "lic": "PCN/80112", "code": "CMH-PHM-01", "phone": "+2348030010044"},
-    {"name": "Pharm. Cynthia Umeh", "role": "pharmacist", "hosp": "b", "dept": "GOPD", "spec": "Dispensary Services", "lic": "PCN/81902", "code": "CMH-PHM-02", "phone": "+2348030010045"},
-    {"name": "Pharm. Segun Oshodi", "role": "pharmacist", "hosp": "b", "dept": "GOPD", "spec": "Compounding Pharmacy", "lic": "PCN/82491", "code": "CMH-PHM-03", "phone": "+2348030010046"},
-    {"name": "Clerk Ahmed Yusuf", "role": "hospital_admin", "hosp": "a", "dept": "GOPD", "spec": "Patient Intake & Medical Records", "lic": "HIM/9011", "code": "NHA-REC-01", "phone": "+2348030010047"},
-    {"name": "Clerk Fatima Bello", "role": "hospital_admin", "hosp": "a", "dept": "GOPD", "spec": "Front Desk Registration", "lic": "HIM/9012", "code": "NHA-REC-02", "phone": "+2348030010048"},
-    {"name": "Clerk Bisi Adeleke", "role": "hospital_admin", "hosp": "b", "dept": "GOPD", "spec": "Admissions & Insurance Verification", "lic": "HIM/9021", "code": "CMH-REC-01", "phone": "+2348030010049"},
-    {"name": "Clerk Chinedu Okoye", "role": "hospital_admin", "hosp": "b", "dept": "GOPD", "spec": "Patient Records Administration", "lic": "HIM/9022", "code": "CMH-REC-02", "phone": "+2348030010050"}
+    {"name": "Prof. Aminu Bello", "role": "super_admin", "hosp": "a", "spec": "Neurosurgery", "lic": "MDCN/8492/FCT", "code": "NHA-SA-01", "phone": "+2348030010001", "email": "superadmin@hospnest.ng"},
+    {"name": "Dr. Zainab Abubakar", "role": "super_admin", "hosp": "b", "spec": "Healthcare Informatics", "lic": "MDCN/9912/HQ", "code": "HNP-SA-02", "phone": "+2348030010002", "email": "superadmin2@hospnest.ng"},
+    {"name": "Dr. Ibrahim Danladi", "role": "hospital_admin", "hosp": "a", "spec": "Hospital Administration", "lic": "MDCN/7123/A", "code": "NHA-ADM-01", "phone": "+2348030010003", "email": "admin.abuja@hospnest.ng"},
+    {"name": "Hajiya Maryam Yakubu", "role": "hospital_admin", "hosp": "a", "spec": "Clinical Operations", "lic": "MCN/5512/A", "code": "NHA-ADM-02", "phone": "+2348030010004", "email": "admin2.abuja@hospnest.ng"},
+    {"name": "Dr. Adebayo Adeleke", "role": "hospital_admin", "hosp": "b", "spec": "Orthopedic Surgery", "lic": "MDCN/6102/L", "code": "CMH-ADM-01", "phone": "+2348030010005", "email": "admin.lagos@hospnest.ng"},
+    {"name": "Mrs. Olufunke Williams", "role": "hospital_admin", "hosp": "b", "spec": "Healthcare Operations", "lic": "NMCN/4412/L", "code": "CMH-ADM-02", "phone": "+2348030010006", "email": "admin2.lagos@hospnest.ng"},
+    {"name": "Dr. Halima Sanusi", "role": "doctor", "hosp": "a", "dept": "OBGYN", "spec": "Obstetrics & Gynaecology", "lic": "MDCN/10291", "code": "NHA-DOC-01", "phone": "+2348030010007", "email": "doctor.abuja@hospnest.ng"},
+    {"name": "Dr. Obinna Eze", "role": "doctor", "hosp": "a", "dept": "MED", "spec": "Cardiology", "lic": "MDCN/11244", "code": "NHA-DOC-02", "phone": "+2348030010008", "email": "doctor.eze@nationalhospital.gov.ng"},
+    {"name": "Dr. Musa Garba", "role": "doctor", "hosp": "a", "dept": "ER", "spec": "Trauma & Emergency", "lic": "MDCN/12093", "code": "NHA-DOC-03", "phone": "+2348030010009", "email": "doctor.garba@nationalhospital.gov.ng"},
+    {"name": "Dr. Fatima Aliyu", "role": "doctor", "hosp": "a", "dept": "PED", "spec": "Pediatrics", "lic": "MDCN/13490", "code": "NHA-DOC-04", "phone": "+2348030010010", "email": "doctor.aliyu@nationalhospital.gov.ng"},
+    {"name": "Dr. Chukwudi Okafor", "role": "doctor", "hosp": "a", "dept": "SURG", "spec": "General Surgery", "lic": "MDCN/14820", "code": "NHA-DOC-05", "phone": "+2348030010011", "email": "doctor.okafor@nationalhospital.gov.ng"},
+    {"name": "Dr. Aisha Mohammed", "role": "doctor", "hosp": "a", "dept": "GOPD", "spec": "Family Medicine", "lic": "MDCN/15911", "code": "NHA-DOC-06", "phone": "+2348030010012", "email": "doctor.mohammed@nationalhospital.gov.ng"},
+    {"name": "Dr. David Osagie", "role": "doctor", "hosp": "a", "dept": "MED", "spec": "Endocrinology", "lic": "MDCN/16281", "code": "NHA-DOC-07", "phone": "+2348030010013", "email": "doctor.osagie@nationalhospital.gov.ng"},
+    {"name": "Dr. Folashade Adeleke", "role": "doctor", "hosp": "b", "dept": "MED", "spec": "Nephrology", "lic": "MDCN/20192", "code": "CMH-DOC-01", "phone": "+2348030010014", "email": "doctor.lagos@hospnest.ng"},
+    {"name": "Dr. Emeka Nnamdi", "role": "doctor", "hosp": "b", "dept": "PED", "spec": "Neonatology", "lic": "MDCN/21839", "code": "CMH-DOC-02", "phone": "+2348030010015", "email": "doctor.nnamdi@cedarcrestlagos.com"},
+    {"name": "Dr. Babatunde Balogun", "role": "doctor", "hosp": "b", "dept": "SURG", "spec": "Orthopedic Surgery", "lic": "MDCN/22910", "code": "CMH-DOC-03", "phone": "+2348030010016", "email": "doctor.balogun@cedarcrestlagos.com"},
+    {"name": "Dr. Yetunde Oladipo", "role": "doctor", "hosp": "b", "dept": "OBGYN", "spec": "Reproductive Endocrinology", "lic": "MDCN/23118", "code": "CMH-DOC-04", "phone": "+2348030010017", "email": "doctor.oladipo@cedarcrestlagos.com"},
+    {"name": "Dr. Kalu Okoro", "role": "doctor", "hosp": "b", "dept": "ER", "spec": "Emergency Medicine", "lic": "MDCN/24901", "code": "CMH-DOC-05", "phone": "+2348030010018", "email": "doctor.okoro@cedarcrestlagos.com"},
+    {"name": "Dr. Ngozi Anya", "role": "doctor", "hosp": "b", "dept": "GOPD", "spec": "Family Practice", "lic": "MDCN/25102", "code": "CMH-DOC-06", "phone": "+2348030010019", "email": "doctor.anya@cedarcrestlagos.com"},
+    {"name": "Dr. Tunde Fashola", "role": "doctor", "hosp": "b", "dept": "MED", "spec": "Pulmonology", "lic": "MDCN/26401", "code": "CMH-DOC-07", "phone": "+2348030010020", "email": "doctor.fashola@cedarcrestlagos.com"},
+    {"name": "Nurse Blessing Okon", "role": "nurse", "hosp": "a", "dept": "ER", "spec": "Triage & Trauma Nursing", "lic": "NMCN/30112", "code": "NHA-NUR-01", "phone": "+2348030010021", "email": "nurse.abuja@hospnest.ng"},
+    {"name": "Nurse Hauwa Umar", "role": "nurse", "hosp": "a", "dept": "MED", "spec": "Critical Care Nursing", "lic": "NMCN/31902", "code": "NHA-NUR-02", "phone": "+2348030010022", "email": "nurse.umar@nationalhospital.gov.ng"},
+    {"name": "Nurse Chiamaka Obi", "role": "nurse", "hosp": "a", "dept": "OBGYN", "spec": "Midwifery & Maternal Care", "lic": "NMCN/32481", "code": "NHA-NUR-03", "phone": "+2348030010023", "email": "nurse.obi@nationalhospital.gov.ng"},
+    {"name": "Nurse Amina Idris", "role": "nurse", "hosp": "a", "dept": "PED", "spec": "Pediatric Nursing", "lic": "NMCN/33910", "code": "NHA-NUR-04", "phone": "+2348030010024", "email": "nurse.idris@nationalhospital.gov.ng"},
+    {"name": "Nurse Samuel Bassey", "role": "nurse", "hosp": "a", "dept": "SURG", "spec": "Perioperative Nursing", "lic": "NMCN/34102", "code": "NHA-NUR-05", "phone": "+2348030010025", "email": "nurse.bassey@nationalhospital.gov.ng"},
+    {"name": "Nurse Rahila Bako", "role": "nurse", "hosp": "a", "dept": "GOPD", "spec": "Outpatient Triage", "lic": "NMCN/35920", "code": "NHA-NUR-06", "phone": "+2348030010026", "email": "nurse.bako@nationalhospital.gov.ng"},
+    {"name": "Nurse Gloria Danjuma", "role": "nurse", "hosp": "a", "dept": "MED", "spec": "Inpatient Ward Nursing", "lic": "NMCN/36111", "code": "NHA-NUR-07", "phone": "+2348030010027", "email": "nurse.danjuma@nationalhospital.gov.ng"},
+    {"name": "Nurse Titilayo Ogunleye", "role": "nurse", "hosp": "b", "dept": "ER", "spec": "Emergency Nursing", "lic": "NMCN/40192", "code": "CMH-NUR-01", "phone": "+2348030010028", "email": "nurse.lagos@hospnest.ng"},
+    {"name": "Nurse Ijeoma Nwosu", "role": "nurse", "hosp": "b", "dept": "OBGYN", "spec": "Certified Nurse-Midwife", "lic": "NMCN/41283", "code": "CMH-NUR-02", "phone": "+2348030010029", "email": "nurse.nwosu@cedarcrestlagos.com"},
+    {"name": "Nurse Bukola Adeyemi", "role": "nurse", "hosp": "b", "dept": "MED", "spec": "Renal & Dialysis Nursing", "lic": "NMCN/42910", "code": "CMH-NUR-03", "phone": "+2348030010030", "email": "nurse.adeyemi@cedarcrestlagos.com"},
+    {"name": "Nurse Funmilayo Bankole", "role": "nurse", "hosp": "b", "dept": "PED", "spec": "Neonatal Care", "lic": "NMCN/43118", "code": "CMH-NUR-04", "phone": "+2348030010031", "email": "nurse.bankole@cedarcrestlagos.com"},
+    {"name": "Nurse Emmanuel Peters", "role": "nurse", "hosp": "b", "dept": "SURG", "spec": "Anesthesia Nursing", "lic": "NMCN/44901", "code": "CMH-NUR-05", "phone": "+2348030010032", "email": "nurse.peters@cedarcrestlagos.com"},
+    {"name": "Nurse Joy Chukwuma", "role": "nurse", "hosp": "b", "dept": "GOPD", "spec": "Clinical Triage", "lic": "NMCN/45201", "code": "CMH-NUR-06", "phone": "+2348030010033", "email": "nurse.chukwuma@cedarcrestlagos.com"},
+    {"name": "Nurse Damilola Jinadu", "role": "nurse", "hosp": "b", "dept": "MED", "spec": "Medical Ward Care", "lic": "NMCN/46829", "code": "CMH-NUR-07", "phone": "+2348030010034", "email": "nurse.jinadu@cedarcrestlagos.com"},
+    {"name": "Tech Usman Shehu", "role": "lab_tech", "hosp": "a", "dept": "GOPD", "spec": "Hematology & Blood Transfusion", "lic": "MLSCN/50192", "code": "NHA-LAB-01", "phone": "+2348030010035", "email": "lab.abuja@hospnest.ng"},
+    {"name": "Tech Nkechi Udoh", "role": "lab_tech", "hosp": "a", "dept": "GOPD", "spec": "Clinical Chemistry", "lic": "MLSCN/51203", "code": "NHA-LAB-02", "phone": "+2348030010036", "email": "lab.udoh@nationalhospital.gov.ng"},
+    {"name": "Tech Farouk Gambo", "role": "lab_tech", "hosp": "a", "dept": "GOPD", "spec": "Medical Microbiology", "lic": "MLSCN/52918", "code": "NHA-LAB-03", "phone": "+2348030010037", "email": "lab.gambo@nationalhospital.gov.ng"},
+    {"name": "Tech Sola Ajayi", "role": "lab_tech", "hosp": "b", "dept": "GOPD", "spec": "Histopathology & Serology", "lic": "MLSCN/60112", "code": "CMH-LAB-01", "phone": "+2348030010038", "email": "lab.lagos@hospnest.ng"},
+    {"name": "Tech Chioma Eke", "role": "lab_tech", "hosp": "b", "dept": "GOPD", "spec": "Automated Hematology", "lic": "MLSCN/61902", "code": "CMH-LAB-02", "phone": "+2348030010039", "email": "lab.eke@cedarcrestlagos.com"},
+    {"name": "Tech Gboyega Olaniyan", "role": "lab_tech", "hosp": "b", "dept": "GOPD", "spec": "Molecular Virology", "lic": "MLSCN/62491", "code": "CMH-LAB-03", "phone": "+2348030010040", "email": "lab.olaniyan@cedarcrestlagos.com"},
+    {"name": "Pharm. Kabir Mustapha", "role": "pharmacist", "hosp": "a", "dept": "GOPD", "spec": "Hospital & Clinical Pharmacy", "lic": "PCN/70192", "code": "NHA-PHM-01", "phone": "+2348030010041", "email": "pharmacy.abuja@hospnest.ng"},
+    {"name": "Pharm. Ifeoma Madu", "role": "pharmacist", "hosp": "a", "dept": "GOPD", "spec": "Inpatient Formulary Management", "lic": "PCN/71283", "code": "NHA-PHM-02", "phone": "+2348030010042", "email": "pharmacy.madu@nationalhospital.gov.ng"},
+    {"name": "Pharm. Bashir Galadima", "role": "pharmacist", "hosp": "a", "dept": "GOPD", "spec": "Inventory & Logistics", "lic": "PCN/72910", "code": "NHA-PHM-03", "phone": "+2348030010043", "email": "pharmacy.galadima@nationalhospital.gov.ng"},
+    {"name": "Pharm. Olumide Bakare", "role": "pharmacist", "hosp": "b", "dept": "GOPD", "spec": "Pharmacotherapy Specialist", "lic": "PCN/80112", "code": "CMH-PHM-01", "phone": "+2348030010044", "email": "pharmacy.lagos@hospnest.ng"},
+    {"name": "Pharm. Cynthia Umeh", "role": "pharmacist", "hosp": "b", "dept": "GOPD", "spec": "Dispensary Services", "lic": "PCN/81902", "code": "CMH-PHM-02", "phone": "+2348030010045", "email": "pharmacy.umeh@cedarcrestlagos.com"},
+    {"name": "Pharm. Segun Oshodi", "role": "pharmacist", "hosp": "b", "dept": "GOPD", "spec": "Compounding Pharmacy", "lic": "PCN/82491", "code": "CMH-PHM-03", "phone": "+2348030010046", "email": "pharmacy.oshodi@cedarcrestlagos.com"},
+    {"name": "Clerk Ahmed Yusuf", "role": "hospital_admin", "hosp": "a", "dept": "GOPD", "spec": "Patient Intake & Medical Records", "lic": "HIM/9011", "code": "NHA-REC-01", "phone": "+2348030010047", "email": "records.abuja@nationalhospital.gov.ng"},
+    {"name": "Clerk Fatima Bello", "role": "hospital_admin", "hosp": "a", "dept": "GOPD", "spec": "Front Desk Registration", "lic": "HIM/9012", "code": "NHA-REC-02", "phone": "+2348030010048", "email": "records2.abuja@nationalhospital.gov.ng"},
+    {"name": "Clerk Bisi Adeleke", "role": "hospital_admin", "hosp": "b", "dept": "GOPD", "spec": "Admissions & Insurance Verification", "lic": "HIM/9021", "code": "CMH-REC-01", "phone": "+2348030010049", "email": "records.lagos@cedarcrestlagos.com"},
+    {"name": "Clerk Chinedu Okoye", "role": "hospital_admin", "hosp": "b", "dept": "GOPD", "spec": "Patient Records Administration", "lic": "HIM/9022", "code": "CMH-REC-02", "phone": "+2348030010050", "email": "records2.lagos@cedarcrestlagos.com"}
   ]'::jsonb;
   
   s_elem JSONB;
@@ -292,8 +316,8 @@ BEGIN
   SELECT id INTO surg_b FROM public.departments WHERE hospital_id = hosp_b AND code = 'SURG' LIMIT 1;
 
   FOR s_elem IN SELECT * FROM jsonb_array_elements(staff_specs) LOOP
-    u_id := gen_random_uuid();
     s_id := gen_random_uuid();
+    staff_email := s_elem->>'email';
     
     target_hosp := CASE WHEN (s_elem->>'hosp') = 'a' THEN hosp_a ELSE hosp_b END;
     
@@ -305,6 +329,77 @@ BEGIN
       WHEN 'SURG'  THEN (CASE WHEN (s_elem->>'hosp') = 'a' THEN surg_a ELSE surg_b END)
       ELSE (CASE WHEN (s_elem->>'hosp') = 'a' THEN gopd_a ELSE gopd_b END)
     END;
+
+    -- Provision / link Supabase Auth user with standard password 'Password123!'
+    SELECT id INTO existing_u_id FROM auth.users WHERE email = staff_email LIMIT 1;
+    IF existing_u_id IS NOT NULL THEN
+      u_id := existing_u_id;
+      UPDATE auth.users SET
+        encrypted_password = '$2a$10$vI8aWBnW3fID.ZQ4/zo1G.q1lRps.9cGLcZEiGDMVr5yUP1KUOYTa',
+        email_confirmed_at = COALESCE(email_confirmed_at, now()),
+        raw_app_meta_data = '{"provider":"email","providers":["email"]}'::jsonb,
+        raw_user_meta_data = jsonb_build_object('full_name', s_elem->>'name', 'role', s_elem->>'role')
+      WHERE id = u_id;
+    ELSE
+      u_id := gen_random_uuid();
+      INSERT INTO auth.users (
+        instance_id,
+        id,
+        aud,
+        role,
+        email,
+        encrypted_password,
+        email_confirmed_at,
+        raw_app_meta_data,
+        raw_user_meta_data,
+        created_at,
+        updated_at,
+        confirmation_token,
+        recovery_token,
+        email_change_token_new,
+        email_change
+      ) VALUES (
+        '00000000-0000-0000-0000-000000000000',
+        u_id,
+        'authenticated',
+        'authenticated',
+        staff_email,
+        '$2a$10$vI8aWBnW3fID.ZQ4/zo1G.q1lRps.9cGLcZEiGDMVr5yUP1KUOYTa',
+        now(),
+        '{"provider":"email","providers":["email"]}'::jsonb,
+        jsonb_build_object('full_name', s_elem->>'name', 'role', s_elem->>'role'),
+        now(),
+        now(),
+        '',
+        '',
+        '',
+        ''
+      );
+    END IF;
+
+    -- Upsert identity for Supabase Auth
+    INSERT INTO auth.identities (
+      id,
+      user_id,
+      identity_data,
+      provider,
+      provider_id,
+      last_sign_in_at,
+      created_at,
+      updated_at
+    ) VALUES (
+      u_id,
+      u_id,
+      jsonb_build_object('sub', u_id::text, 'email', staff_email),
+      'email',
+      u_id::text,
+      now(),
+      now(),
+      now()
+    )
+    ON CONFLICT (provider, provider_id) DO UPDATE SET
+      identity_data = EXCLUDED.identity_data,
+      updated_at = EXCLUDED.updated_at;
 
     -- Staff Record
     INSERT INTO public.staff (
@@ -330,7 +425,14 @@ BEGIN
       s_elem->>'phone',
       TRUE
     )
-    ON CONFLICT (hospital_id, staff_id_code) DO NOTHING;
+    ON CONFLICT (hospital_id, staff_id_code) DO UPDATE SET
+      user_id = EXCLUDED.user_id,
+      full_name = EXCLUDED.full_name,
+      department_id = EXCLUDED.department_id,
+      medical_license_number = EXCLUDED.medical_license_number,
+      specialization = EXCLUDED.specialization,
+      phone = EXCLUDED.phone,
+      is_active = TRUE;
 
     -- Role Mapping
     INSERT INTO public.user_roles (
@@ -344,7 +446,8 @@ BEGIN
       (s_elem->>'role')::public.user_role_type,
       TRUE
     )
-    ON CONFLICT (user_id, hospital_id, role) DO NOTHING;
+    ON CONFLICT (user_id, hospital_id, role) DO UPDATE SET
+      is_active = TRUE;
 
     -- Shift Schedules
     INSERT INTO public.staff_schedules (
@@ -435,7 +538,7 @@ BEGIN
 END $$;
 
 -- ============================================================================
--- 5. SEED 500 UNIQUE PATIENTS WITH VALID 11-DIGIT NINS
+-- 5. SEED 500 UNIQUE PATIENTS WITH VALID 11-DIGIT NINS & AUTH ACCOUNTS
 -- ============================================================================
 
 DO $$
@@ -471,6 +574,7 @@ DECLARE
   v_allergies TEXT[];
   v_conditions TEXT[];
   v_pat_id UUID;
+  existing_pat_u_id UUID;
   hosp_a CONSTANT UUID := '11111111-1111-4111-8111-111111111111';
   hosp_b CONSTANT UUID := '22222222-2222-4222-8222-222222222222';
 BEGIN
@@ -483,7 +587,7 @@ BEGIN
     v_dob := DATE '1955-01-01' + ((p_idx * 47) % 18000);
     v_gender := CASE WHEN (p_idx % 2 = 0) THEN 'Female' ELSE 'Male' END;
     v_phone  := '+23480' || LPAD((30000000 + p_idx)::text, 8, '0');
-    v_email  := lower(v_fn) || '.' || lower(v_ln) || p_idx::text || '@example.com';
+    v_email  := CASE WHEN p_idx = 1 THEN 'patient@example.com' ELSE lower(v_fn) || '.' || lower(v_ln) || p_idx::text || '@example.com' END;
     v_bg     := blood_groups[1 + (p_idx % array_length(blood_groups, 1))];
     v_gt     := genotypes[1 + (p_idx % array_length(genotypes, 1))];
     v_allergies  := CASE (p_idx % 7)
@@ -503,10 +607,81 @@ BEGIN
       ELSE '{}'::TEXT[]
     END;
 
-    v_pat_id := gen_random_uuid();
+    -- Provision / link Supabase Auth user for patient with standard password 'Password123!'
+    SELECT id INTO existing_pat_u_id FROM auth.users WHERE email = v_email LIMIT 1;
+    IF existing_pat_u_id IS NOT NULL THEN
+      v_pat_id := existing_pat_u_id;
+      UPDATE auth.users SET
+        encrypted_password = '$2a$10$vI8aWBnW3fID.ZQ4/zo1G.q1lRps.9cGLcZEiGDMVr5yUP1KUOYTa',
+        email_confirmed_at = COALESCE(email_confirmed_at, now()),
+        raw_app_meta_data = '{"provider":"email","providers":["email"]}'::jsonb,
+        raw_user_meta_data = jsonb_build_object('full_name', v_fn || ' ' || v_ln, 'nin', v_nin, 'role', 'patient')
+      WHERE id = v_pat_id;
+    ELSE
+      v_pat_id := gen_random_uuid();
+      INSERT INTO auth.users (
+        instance_id,
+        id,
+        aud,
+        role,
+        email,
+        encrypted_password,
+        email_confirmed_at,
+        raw_app_meta_data,
+        raw_user_meta_data,
+        created_at,
+        updated_at,
+        confirmation_token,
+        recovery_token,
+        email_change_token_new,
+        email_change
+      ) VALUES (
+        '00000000-0000-0000-0000-000000000000',
+        v_pat_id,
+        'authenticated',
+        'authenticated',
+        v_email,
+        '$2a$10$vI8aWBnW3fID.ZQ4/zo1G.q1lRps.9cGLcZEiGDMVr5yUP1KUOYTa',
+        now(),
+        '{"provider":"email","providers":["email"]}'::jsonb,
+        jsonb_build_object('full_name', v_fn || ' ' || v_ln, 'nin', v_nin, 'role', 'patient'),
+        now(),
+        now(),
+        '',
+        '',
+        '',
+        ''
+      );
+    END IF;
 
+    -- Upsert identity for patient in Supabase Auth
+    INSERT INTO auth.identities (
+      id,
+      user_id,
+      identity_data,
+      provider,
+      provider_id,
+      last_sign_in_at,
+      created_at,
+      updated_at
+    ) VALUES (
+      v_pat_id,
+      v_pat_id,
+      jsonb_build_object('sub', v_pat_id::text, 'email', v_email),
+      'email',
+      v_pat_id::text,
+      now(),
+      now(),
+      now()
+    )
+    ON CONFLICT (provider, provider_id) DO UPDATE SET
+      identity_data = EXCLUDED.identity_data,
+      updated_at = EXCLUDED.updated_at;
+
+    -- Insert or update patient record linked to auth user_id
     INSERT INTO public.patients (
       id,
+      user_id,
       nin,
       first_name,
       last_name,
@@ -521,6 +696,7 @@ BEGIN
       emergency_contact,
       created_at
     ) VALUES (
+      v_pat_id,
       v_pat_id,
       v_nin,
       v_fn,
@@ -541,7 +717,25 @@ BEGIN
       ),
       now() - interval '90 days' + (p_idx * interval '3 hours')
     )
-    ON CONFLICT (nin) DO NOTHING;
+    ON CONFLICT (nin) DO UPDATE SET
+      user_id = EXCLUDED.user_id,
+      email = EXCLUDED.email,
+      phone = EXCLUDED.phone;
+
+    -- Map patient role
+    INSERT INTO public.user_roles (
+      user_id,
+      hospital_id,
+      role,
+      is_active
+    ) VALUES (
+      v_pat_id,
+      NULL,
+      'patient'::public.user_role_type,
+      TRUE
+    )
+    ON CONFLICT (user_id, hospital_id, role) DO UPDATE SET
+      is_active = TRUE;
 
     -- Cross-Hospital Consent (Enroll ~40% at both hospitals)
     IF (p_idx % 3 = 0) THEN
