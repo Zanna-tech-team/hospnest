@@ -951,6 +951,7 @@ CREATE INDEX IF NOT EXISTS idx_staff_hospital_dept         ON public.staff (hosp
 CREATE INDEX IF NOT EXISTS idx_schedules_staff_window      ON public.staff_schedules (staff_id, start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_schedules_hospital          ON public.staff_schedules (hospital_id, department_id);
 CREATE INDEX IF NOT EXISTS idx_consents_patient_hospital   ON public.patient_consents (patient_id, hospital_id, is_active);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_consents_patient_hosp_unique ON public.patient_consents (patient_id, hospital_id);
 
 -- Clinical Encounters & Appointments Indexes
 CREATE INDEX IF NOT EXISTS idx_appointments_hosp_patient   ON public.appointments (hospital_id, patient_id);

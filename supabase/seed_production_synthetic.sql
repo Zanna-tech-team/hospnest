@@ -551,14 +551,17 @@ BEGIN
         scope,
         is_active,
         expires_at
-      ) VALUES (
+      )
+      SELECT
         v_pat_id,
         hosp_b,
         'full_record',
         TRUE,
         now() + interval '365 days'
-      )
-      ON CONFLICT (patient_id, hospital_id) DO NOTHING;
+      WHERE NOT EXISTS (
+        SELECT 1 FROM public.patient_consents pc
+        WHERE pc.patient_id = v_pat_id AND pc.hospital_id = hosp_b
+      );
     END IF;
 
   END LOOP;
