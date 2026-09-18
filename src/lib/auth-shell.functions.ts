@@ -10,12 +10,29 @@ export type Workplace = {
   modulePermissions: string[];
 };
 
+export type UserProfileDetails = {
+  id: string;
+  email: string;
+  fullName: string;
+  phone?: string | null;
+  specialization?: string | null;
+  licenseNumber?: string | null;
+  departmentName?: string | null;
+  staffId?: string | null;
+  nin?: string | null;
+  bloodGroup?: string | null;
+  genotype?: string | null;
+  dateOfBirth?: string | null;
+  roles: string[];
+};
+
 export type AppShellData = {
   user: {
     id: string;
     email: string;
     fullName: string;
   };
+  profileDetails?: UserProfileDetails | undefined;
   workplaces: Workplace[];
   activeWorkplace: Workplace | null;
   modulePermissions: string[];
@@ -26,9 +43,9 @@ export type AppShellData = {
 
 export const getAppShellData = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input?: { hospitalId?: string | undefined }) => {
-    return { hospitalId: input?.hospitalId ? String(input.hospitalId) : undefined };
-  })
+  .validator((input?: { hospitalId?: string | undefined }) => ({
+    hospitalId: input?.hospitalId ? String(input.hospitalId) : undefined,
+  }))
   .handler(async ({ context, data: input }): Promise<AppShellData> => {
     const { supabase, userId } = context;
 
@@ -75,41 +92,73 @@ export const getAppShellData = createServerFn({ method: "GET" })
             await supabase.from("patients").update({ user_id: userId }).eq("id", pData[0].id);
           }
         } else {
-          // If no staff roles exist, default to patient mode to prevent showing hospital registration
           isPatient = true;
         }
       }
     }
 
-    // 3. Fetch staff or patient record name if available
+    // 3. Fetch staff or patient record name and metadata
     let fullName = userMetaName;
-    if (workplaces.length > 0) {
+    let staffProfile: any = null;
+    let patientProfile: any = null;
+
+    if (workplaces.length > 0 || isSuperAdmin) {
       const { data: staffRow } = await supabase
         .from("staff")
-        .select("full_name")
+        .select(`
+          id, full_name, phone, email, specialization, license_number, role,
+          departments(name)
+        `)
         .eq("user_id", userId)
         .limit(1)
         .maybeSingle();
 
-      if (staffRow?.full_name) {
-        fullName = staffRow.full_name;
+      if (staffRow) {
+        staffProfile = staffRow;
+        fullName = staffRow.full_name || fullName;
       }
-    } else if (isPatient) {
-      const { data: patientRow } = await supabase
+    }
+
+    if (isPatient || workplaces.length === 0) {
+      const { data: pRow } = await supabase
         .from("patients")
-        .select("first_name, last_name")
+        .select("id, nin, first_name, last_name, phone, email, blood_group, genotype, date_of_birth")
         .or(`user_id.eq.${userId},email.eq.${email}`)
         .limit(1)
         .maybeSingle();
 
-      if (patientRow?.first_name && patientRow?.last_name) {
-        fullName = `${patientRow.first_name} ${patientRow.last_name}`;
+      if (pRow) {
+        patientProfile = pRow;
+        if (!staffProfile) {
+          fullName = `${pRow.first_name || ""} ${pRow.last_name || ""}`.trim() || fullName;
+        }
       }
     }
 
     if (!fullName) {
       fullName = email.split("@")[0] ?? "Member";
     }
+
+    const allRoles = (roleRows ?? []).map((r: any) => r.role);
+    if (isPatient && !allRoles.includes("patient")) {
+      allRoles.push("patient");
+    }
+
+    const profileDetails: UserProfileDetails = {
+      id: userId,
+      email,
+      fullName,
+      phone: staffProfile?.phone || patientProfile?.phone || null,
+      specialization: staffProfile?.specialization || null,
+      licenseNumber: staffProfile?.license_number || null,
+      departmentName: (staffProfile?.departments as any)?.name || null,
+      staffId: staffProfile?.id || null,
+      nin: patientProfile?.nin || null,
+      bloodGroup: patientProfile?.blood_group || null,
+      genotype: patientProfile?.genotype || null,
+      dateOfBirth: patientProfile?.date_of_birth || null,
+      roles: allRoles,
+    };
 
     const activeHospitalId =
       input?.hospitalId && workplaces.some((w) => w.hospitalId === input.hospitalId)
@@ -126,6 +175,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
         email,
         fullName,
       },
+      profileDetails,
       workplaces,
       activeWorkplace,
       modulePermissions: activeWorkplace?.modulePermissions || [],

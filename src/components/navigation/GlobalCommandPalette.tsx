@@ -165,7 +165,7 @@ export function GlobalCommandPalette({
             </CommandItem>
           )}
 
-          {canAccess(["hospital_admin", "super_admin", "doctor"], "radiology") && (
+          {canAccess(["hospital_admin", "super_admin"], "radiology") && (
             <CommandItem
               onSelect={() => runAction(() => navigate({ to: "/radiology" }))}
               className="flex items-center gap-2.5 cursor-pointer py-2"
@@ -178,7 +178,7 @@ export function GlobalCommandPalette({
             </CommandItem>
           )}
 
-          {canAccess(["hospital_admin", "super_admin", "lab_tech", "doctor"], "lab") && (
+          {canAccess(["hospital_admin", "super_admin", "lab_tech"], "lab") && (
             <CommandItem
               onSelect={() => runAction(() => navigate({ to: "/lab" }))}
               className="flex items-center gap-2.5 cursor-pointer py-2"

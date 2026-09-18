@@ -72,6 +72,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { GlobalCommandPalette } from "@/components/navigation/GlobalCommandPalette";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
+import { UserProfileModal } from "@/components/layout/UserProfileModal";
 import logo from "@/assets/hospnest-logo.png.asset.json";
 
 type AppShellContextType = {
@@ -214,7 +215,7 @@ const NAVIGATION_ITEMS: NavItem[] = [
     label: "Radiology & Imaging",
     href: "/radiology",
     icon: Scan,
-    roles: ["hospital_admin", "super_admin", "doctor"],
+    roles: ["hospital_admin", "super_admin"],
     module: "radiology",
     category: "operations",
   },
@@ -222,7 +223,7 @@ const NAVIGATION_ITEMS: NavItem[] = [
     label: "Laboratory",
     href: "/lab",
     icon: FlaskConical,
-    roles: ["hospital_admin", "super_admin", "lab_tech", "doctor"],
+    roles: ["hospital_admin", "super_admin", "lab_tech"],
     module: "lab",
     category: "operations",
   },
@@ -350,6 +351,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [superadminInspectionMode, setSuperadminInspectionMode] = useState<boolean>(false);
 
   const shellFn = useServerFn(getAppShellData);
@@ -607,6 +609,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Button
                   variant="ghost"
                   size="icon"
+                  onClick={() => setIsProfileModalOpen(true)}
+                  className="size-9 rounded-xl bg-teal-600 text-white font-display text-xs font-bold shadow-xs hover:bg-teal-700"
+                  title="View Profile & Credentials"
+                >
+                  {shellData?.user?.fullName?.charAt(0).toUpperCase() || "U"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => setIsCollapsed(false)}
                   className="size-8 text-muted-foreground hover:text-foreground rounded-lg"
                   title="Expand Sidebar"
@@ -624,13 +635,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Button>
               </div>
             ) : (
-              <div className="flex items-center justify-between rounded-2xl border border-border/80 bg-background/60 p-2.5 shadow-2xs">
-                <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="flex items-center justify-between rounded-2xl border border-border/80 bg-background/60 p-2 shadow-2xs hover:border-teal-500/40 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => setIsProfileModalOpen(true)}
+                  className="flex items-center gap-2.5 overflow-hidden text-left flex-1 hover:opacity-90 transition-opacity p-0.5 rounded-xl cursor-pointer"
+                  title="Click to view full profile & credentials"
+                >
                   <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-teal-600 text-white font-display text-xs font-bold shadow-xs">
                     {shellData?.user?.fullName?.charAt(0).toUpperCase() || "U"}
                   </div>
                   <div className="overflow-hidden">
-                    <p className="truncate text-xs font-bold text-foreground">
+                    <p className="truncate text-xs font-bold text-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
                       {shellData?.user?.fullName || "Staff Member"}
                     </p>
                     <span
@@ -639,11 +655,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       {roleMeta.label}
                     </span>
                   </div>
-                </div>
+                </button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-7 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg shrink-0"
+                  className="size-7 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg shrink-0 ml-1"
                   onClick={handleSignOut}
                   title="Sign Out"
                 >
@@ -738,25 +754,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {/* User Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="size-8 rounded-full border border-border bg-teal-600 text-white font-bold text-xs shadow-xs">
+                  <Button variant="ghost" size="icon" className="size-8 rounded-full border border-border bg-teal-600 text-white font-bold text-xs shadow-xs hover:bg-teal-700 cursor-pointer">
                     {shellData?.user?.fullName?.charAt(0).toUpperCase() || "U"}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel className="text-xs">
                     <p className="font-bold text-foreground">{shellData?.user?.fullName || "Staff Member"}</p>
                     <p className="text-[10px] text-muted-foreground font-normal">{roleMeta.label}</p>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link to="/settings" className="text-xs cursor-pointer">
-                      <Settings className="mr-2 size-3.5" /> Settings & Facility
-                    </Link>
+                  <DropdownMenuItem onClick={() => setIsProfileModalOpen(true)} className="text-xs cursor-pointer font-medium">
+                    <UserCheck className="mr-2 size-3.5 text-teal-600" /> View Profile & Credentials
                   </DropdownMenuItem>
+                  {(isAdmin || isSuperAdmin) && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/settings" className="text-xs cursor-pointer">
+                        <Settings className="mr-2 size-3.5" /> Settings & Facility
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {isPatientUser && (
                     <DropdownMenuItem asChild>
                       <Link to="/portal" className="text-xs cursor-pointer">
-                        <HeartPulse className="mr-2 size-3.5 text-teal-600" /> Health Portal
+                        <HeartPulse className="mr-2 size-3.5 text-teal-600" /> My Health Portal
                       </Link>
                     </DropdownMenuItem>
                   )}
@@ -821,10 +842,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </nav>
 
               <div className="flex items-center justify-between border-t border-border pt-3">
-                <div className="text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setIsProfileModalOpen(true);
+                  }}
+                  className="text-xs text-left hover:opacity-80 transition-opacity"
+                >
                   <p className="font-bold text-foreground">{shellData?.user?.fullName}</p>
-                  <p className="text-[11px] text-muted-foreground">{roleMeta.label}</p>
-                </div>
+                  <p className="text-[11px] text-teal-600 font-semibold">{roleMeta.label} • View Profile</p>
+                </button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -865,6 +893,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </main>
         </div>
       </div>
+
+      {/* Global User Profile & Credentials Modal */}
+      <UserProfileModal
+        open={isProfileModalOpen}
+        onOpenChange={setIsProfileModalOpen}
+        shellData={shellData}
+        currentRole={currentRole as any}
+        onSignOut={handleSignOut}
+      />
 
       {/* Global Command Palette (⌘K / Ctrl+K) */}
       <GlobalCommandPalette open={isCommandPaletteOpen} onOpenChange={setIsCommandPaletteOpen} />
