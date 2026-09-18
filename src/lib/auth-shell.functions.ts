@@ -7,6 +7,7 @@ export type Workplace = {
   name: string;
   slug: string;
   role: StaffRole;
+  modulePermissions: string[];
 };
 
 export type AppShellData = {
@@ -17,6 +18,7 @@ export type AppShellData = {
   };
   workplaces: Workplace[];
   activeWorkplace: Workplace | null;
+  modulePermissions: string[];
   isAdmin: boolean;
   isSuperAdmin: boolean;
   isPatient: boolean;
@@ -35,10 +37,10 @@ export const getAppShellData = createServerFn({ method: "GET" })
     const email = userData?.user?.email ?? "";
     const userMetaName = (userData?.user?.user_metadata?.["full_name"] as string) ?? "";
 
-    // 2. Fetch user's hospitals & roles
+    // 2. Fetch user's hospitals & roles (including module_permissions)
     const { data: roleRows, error: roleError } = await supabase
       .from("user_roles")
-      .select("role, hospital_id, hospitals(id, name, slug)")
+      .select("role, hospital_id, module_permissions, hospitals(id, name, slug)")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -54,6 +56,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
         name: (r.hospitals?.name as string) ?? "Hospital",
         slug: (r.hospitals?.slug as string) ?? "hospital",
         role: r.role as StaffRole,
+        modulePermissions: Array.isArray(r.module_permissions) ? r.module_permissions : [],
       }));
 
     // If user has no staff workplaces and not superadmin, check if they are a patient
@@ -125,6 +128,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
       },
       workplaces,
       activeWorkplace,
+      modulePermissions: activeWorkplace?.modulePermissions || [],
       isAdmin,
       isSuperAdmin,
       isPatient,

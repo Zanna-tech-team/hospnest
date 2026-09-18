@@ -35,6 +35,7 @@ import {
   getStaffProfileAndSchedule,
   updateStaffProfile,
   updateStaffShifts,
+  updateStaffModulePermissions,
   inviteStaffMember,
   toggleStaffStatus,
   getPendingStaffJoinRequests,
@@ -48,6 +49,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -67,6 +69,7 @@ import {
 } from "@/components/ui/dialog";
 import logo from "@/assets/hospnest-logo.png.asset.json";
 import { useAppShell } from "@/components/layout/AppShell";
+import { RoleGuard } from "@/components/auth/RoleGuard";
 
 const title = "Team & Staff Management — HospNest";
 const description =
@@ -95,6 +98,18 @@ const ROLE_DISPLAY: Record<StaffRole, { label: string; color: string }> = {
   pharmacist: { label: "Pharmacist", color: "bg-rose-100 text-rose-800 border-rose-200" },
 };
 
+const AVAILABLE_MODULES = [
+  { id: "front_desk", label: "Front Desk & Patient Intake", description: "Search NIN identities, register walk-in patients, and check in bookings" },
+  { id: "triage", label: "Triage & Vitals Recording", description: "Record vitals, NEWS2 scoring, and manage triage priority queue" },
+  { id: "consultations", label: "Doctor Consultations", description: "Clinical encounters, SOAP clinical notes, prescriptions, and lab orders" },
+  { id: "lab", label: "Laboratory Workstation", description: "Sample accessioning, lab test processing, and diagnostic result validation" },
+  { id: "pharmacy", label: "Pharmacy & Medication Stock", description: "Prescription dispensing, batch tracking, and pharmaceutical inventory" },
+  { id: "billing", label: "Billing & Invoicing", description: "Patient bills, claim generation, payment receipts, and reconciliation" },
+  { id: "admissions", label: "Inpatient Admissions & Wards", description: "Ward bed allocation, patient admissions, and discharge tracking" },
+  { id: "maternity", label: "Maternity & ANC", description: "Antenatal clinic monitoring, labor tracking, and delivery registers" },
+  { id: "reports", label: "Reports & Analytics", description: "Facility analytics, clinical KPI tracking, and epidemiological data" },
+];
+
 const DAYS_OF_WEEK = [
   "Sunday",
   "Monday",
@@ -116,6 +131,7 @@ function TeamPage() {
   const toggleStatusFn = useServerFn(toggleStaffStatus);
   const getPendingRequestsFn = useServerFn(getPendingStaffJoinRequests);
   const resolveRequestFn = useServerFn(resolveStaffJoinRequest);
+  const updatePermissionsFn = useServerFn(updateStaffModulePermissions);
 
   const [hospitalId, setHospitalId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"roster" | "requests">("roster");
@@ -125,6 +141,7 @@ function TeamPage() {
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [assignedDeptMap, setAssignedDeptMap] = useState<Record<string, string>>({});
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
 
   const [lastInviteResult, setLastInviteResult] = useState<{
     fullName: string;
@@ -201,6 +218,7 @@ function TeamPage() {
       medicalLicenseNumber: data.staff.medicalLicenseNumber || "",
     });
     setShiftsList(data.shifts || []);
+    setSelectedPermissions(data.staff.modulePermissions || []);
   };
 
   // Trigger data sync on staff detail change
@@ -343,6 +361,23 @@ function TeamPage() {
     onError: (err: Error) => toast.error(err.message || "Failed to resolve join request"),
   });
 
+  const updatePermissionsMutation = useMutation({
+    mutationFn: () =>
+      updatePermissionsFn({
+        data: {
+          hospitalId: activeHospitalId,
+          staffId: selectedStaffId!,
+          modulePermissions: selectedPermissions,
+        },
+      }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["staff-detail", activeHospitalId, selectedStaffId] });
+      queryClient.invalidateQueries({ queryKey: ["team-context", activeHospitalId] });
+      toast.success(res.message || "Module permissions updated successfully.");
+    },
+    onError: (err: Error) => toast.error(err.message || "Failed to update module permissions"),
+  });
+
   const handleAddShift = () => {
     if (!newShiftStart || !newShiftEnd) return;
     setShiftsList((prev) => [
@@ -372,7 +407,12 @@ function TeamPage() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-8">
+    <RoleGuard
+      allowedRoles={["hospital_admin", "super_admin"]}
+      fallbackTitle="Team & Access Restricted"
+      fallbackMessage="Only hospital administrators and super administrators can manage staff accounts, role delegations, and duty rosters."
+    >
+      <div className="mx-auto max-w-6xl px-4 py-8 md:px-8">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
           <div className="flex items-center gap-2">
@@ -991,9 +1031,10 @@ function TeamPage() {
               </div>
             ) : (
               <Tabs defaultValue="profile" className="mt-2">
-                <TabsList className="grid w-full grid-cols-2">
+                <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="profile">Profile Details</TabsTrigger>
-                  <TabsTrigger value="schedule">Weekly Shift Schedule</TabsTrigger>
+                  <TabsTrigger value="schedule">Duty Shifts</TabsTrigger>
+                  <TabsTrigger value="permissions">Access Delegations</TabsTrigger>
                 </TabsList>
 
                 {/* Profile Form Tab */}
@@ -1230,10 +1271,70 @@ function TeamPage() {
                     </div>
                   )}
                 </TabsContent>
+
+                {/* Permissions & Module Delegations Tab */}
+                <TabsContent value="permissions" className="space-y-4 pt-4">
+                  <div className="rounded-xl border border-border bg-secondary/30 p-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <ShieldCheck className="size-4 text-primary" /> Dynamic Module Delegations
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                      Grant this staff member explicit workstation permissions beyond their default role (e.g. allowing a nurse to operate Front Desk Intake or Triage).
+                    </p>
+                  </div>
+
+                  <div className="space-y-3 divide-y divide-border rounded-xl border border-border bg-card p-4">
+                    {AVAILABLE_MODULES.map((mod) => {
+                      const isChecked = selectedPermissions.includes(mod.id);
+                      return (
+                        <div key={mod.id} className="flex items-start gap-3 pt-3 first:pt-0">
+                          <Checkbox
+                            id={`mod-perm-${mod.id}`}
+                            checked={isChecked}
+                            disabled={!staffDetail?.canEdit}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedPermissions((prev) => [...prev, mod.id]);
+                              } else {
+                                setSelectedPermissions((prev) => prev.filter((p) => p !== mod.id));
+                              }
+                            }}
+                            className="mt-0.5"
+                          />
+                          <div className="space-y-0.5">
+                            <Label
+                              htmlFor={`mod-perm-${mod.id}`}
+                              className="text-xs font-semibold text-foreground cursor-pointer"
+                            >
+                              {mod.label}
+                            </Label>
+                            <p className="text-[11px] text-muted-foreground leading-normal">
+                              {mod.description}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {staffDetail?.canEdit && (
+                    <div className="flex justify-end pt-2">
+                      <Button
+                        type="button"
+                        disabled={updatePermissionsMutation.isPending}
+                        onClick={() => updatePermissionsMutation.mutate()}
+                        className="bg-primary hover:bg-primary/90"
+                      >
+                        {updatePermissionsMutation.isPending ? "Saving Delegations…" : "Save Module Permissions"}
+                      </Button>
+                    </div>
+                  )}
+                </TabsContent>
               </Tabs>
             )}
           </DialogContent>
         </Dialog>
-    </div>
+      </div>
+    </RoleGuard>
   );
 }

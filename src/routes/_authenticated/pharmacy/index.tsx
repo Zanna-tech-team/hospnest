@@ -24,6 +24,7 @@ import {
   Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RoleGuard } from "@/components/auth/RoleGuard";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -221,7 +222,13 @@ export function PharmacyDispensingPage() {
   }, [prescriptions, statusFilter, onlyOutOfStock, searchTerm]);
 
   return (
-    <div className="space-y-6">
+    <RoleGuard
+      allowedRoles={["pharmacist", "hospital_admin", "super_admin"]}
+      requiredPermission="pharmacy"
+      fallbackTitle="Pharmacy Dispensary Restricted"
+      fallbackMessage="Access to outpatient and inpatient medication dispensing queues, stock verification, and drug batch fulfillment is restricted to licensed Pharmacists and Pharmacy Technicians."
+    >
+      <div className="space-y-6">
       {/* Top Header */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
@@ -894,6 +901,7 @@ export function PharmacyDispensingPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </RoleGuard>
   );
 }

@@ -28,6 +28,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useAppShell } from "@/components/layout/AppShell";
+import { RoleGuard } from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -215,7 +216,13 @@ function LabWorkbenchPage() {
   }, [labData?.worklist, activeTab, searchQuery]);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 space-y-6">
+    <RoleGuard
+      allowedRoles={["lab_tech", "doctor", "hospital_admin", "super_admin"]}
+      requiredPermission="lab"
+      fallbackTitle="Laboratory Workstation Restricted"
+      fallbackMessage="Access to medical laboratory orders, accessioning, specimen analysis, and diagnostic test results is restricted to licensed Laboratory Scientists, Pathologists, and authorized Medical Staff."
+    >
+      <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 space-y-6">
       {/* Top Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -751,6 +758,7 @@ function LabWorkbenchPage() {
           />
         </PrintableDocumentModal>
       )}
-    </div>
+      </div>
+    </RoleGuard>
   );
 }

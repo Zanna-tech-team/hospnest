@@ -137,7 +137,7 @@ export const getLabWorkbench = createServerFn({ method: "GET" })
 
     const { data: roleRows, error: roleError } = await supabase
       .from("user_roles")
-      .select("role, hospital_id, hospitals(id, name)")
+      .select("role, hospital_id, module_permissions, hospitals(id, name)")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -153,7 +153,12 @@ export const getLabWorkbench = createServerFn({ method: "GET" })
     const activeHospitalId = matchedRole?.hospital_id || "";
     const hospitalName = (matchedRole as any)?.hospitals?.name || "Hospital";
     const callerRole = (matchedRole?.role as StaffRole) || "lab_tech";
-    const isTechOrClinical = ["lab_tech", "doctor", "hospital_admin", "super_admin", "nurse"].includes(callerRole);
+    const perms = Array.isArray((matchedRole as any)?.module_permissions) ? (matchedRole as any).module_permissions : [];
+    const isTechOrClinical = ["lab_tech", "doctor", "hospital_admin", "super_admin"].includes(callerRole) || perms.includes("lab");
+
+    if (!isTechOrClinical) {
+      throw new Error("Access to laboratory workstation is restricted to lab scientists, doctors, or authorized staff.");
+    }
 
     // Fetch all lab orders for this hospital
     const { data: labRows, error: labError } = await supabase

@@ -107,7 +107,8 @@ type NavItem = {
   label: string;
   href: string;
   icon: any;
-  roles?: StaffRole[] | undefined;
+  roles?: (StaffRole | "patient")[] | undefined;
+  module?: string | undefined;
   patientOnly?: boolean | undefined;
   category?: "core" | "clinical" | "operations" | "admin" | undefined;
   badge?: string | undefined;
@@ -118,6 +119,7 @@ const NAVIGATION_ITEMS: NavItem[] = [
     label: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
+    roles: ["hospital_admin", "super_admin", "doctor", "nurse", "lab_tech", "pharmacist"],
     category: "core",
   },
   {
@@ -131,6 +133,8 @@ const NAVIGATION_ITEMS: NavItem[] = [
     label: "VoiceCare Platform",
     href: "/voicecare",
     icon: Mic,
+    roles: ["hospital_admin", "super_admin", "doctor", "nurse"],
+    module: "voicecare",
     badge: "VOICE",
     category: "core",
   },
@@ -138,84 +142,112 @@ const NAVIGATION_ITEMS: NavItem[] = [
     label: "Front Desk Intake",
     href: "/front-desk",
     icon: IdCard,
+    roles: ["hospital_admin", "super_admin", "nurse"],
+    module: "front_desk",
     category: "clinical",
   },
   {
     label: "Appointments & Scheduling",
     href: "/appointments",
     icon: Calendar,
+    roles: ["hospital_admin", "super_admin", "doctor", "nurse"],
+    module: "appointments",
     category: "clinical",
   },
   {
     label: "Patients Directory",
     href: "/patients",
     icon: User,
+    roles: ["hospital_admin", "super_admin", "doctor", "nurse"],
+    module: "patients",
     category: "clinical",
   },
   {
     label: "Triage & Vitals",
     href: "/triage",
     icon: Activity,
+    roles: ["hospital_admin", "super_admin", "nurse", "doctor"],
+    module: "triage",
     category: "clinical",
   },
   {
     label: "Consultations",
     href: "/consultations",
     icon: Stethoscope,
+    roles: ["hospital_admin", "super_admin", "doctor"],
+    module: "consultations",
     category: "clinical",
   },
   {
     label: "Inpatient Admissions",
     href: "/admissions",
     icon: Bed,
+    roles: ["hospital_admin", "super_admin", "doctor", "nurse"],
+    module: "admissions",
     category: "clinical",
   },
   {
     label: "Ward & Bed Matrix",
     href: "/wards",
     icon: Building2,
+    roles: ["hospital_admin", "super_admin", "doctor", "nurse"],
+    module: "wards",
     category: "clinical",
   },
   {
     label: "Maternity & ANC",
     href: "/maternity",
     icon: Baby,
+    roles: ["hospital_admin", "super_admin", "doctor", "nurse"],
+    module: "maternity",
     category: "clinical",
   },
   {
     label: "Patient Transfers",
     href: "/transfers",
     icon: ArrowRightLeft,
+    roles: ["hospital_admin", "super_admin", "doctor", "nurse"],
+    module: "transfers",
     category: "clinical",
   },
   {
     label: "Radiology & Imaging",
     href: "/radiology",
     icon: Scan,
+    roles: ["hospital_admin", "super_admin", "doctor"],
+    module: "radiology",
     category: "operations",
   },
   {
     label: "Laboratory",
     href: "/lab",
     icon: FlaskConical,
+    roles: ["hospital_admin", "super_admin", "lab_tech", "doctor"],
+    module: "lab",
     category: "operations",
   },
   {
     label: "Pharmacy Dispensary",
     href: "/pharmacy",
     icon: Pill,
+    roles: ["hospital_admin", "super_admin", "pharmacist"],
+    module: "pharmacy",
     category: "operations",
   },
   {
     label: "Drug Inventory",
     href: "/pharmacy/inventory",
     icon: Package,
+    roles: ["hospital_admin", "super_admin", "pharmacist"],
+    module: "pharmacy",
     category: "operations",
   },
   {
     label: "Billing & Claims",
     href: "/billing",
     icon: CreditCard,
+    roles: ["hospital_admin", "super_admin"],
+    module: "billing",
     category: "operations",
   },
   {
@@ -223,6 +255,7 @@ const NAVIGATION_ITEMS: NavItem[] = [
     href: "/team",
     icon: Users,
     roles: ["hospital_admin", "super_admin"],
+    module: "team",
     category: "admin",
   },
   {
@@ -230,6 +263,7 @@ const NAVIGATION_ITEMS: NavItem[] = [
     href: "/reports",
     icon: FileSpreadsheet,
     roles: ["hospital_admin", "super_admin"],
+    module: "reports",
     category: "admin",
   },
   {
@@ -237,6 +271,7 @@ const NAVIGATION_ITEMS: NavItem[] = [
     href: "/audit",
     icon: ShieldCheck,
     roles: ["hospital_admin", "super_admin"],
+    module: "audit",
     category: "admin",
   },
   {
@@ -251,6 +286,8 @@ const NAVIGATION_ITEMS: NavItem[] = [
     label: "Hospital Settings",
     href: "/settings",
     icon: Settings,
+    roles: ["hospital_admin", "super_admin"],
+    module: "settings",
     category: "admin",
   },
 ];
@@ -333,10 +370,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.location.href = "/auth";
   };
 
+  const userPermissions = shellData?.activeWorkplace?.modulePermissions || shellData?.modulePermissions || [];
+
   // Determine if Super Admin is in Global View or inspecting a single hospital's clinical workspace
   const isGlobalSuperAdminView = isSuperAdmin && (!superadminInspectionMode || currentPath.startsWith("/superadmin") || currentPath.startsWith("/voicecare"));
 
-  // Filter navigation items by role
+  // Filter navigation items by role and dynamic delegated permissions
   const visibleNavItems = isGlobalSuperAdminView
     ? SUPERADMIN_NAVIGATION_ITEMS
     : NAVIGATION_ITEMS.filter((item) => {
@@ -349,8 +388,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (!hasStaffWorkplaces && isPatientUser) {
           return false;
         }
-        if (!item.roles) return true;
-        return item.roles.includes(currentRole as StaffRole) || (isAdmin && item.roles.includes("hospital_admin"));
+        // Super Admin and Hospital Admin always see all hospital features
+        if (isAdmin || isSuperAdmin) {
+          return true;
+        }
+        // Check base role permission
+        const roleAllowed = item.roles ? item.roles.includes(currentRole as StaffRole) : true;
+        // Check dynamic module permission grant
+        const moduleAllowed = item.module ? userPermissions.includes(item.module) : false;
+
+        return roleAllowed || moduleAllowed;
       });
 
   const roleMeta = ROLE_DISPLAY[currentRole] || {

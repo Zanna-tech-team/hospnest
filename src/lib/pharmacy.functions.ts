@@ -118,7 +118,7 @@ export const getPharmacyInventory = createServerFn({ method: "GET" })
 
     const { data: roleRows, error: roleError } = await supabase
       .from("user_roles")
-      .select("role, hospital_id, hospitals(id, name)")
+      .select("role, hospital_id, module_permissions, hospitals(id, name)")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -134,7 +134,12 @@ export const getPharmacyInventory = createServerFn({ method: "GET" })
     const activeHospitalId = matchedRole?.hospital_id || "";
     const hospitalName = (matchedRole as any)?.hospitals?.name || "Hospital";
     const callerRole = (matchedRole?.role as StaffRole) || "pharmacist";
-    const canManagePharmacy = ["pharmacist", "hospital_admin", "super_admin", "doctor"].includes(callerRole);
+    const perms = Array.isArray((matchedRole as any)?.module_permissions) ? (matchedRole as any).module_permissions : [];
+    const canManagePharmacy = ["pharmacist", "hospital_admin", "super_admin", "doctor"].includes(callerRole) || perms.includes("pharmacy");
+
+    if (!canManagePharmacy) {
+      throw new Error("Access to pharmacy inventory is restricted to pharmacists, clinicians, or authorized staff.");
+    }
 
     // 1. Fetch hospital inventory items
     const { data: inventoryRows, error: invError } = await supabase
@@ -597,7 +602,7 @@ export const getPharmacyDispensingQueue = createServerFn({ method: "GET" })
 
     const { data: roleRows, error: roleError } = await supabase
       .from("user_roles")
-      .select("role, hospital_id, hospitals(id, name)")
+      .select("role, hospital_id, module_permissions, hospitals(id, name)")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -613,8 +618,13 @@ export const getPharmacyDispensingQueue = createServerFn({ method: "GET" })
     const activeHospitalId = matchedRole?.hospital_id || "";
     const hospitalName = (matchedRole as any)?.hospitals?.name || "Hospital";
     const callerRole = (matchedRole?.role as StaffRole) || "pharmacist";
-    const isClinical = ["doctor", "nurse", "pharmacist", "hospital_admin", "super_admin"].includes(callerRole);
-    const canDispense = ["pharmacist", "doctor", "nurse", "hospital_admin", "super_admin"].includes(callerRole);
+    const perms = Array.isArray((matchedRole as any)?.module_permissions) ? (matchedRole as any).module_permissions : [];
+    const isClinical = ["doctor", "nurse", "pharmacist", "hospital_admin", "super_admin"].includes(callerRole) || perms.includes("pharmacy");
+    const canDispense = ["pharmacist", "doctor", "hospital_admin", "super_admin"].includes(callerRole) || perms.includes("pharmacy");
+
+    if (!canDispense) {
+      throw new Error("Access to pharmacy dispensing queue is restricted to pharmacists, clinicians, or authorized staff.");
+    }
 
     // 1. Fetch current hospital inventory map
     const { data: invRows } = await (supabase as any)

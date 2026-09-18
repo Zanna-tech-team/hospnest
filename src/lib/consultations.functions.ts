@@ -320,7 +320,7 @@ export const getConsultationQueue = createServerFn({ method: "GET" })
 
     const { data: roleRows, error: roleError } = await supabase
       .from("user_roles")
-      .select("role, hospital_id, hospitals(id, name)")
+      .select("role, hospital_id, module_permissions, hospitals(id, name)")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -336,7 +336,12 @@ export const getConsultationQueue = createServerFn({ method: "GET" })
     const activeHospitalId = matchedRole?.hospital_id || "";
     const hospitalName = (matchedRole as any)?.hospitals?.name || "Hospital";
     const callerRole = (matchedRole?.role as StaffRole) || "doctor";
-    const isDoctor = ["doctor", "super_admin", "hospital_admin"].includes(callerRole);
+    const perms = Array.isArray((matchedRole as any)?.module_permissions) ? (matchedRole as any).module_permissions : [];
+    const isDoctor = ["doctor", "super_admin", "hospital_admin"].includes(callerRole) || perms.includes("consultations");
+
+    if (!isDoctor) {
+      throw new Error("Access to doctor consultation queue is restricted to clinicians or authorized staff.");
+    }
 
     const { data: staffRow } = await supabase
       .from("staff")
@@ -479,7 +484,7 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
 
     const { data: roleRows } = await supabase
       .from("user_roles")
-      .select("role, hospital_id")
+      .select("role, hospital_id, module_permissions")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -492,7 +497,12 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
 
     const activeHospitalId = matchedRole?.hospital_id || "";
     const callerRole = (matchedRole?.role as StaffRole) || "doctor";
-    const isDoctor = ["doctor", "super_admin", "hospital_admin"].includes(callerRole);
+    const perms = Array.isArray((matchedRole as any)?.module_permissions) ? (matchedRole as any).module_permissions : [];
+    const isDoctor = ["doctor", "super_admin", "hospital_admin"].includes(callerRole) || perms.includes("consultations");
+
+    if (!isDoctor) {
+      throw new Error("Access to clinical consultation workspace is restricted to clinicians or authorized staff.");
+    }
 
     const { data: staffRow } = await supabase
       .from("staff")

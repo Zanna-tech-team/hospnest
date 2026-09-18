@@ -29,6 +29,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useAppShell } from "@/components/layout/AppShell";
+import { RoleGuard } from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -237,7 +238,13 @@ function PharmacyInventoryPage() {
   }, [pharmacyData?.inventory, activeTab, searchQuery]);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 space-y-6">
+    <RoleGuard
+      allowedRoles={["pharmacist", "hospital_admin", "super_admin"]}
+      requiredPermission="pharmacy"
+      fallbackTitle="Drug Inventory Restricted"
+      fallbackMessage="Access to hospital pharmaceutical stock management, batch control, and formulary reordering is restricted to authorized Pharmacy Staff and Clinical Administrators."
+    >
+      <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 space-y-6">
       {/* Top Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -785,6 +792,7 @@ function PharmacyInventoryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </RoleGuard>
   );
 }

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useAppShell } from "@/components/layout/AppShell";
+import type { StaffRole } from "@/lib/team.functions";
 import {
   Activity,
   ArrowRightLeft,
@@ -48,6 +50,7 @@ export function GlobalCommandPalette({
 }: GlobalCommandPaletteProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const navigate = useNavigate();
+  const { shellData } = useAppShell();
 
   const isControlled = externalOpen !== undefined;
   const isOpen = isControlled ? externalOpen : internalOpen;
@@ -57,6 +60,19 @@ export function GlobalCommandPalette({
     } else {
       setInternalOpen(openState);
     }
+  };
+
+  const isSuperAdmin = Boolean(shellData?.isSuperAdmin);
+  const isAdmin = Boolean(shellData?.isAdmin);
+  const isPatient = Boolean(shellData?.isPatient);
+  const currentRole = (shellData?.activeWorkplace?.role || (isPatient ? "patient" : isSuperAdmin ? "super_admin" : "doctor")) as StaffRole | "patient";
+  const userPermissions = shellData?.activeWorkplace?.modulePermissions || shellData?.modulePermissions || [];
+
+  const canAccess = (allowedRoles?: (StaffRole | "patient")[], module?: string) => {
+    if (isSuperAdmin || isAdmin) return true;
+    if (module && userPermissions.includes(module)) return true;
+    if (allowedRoles && allowedRoles.includes(currentRole)) return true;
+    return false;
   };
 
   useEffect(() => {
@@ -84,115 +100,135 @@ export function GlobalCommandPalette({
 
         {/* Quick Clinical Actions */}
         <CommandGroup heading="⚡ Quick Clinical Actions">
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/front-desk" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <div className="flex size-6 items-center justify-center rounded-md bg-teal-500/10 text-teal-600">
-              <IdCard className="size-3.5" />
-            </div>
-            <span className="font-semibold text-xs">NIN Patient Intake & Check-In</span>
-            <CommandShortcut>↵</CommandShortcut>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "nurse"], "front_desk") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/front-desk" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md bg-teal-500/10 text-teal-600">
+                <IdCard className="size-3.5" />
+              </div>
+              <span className="font-semibold text-xs">NIN Patient Intake & Check-In</span>
+              <CommandShortcut>↵</CommandShortcut>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/appointments" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <div className="flex size-6 items-center justify-center rounded-md bg-blue-500/10 text-blue-600">
-              <Calendar className="size-3.5" />
-            </div>
-            <span className="font-semibold text-xs">Book / View Outpatient Appointments</span>
-            <CommandShortcut>↵</CommandShortcut>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "doctor", "nurse"], "appointments") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/appointments" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md bg-blue-500/10 text-blue-600">
+                <Calendar className="size-3.5" />
+              </div>
+              <span className="font-semibold text-xs">Book / View Outpatient Appointments</span>
+              <CommandShortcut>↵</CommandShortcut>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/triage" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <div className="flex size-6 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-600">
-              <Activity className="size-3.5" />
-            </div>
-            <span className="font-semibold text-xs">Capture Vitals & NEWS2 Assessment</span>
-            <CommandShortcut>↵</CommandShortcut>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "nurse", "doctor"], "triage") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/triage" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-600">
+                <Activity className="size-3.5" />
+              </div>
+              <span className="font-semibold text-xs">Capture Vitals & NEWS2 Assessment</span>
+              <CommandShortcut>↵</CommandShortcut>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/consultations" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <div className="flex size-6 items-center justify-center rounded-md bg-indigo-500/10 text-indigo-600">
-              <Stethoscope className="size-3.5" />
-            </div>
-            <span className="font-semibold text-xs">Doctor Clinical Consultation & E-Prescribing</span>
-            <CommandShortcut>↵</CommandShortcut>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "doctor"], "consultations") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/consultations" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md bg-indigo-500/10 text-indigo-600">
+                <Stethoscope className="size-3.5" />
+              </div>
+              <span className="font-semibold text-xs">Doctor Clinical Consultation & E-Prescribing</span>
+              <CommandShortcut>↵</CommandShortcut>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/admissions" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <div className="flex size-6 items-center justify-center rounded-md bg-purple-500/10 text-purple-600">
-              <Bed className="size-3.5" />
-            </div>
-            <span className="font-semibold text-xs">Inpatient Ward Rounds & MAR Administration</span>
-            <CommandShortcut>↵</CommandShortcut>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "doctor", "nurse"], "admissions") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/admissions" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md bg-purple-500/10 text-purple-600">
+                <Bed className="size-3.5" />
+              </div>
+              <span className="font-semibold text-xs">Inpatient Ward Rounds & MAR Administration</span>
+              <CommandShortcut>↵</CommandShortcut>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/radiology" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <div className="flex size-6 items-center justify-center rounded-md bg-cyan-500/10 text-cyan-600">
-              <Scan className="size-3.5" />
-            </div>
-            <span className="font-semibold text-xs">Radiology DICOM Imaging & X-Ray Reports</span>
-            <CommandShortcut>↵</CommandShortcut>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "doctor"], "radiology") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/radiology" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md bg-cyan-500/10 text-cyan-600">
+                <Scan className="size-3.5" />
+              </div>
+              <span className="font-semibold text-xs">Radiology DICOM Imaging & X-Ray Reports</span>
+              <CommandShortcut>↵</CommandShortcut>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/lab" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <div className="flex size-6 items-center justify-center rounded-md bg-amber-500/10 text-amber-600">
-              <FlaskConical className="size-3.5" />
-            </div>
-            <span className="font-semibold text-xs">Laboratory Diagnostics & Panic Values</span>
-            <CommandShortcut>↵</CommandShortcut>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "lab_tech", "doctor"], "lab") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/lab" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md bg-amber-500/10 text-amber-600">
+                <FlaskConical className="size-3.5" />
+              </div>
+              <span className="font-semibold text-xs">Laboratory Diagnostics & Panic Values</span>
+              <CommandShortcut>↵</CommandShortcut>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/pharmacy" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <div className="flex size-6 items-center justify-center rounded-md bg-rose-500/10 text-rose-600">
-              <Pill className="size-3.5" />
-            </div>
-            <span className="font-semibold text-xs">Pharmacy Dispensary & Barcode POS</span>
-            <CommandShortcut>↵</CommandShortcut>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "pharmacist"], "pharmacy") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/pharmacy" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md bg-rose-500/10 text-rose-600">
+                <Pill className="size-3.5" />
+              </div>
+              <span className="font-semibold text-xs">Pharmacy Dispensary & Barcode POS</span>
+              <CommandShortcut>↵</CommandShortcut>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/billing" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <div className="flex size-6 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-600">
-              <CreditCard className="size-3.5" />
-            </div>
-            <span className="font-semibold text-xs">Generate Invoices & HMO Insurance Claims</span>
-            <CommandShortcut>↵</CommandShortcut>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin"], "billing") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/billing" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-600">
+                <CreditCard className="size-3.5" />
+              </div>
+              <span className="font-semibold text-xs">Generate Invoices & HMO Insurance Claims</span>
+              <CommandShortcut>↵</CommandShortcut>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/maternity" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <div className="flex size-6 items-center justify-center rounded-md bg-teal-500/10 text-teal-600">
-              <Baby className="size-3.5" />
-            </div>
-            <span className="font-semibold text-xs">Maternity ANC Register & Labor Partograph</span>
-            <CommandShortcut>↵</CommandShortcut>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "doctor", "nurse"], "maternity") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/maternity" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md bg-teal-500/10 text-teal-600">
+                <Baby className="size-3.5" />
+              </div>
+              <span className="font-semibold text-xs">Maternity ANC Register & Labor Partograph</span>
+              <CommandShortcut>↵</CommandShortcut>
+            </CommandItem>
+          )}
         </CommandGroup>
 
         <CommandSeparator />
@@ -207,83 +243,95 @@ export function GlobalCommandPalette({
             <span className="text-xs">Clinical Operations Dashboard</span>
           </CommandItem>
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/patients" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <User className="size-4 text-muted-foreground" />
-            <span className="text-xs">Master Patient Index & Medical Records</span>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "doctor", "nurse"], "patients") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/patients" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <User className="size-4 text-muted-foreground" />
+              <span className="text-xs">Master Patient Index & Medical Records</span>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/wards" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <Building2 className="size-4 text-muted-foreground" />
-            <span className="text-xs">Wards & Bed Capacity Matrix</span>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "doctor", "nurse"], "wards") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/wards" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <Building2 className="size-4 text-muted-foreground" />
+              <span className="text-xs">Wards & Bed Capacity Matrix</span>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/transfers" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <ArrowRightLeft className="size-4 text-muted-foreground" />
-            <span className="text-xs">Inter-Facility Patient Transfers & Referrals</span>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "doctor", "nurse"], "transfers") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/transfers" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <ArrowRightLeft className="size-4 text-muted-foreground" />
+              <span className="text-xs">Inter-Facility Patient Transfers & Referrals</span>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/maternity" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <Baby className="size-4 text-muted-foreground" />
-            <span className="text-xs">Maternity, ANC & Child Immunization Register</span>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "doctor", "nurse"], "maternity") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/maternity" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <Baby className="size-4 text-muted-foreground" />
+              <span className="text-xs">Maternity, ANC & Child Immunization Register</span>
+            </CommandItem>
+          )}
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/pharmacy/inventory" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <Package className="size-4 text-muted-foreground" />
-            <span className="text-xs">Pharmacy Drug Inventory & Batch Control</span>
-          </CommandItem>
+          {canAccess(["hospital_admin", "super_admin", "pharmacist"], "pharmacy") && (
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/pharmacy/inventory" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <Package className="size-4 text-muted-foreground" />
+              <span className="text-xs">Pharmacy Drug Inventory & Batch Control</span>
+            </CommandItem>
+          )}
         </CommandGroup>
 
         <CommandSeparator />
 
         {/* Governance, Administration & Analytics */}
-        <CommandGroup heading="⚙️ Administration, Audit & Governance">
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/team" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <Users className="size-4 text-muted-foreground" />
-            <span className="text-xs">Staff Roster & MDCN Practitioner Licensing</span>
-          </CommandItem>
+        {(isAdmin || isSuperAdmin) && (
+          <CommandGroup heading="⚙️ Administration, Audit & Governance">
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/team" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <Users className="size-4 text-muted-foreground" />
+              <span className="text-xs">Staff Roster & MDCN Practitioner Licensing</span>
+            </CommandItem>
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/reports" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <FileSpreadsheet className="size-4 text-muted-foreground" />
-            <span className="text-xs">HMIS Clinical Reports & Financial Analytics</span>
-          </CommandItem>
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/reports" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <FileSpreadsheet className="size-4 text-muted-foreground" />
+              <span className="text-xs">HMIS Clinical Reports & Financial Analytics</span>
+            </CommandItem>
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/audit" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <ShieldCheck className="size-4 text-muted-foreground" />
-            <span className="text-xs">Immutable NDPR Security & Clinical Audit Ledger</span>
-          </CommandItem>
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/audit" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <ShieldCheck className="size-4 text-muted-foreground" />
+              <span className="text-xs">Immutable NDPR Security & Clinical Audit Ledger</span>
+            </CommandItem>
 
-          <CommandItem
-            onSelect={() => runAction(() => navigate({ to: "/settings" }))}
-            className="flex items-center gap-2.5 cursor-pointer py-2"
-          >
-            <Settings className="size-4 text-muted-foreground" />
-            <span className="text-xs">Hospital Facility Configuration & Department Settings</span>
-          </CommandItem>
-        </CommandGroup>
+            <CommandItem
+              onSelect={() => runAction(() => navigate({ to: "/settings" }))}
+              className="flex items-center gap-2.5 cursor-pointer py-2"
+            >
+              <Settings className="size-4 text-muted-foreground" />
+              <span className="text-xs">Hospital Facility Configuration & Department Settings</span>
+            </CommandItem>
+          </CommandGroup>
+        )}
       </CommandList>
     </CommandDialog>
   );

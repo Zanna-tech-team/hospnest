@@ -19,18 +19,24 @@ async function assertHospitalStaff(
 ): Promise<StaffRole> {
   const { data, error } = await supabase
     .from("user_roles")
-    .select("role, hospital_id")
+    .select("role, hospital_id, module_permissions")
     .eq("user_id", userId)
     .eq("is_active", true);
 
   if (error) throw new Error(error.message);
 
-  const rows = (data ?? []) as { role: StaffRole | "patient"; hospital_id: string | null }[];
+  const rows = (data ?? []) as { role: StaffRole | "patient"; hospital_id: string | null; module_permissions?: string[] }[];
   const superAdmin = rows.find((r) => r.role === "super_admin");
   if (superAdmin) return "super_admin";
 
   const match = rows.find((r) => r.hospital_id === hospitalId && r.role !== "patient");
   if (!match) throw new Error("You are not assigned to this hospital.");
+
+  const perms = Array.isArray(match.module_permissions) ? match.module_permissions : [];
+  const allowed = ["nurse", "hospital_admin", "doctor"].includes(match.role) || perms.includes("front_desk");
+  if (!allowed) {
+    throw new Error("You do not have front-desk patient intake or enrollment privileges.");
+  }
   return match.role as StaffRole;
 }
 

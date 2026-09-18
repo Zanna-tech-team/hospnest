@@ -92,6 +92,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RoleGuard } from "@/components/auth/RoleGuard";
 import {
   Dialog,
   DialogContent,
@@ -386,7 +387,12 @@ export function SuperadminDashboardPage() {
   const kpis = overviewData?.kpis;
 
   return (
-    <div className="min-h-screen bg-background pb-16">
+    <RoleGuard
+      allowedRoles={["super_admin"]}
+      fallbackTitle="National Command Center Restricted"
+      fallbackMessage="Only HospNest platform Super Administrators can access the multi-hospital federated command center."
+    >
+      <div className="min-h-screen bg-background pb-16">
       {/* Top Banner & Header */}
       <div className="border-b border-border bg-card/60 backdrop-blur-md sticky top-0 z-30 px-4 py-4 sm:px-8">
         <div className="mx-auto max-w-7xl flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -2287,5 +2293,6 @@ export function SuperadminDashboardPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </RoleGuard>
   );
 }
