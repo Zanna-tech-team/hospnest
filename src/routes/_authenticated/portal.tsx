@@ -21,6 +21,7 @@ import {
   Activity,
   AlertCircle,
   AlertTriangle,
+  ArrowRight,
   Calendar,
   CalendarPlus,
   Check,
@@ -336,16 +337,16 @@ export function PatientPortalPage() {
         <div className="mx-auto max-w-7xl flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-md font-display text-xl font-bold">
-              {patient.firstName.charAt(0)}
-              {patient.lastName.charAt(0)}
+              {(patient?.firstName || "P").charAt(0)}
+              {(patient?.lastName || "T").charAt(0)}
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="font-display text-2xl font-bold text-foreground">
-                  {patient.fullName}
+                  {patient?.fullName || `${patient?.firstName || "Verified"} ${patient?.lastName || "Patient"}`}
                 </h1>
                 <Badge variant="outline" className="bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20 font-mono text-xs">
-                  NIN: {patient.nin.slice(0, 3)}••••{patient.nin.slice(-3)}
+                  NIN: {patient?.nin ? (patient.nin.length >= 6 ? `${patient.nin.slice(0, 3)}••••${patient.nin.slice(-3)}` : patient.nin) : "Verified Patient"}
                 </Badge>
                 <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20 text-xs">
                   <ShieldCheck className="h-3 w-3 mr-1" />
@@ -353,10 +354,10 @@ export function PatientPortalPage() {
                 </Badge>
               </div>
               <p className="mt-1 text-xs sm:text-sm text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span>DOB: {formatDate(patient.dateOfBirth)}</span>
+                <span>DOB: {formatDate(patient?.dateOfBirth)}</span>
                 <span>•</span>
-                <span>Gender: {patient.gender || "Not specified"}</span>
-                {patient.bloodGroup && (
+                <span>Gender: {patient?.gender || "Not specified"}</span>
+                {patient?.bloodGroup && (
                   <>
                     <span>•</span>
                     <span className="font-semibold text-rose-600 dark:text-rose-400">
@@ -364,7 +365,7 @@ export function PatientPortalPage() {
                     </span>
                   </>
                 )}
-                {patient.genotype && (
+                {patient?.genotype && (
                   <>
                     <span>•</span>
                     <span className="font-semibold text-purple-600 dark:text-purple-400">
@@ -413,18 +414,18 @@ export function PatientPortalPage() {
         </div>
 
         {/* Clinical alerts ribbon if allergies or chronic conditions exist */}
-        {(patient.allergies.length > 0 || patient.chronicConditions.length > 0) && (
+        {((patient?.allergies?.length || 0) > 0 || (patient?.chronicConditions?.length || 0) > 0) && (
           <div className="mx-auto max-w-7xl mt-4 pt-4 border-t border-border flex flex-wrap gap-2 items-center">
             <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1 mr-2">
               <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
               Medical Alerts:
             </span>
-            {patient.allergies.map((allergy, i) => (
+            {(patient?.allergies ?? []).map((allergy, i) => (
               <Badge key={i} variant="destructive" className="text-[11px] font-medium">
                 Allergy: {allergy}
               </Badge>
             ))}
-            {patient.chronicConditions.map((cond, i) => (
+            {(patient?.chronicConditions ?? []).map((cond, i) => (
               <Badge
                 key={i}
                 variant="outline"
