@@ -34,8 +34,8 @@ export function RoleGuard({
     );
   }
 
-  // Super Admin and Hospital Admin always pass
-  if (isSuperAdmin || isAdmin) {
+  // Super Admin and Hospital Admin always pass unrestricted
+  if (isSuperAdmin || isAdmin || role === "super_admin" || role === "hospital_admin") {
     return <>{children}</>;
   }
 

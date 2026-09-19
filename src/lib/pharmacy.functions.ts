@@ -118,7 +118,7 @@ export const getPharmacyInventory = createServerFn({ method: "GET" })
 
     const { data: roleRows, error: roleError } = await supabase
       .from("user_roles")
-      .select("role, hospital_id, module_permissions, hospitals(id, name)")
+      .select("role, hospital_id, hospitals(id, name)")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -134,8 +134,7 @@ export const getPharmacyInventory = createServerFn({ method: "GET" })
     const activeHospitalId = matchedRole?.hospital_id || "";
     const hospitalName = (matchedRole as any)?.hospitals?.name || "Hospital";
     const callerRole = (matchedRole?.role as StaffRole) || "pharmacist";
-    const perms = Array.isArray((matchedRole as any)?.module_permissions) ? (matchedRole as any).module_permissions : [];
-    const canManagePharmacy = ["pharmacist", "hospital_admin", "super_admin", "doctor"].includes(callerRole) || perms.includes("pharmacy");
+    const canManagePharmacy = ["pharmacist", "hospital_admin", "super_admin", "doctor"].includes(callerRole);
 
     if (!canManagePharmacy) {
       throw new Error("Access to pharmacy inventory is restricted to pharmacists, clinicians, or authorized staff.");
@@ -602,7 +601,7 @@ export const getPharmacyDispensingQueue = createServerFn({ method: "GET" })
 
     const { data: roleRows, error: roleError } = await supabase
       .from("user_roles")
-      .select("role, hospital_id, module_permissions, hospitals(id, name)")
+      .select("role, hospital_id, hospitals(id, name)")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -618,9 +617,7 @@ export const getPharmacyDispensingQueue = createServerFn({ method: "GET" })
     const activeHospitalId = matchedRole?.hospital_id || "";
     const hospitalName = (matchedRole as any)?.hospitals?.name || "Hospital";
     const callerRole = (matchedRole?.role as StaffRole) || "pharmacist";
-    const perms = Array.isArray((matchedRole as any)?.module_permissions) ? (matchedRole as any).module_permissions : [];
-    const isClinical = ["doctor", "nurse", "pharmacist", "hospital_admin", "super_admin"].includes(callerRole) || perms.includes("pharmacy");
-    const canDispense = ["pharmacist", "doctor", "hospital_admin", "super_admin"].includes(callerRole) || perms.includes("pharmacy");
+    const canDispense = ["pharmacist", "doctor", "hospital_admin", "super_admin"].includes(callerRole);
 
     if (!canDispense) {
       throw new Error("Access to pharmacy dispensing queue is restricted to pharmacists, clinicians, or authorized staff.");

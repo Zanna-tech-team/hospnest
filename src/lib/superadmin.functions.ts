@@ -6,16 +6,32 @@ async function assertSuperAdmin(
   supabase: { from: (t: string) => any },
   userId: string,
 ): Promise<void> {
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("user_roles")
     .select("role")
     .eq("user_id", userId)
     .eq("is_active", true);
 
-  if (error) throw new Error(error.message);
-
   const roles = (data ?? []).map((r: any) => r.role);
-  const isSuper = roles.includes("super_admin") || roles.includes("superadmin");
+  let isSuper = roles.includes("super_admin") || roles.includes("superadmin");
+
+  if (!isSuper) {
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: adminRoles } = await supabaseAdmin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("is_active", true);
+      const aRoles = (adminRoles ?? []).map((r: any) => r.role);
+      if (aRoles.includes("super_admin") || aRoles.includes("superadmin")) {
+        isSuper = true;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   if (!isSuper) {
     throw new Error("Access restricted: Platform Superadmin authority required.");
   }

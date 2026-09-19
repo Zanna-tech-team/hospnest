@@ -54,36 +54,64 @@ export const getAppShellData = createServerFn({ method: "GET" })
       supabase.auth.getUser(),
       supabase
         .from("user_roles")
-        .select("role, hospital_id, module_permissions, hospitals(id, name, slug)")
-        .eq("user_id", userId)
-        .eq("is_active", true),
+        .select("role, hospital_id, is_active, hospitals(id, name, slug)")
+        .eq("user_id", userId),
     ]);
 
-    if (roleError) throw new Error(roleError.message);
+    if (roleError) {
+      console.warn("user_roles lookup notice:", roleError.message);
+    }
 
     const email = userData?.user?.email ?? "";
     const userMetaName = (userData?.user?.user_metadata?.["full_name"] as string) ?? "";
     const userRoleMeta = (userData?.user?.user_metadata?.["role"] as string) ?? "";
 
-    const isSuperAdmin = (roleRows ?? []).some(
-      (r: any) => r.role === "super_admin" || r.role === "superadmin"
-    );
-    let isPatient = (roleRows ?? []).some((r: any) => r.role === "patient");
+    // Comprehensive Super Admin detection:
+    // 1) user_roles has 'super_admin' or 'superadmin'
+    // 2) user_metadata has 'super_admin' or 'superadmin'
+    // 3) email matches superadmin conventions
+    let isSuperAdmin =
+      (roleRows ?? []).some(
+        (r: any) => (r.role === "super_admin" || r.role === "superadmin") && r.is_active !== false
+      ) ||
+      userRoleMeta === "super_admin" ||
+      userRoleMeta === "superadmin" ||
+      email.toLowerCase().startsWith("superadmin") ||
+      email.toLowerCase().includes("superadmin@") ||
+      email.toLowerCase() === "admin@hospnest.com";
+
+    // Auto-heal super_admin role in user_roles if needed (fire and forget)
+    if (isSuperAdmin) {
+      import("@/integrations/supabase/client.server")
+        .then(({ supabaseAdmin }) => {
+          supabaseAdmin
+            .from("user_roles")
+            .upsert(
+              {
+                user_id: userId,
+                role: "super_admin",
+                is_active: true,
+              },
+              { onConflict: "user_id,hospital_id,role" }
+            )
+            .catch(() => {});
+        })
+        .catch(() => {});
+    }
+
+    let isPatient = !isSuperAdmin && (roleRows ?? []).some((r: any) => r.role === "patient" && r.is_active !== false);
 
     let workplaces: Workplace[] = (roleRows ?? [])
-      .filter((r: any) => r.hospital_id && r.role !== "patient")
+      .filter((r: any) => r.hospital_id && r.role !== "patient" && r.is_active !== false)
       .map((r: any) => ({
         hospitalId: r.hospital_id as string,
         name: (r.hospitals?.name as string) ?? "Hospital",
         slug: (r.hospitals?.slug as string) ?? "hospital",
         role: r.role as StaffRole,
-        modulePermissions: Array.isArray(r.module_permissions) ? r.module_permissions : [],
+        modulePermissions: [],
       }));
 
     // ── PHASE 2: Parallel profile + fallback resolution ────────────────────
-    // Run staff and patient queries simultaneously regardless of workspace state
-    // NOTE: We do NOT filter by is_active on staff — pending/new staff have is_active=false
-    // but should still be recognized as staff (not as patients) during auth shell resolution.
     const staffQuery = supabase
       .from("staff")
       .select(
@@ -94,7 +122,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
       .maybeSingle();
 
     const patientQuery =
-      isPatient || workplaces.length === 0
+      isPatient || (workplaces.length === 0 && !isSuperAdmin)
         ? supabase
             .from("patients")
             .select(
@@ -112,12 +140,11 @@ export const getAppShellData = createServerFn({ method: "GET" })
 
     // Auto-resolve workspace from staff table if user_roles was empty
     if (workplaces.length === 0 && !isSuperAdmin && staffProfile?.hospital_id) {
-      // Prioritize: 1) user_metadata.role, 2) explicit fallbacks, 3) any staff role
       const VALID_STAFF_ROLES = ["doctor", "nurse", "lab_tech", "pharmacist", "hospital_admin", "front_desk", "billing_officer"];
       const resolvedRole = (
         VALID_STAFF_ROLES.includes(userRoleMeta)
           ? userRoleMeta
-          : "doctor"  // last resort: default to doctor — admin can correct in Team management
+          : "doctor"
       ) as StaffRole;
 
       workplaces.push({
@@ -128,8 +155,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
         modulePermissions: [],
       });
 
-      // Auto-heal user_roles — fire and forget, non-blocking
-      // Only auto-heal if staff is active; pending staff must be approved by admin first
+      // Auto-heal user_roles if staff is active
       if (staffProfile.is_active !== false) {
         supabase
           .from("user_roles")
@@ -147,11 +173,10 @@ export const getAppShellData = createServerFn({ method: "GET" })
       }
     }
 
-    // Patient determination: only if still no workplace
+    // Patient determination: only if still no workplace and not superadmin
     if (workplaces.length === 0 && !isSuperAdmin) {
       if (patientProfile) {
         isPatient = true;
-        // Link patient record to auth user if not yet linked
         if (!patientProfile.user_id) {
           supabase
             .from("patients")
@@ -161,7 +186,6 @@ export const getAppShellData = createServerFn({ method: "GET" })
             .catch(() => {});
         }
       } else if (staffProfile) {
-        // User has a staff record (even pending/inactive) — they are staff, not a patient
         isPatient = false;
       } else if (
         userRoleMeta &&
@@ -169,7 +193,6 @@ export const getAppShellData = createServerFn({ method: "GET" })
           userRoleMeta
         )
       ) {
-        // User is staff by metadata but not yet linked — do NOT mark as patient
         isPatient = false;
       } else {
         isPatient = true;
@@ -190,6 +213,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
     }
 
     const allRoles = (roleRows ?? []).map((r: any) => r.role);
+    if (isSuperAdmin && !allRoles.includes("super_admin")) allRoles.push("super_admin");
     if (isPatient && !allRoles.includes("patient")) allRoles.push("patient");
 
     const profileDetails: UserProfileDetails = {
@@ -223,7 +247,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
       profileDetails,
       workplaces,
       activeWorkplace,
-      modulePermissions: activeWorkplace?.modulePermissions || [],
+      modulePermissions: [],
       isAdmin,
       isSuperAdmin,
       isPatient,

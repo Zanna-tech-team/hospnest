@@ -170,7 +170,7 @@ export const getTriageQueue = createServerFn({ method: "GET" })
     // 1. Check user roles
     const { data: roleRows, error: roleError } = await supabase
       .from("user_roles")
-      .select("role, hospital_id, module_permissions, hospitals(id, name)")
+      .select("role, hospital_id, hospitals(id, name)")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -189,9 +189,8 @@ export const getTriageQueue = createServerFn({ method: "GET" })
     const hospitalName = (matchedRole as any)?.hospitals?.name || "Hospital";
     const callerRole = (matchedRole?.role as StaffRole) || "nurse";
     const isSuper = roles.some((r: any) => r.role === "super_admin");
-    const perms = Array.isArray((matchedRole as any)?.module_permissions) ? (matchedRole as any).module_permissions : [];
     const isClinical =
-      isSuper || ["nurse", "doctor", "hospital_admin"].includes(callerRole) || perms.includes("triage");
+      isSuper || ["nurse", "doctor", "hospital_admin"].includes(callerRole);
 
     if (!isClinical) {
       throw new Error("Access to triage workstation is restricted to nursing staff or authorized personnel.");
@@ -392,7 +391,7 @@ export const recordTriageVitals = createServerFn({ method: "POST" })
     // 1. Verify user role & hospital
     const { data: roleRows } = await supabase
       .from("user_roles")
-      .select("role, hospital_id, module_permissions")
+      .select("role, hospital_id")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -408,9 +407,8 @@ export const recordTriageVitals = createServerFn({ method: "POST" })
     const activeHospitalId = matchedRole?.hospital_id || "";
     const callerRole = (matchedRole?.role as StaffRole) || "nurse";
     const isSuper = roles.some((r: any) => r.role === "super_admin");
-    const perms = Array.isArray((matchedRole as any)?.module_permissions) ? (matchedRole as any).module_permissions : [];
     const isClinical =
-      isSuper || ["nurse", "doctor", "hospital_admin"].includes(callerRole) || perms.includes("triage");
+      isSuper || ["nurse", "doctor", "hospital_admin"].includes(callerRole);
 
     if (!isClinical) {
       throw new Error("Only nursing or clinical staff with triage privileges can record vitals.");

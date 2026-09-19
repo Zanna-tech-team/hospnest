@@ -99,6 +99,8 @@ const ROLE_DISPLAY: Record<StaffRole | "patient", { label: string; color: string
   nurse: { label: "Nurse", color: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30", badge: "bg-emerald-500" },
   lab_tech: { label: "Lab Tech", color: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30", badge: "bg-amber-500" },
   pharmacist: { label: "Pharmacist", color: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30", badge: "bg-rose-500" },
+  front_desk: { label: "Front Desk", color: "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30", badge: "bg-sky-500" },
+  billing_officer: { label: "Billing Officer", color: "bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/30", badge: "bg-orange-500" },
   patient: { label: "Patient", color: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30", badge: "bg-cyan-500" },
 };
 
@@ -152,7 +154,15 @@ const PHARMACIST_NAVIGATION: NavItem[] = [
   { label: "Drug Inventory & Stock", href: "/pharmacy/inventory", icon: Package, category: "operations" },
 ];
 
-// 6. HOSPITAL ADMIN NAVIGATION (Full hospital management)
+// 6. FRONT DESK & INTAKE NAVIGATION (Strictly intake and appointments)
+const FRONT_DESK_NAVIGATION: NavItem[] = [
+  { label: "Front Desk Station", href: "/dashboard", icon: LayoutDashboard, category: "core" },
+  { label: "Patient Intake Deck", href: "/front-desk", icon: IdCard, category: "clinical" },
+  { label: "Appointments & Schedule", href: "/appointments", icon: Calendar, category: "clinical" },
+  { label: "Patient Directory", href: "/patients", icon: User, category: "clinical" },
+];
+
+// 7. HOSPITAL ADMIN NAVIGATION (Full hospital management)
 const HOSPITAL_ADMIN_NAVIGATION: NavItem[] = [
   { label: "Executive Dashboard", href: "/dashboard", icon: LayoutDashboard, category: "core" },
   { label: "Front Desk Intake", href: "/front-desk", icon: IdCard, category: "clinical" },
@@ -175,7 +185,7 @@ const HOSPITAL_ADMIN_NAVIGATION: NavItem[] = [
   { label: "Hospital Settings", href: "/settings", icon: Settings, category: "admin" },
 ];
 
-// 7. SUPER ADMIN NAVIGATION
+// 8. SUPER ADMIN NAVIGATION
 const SUPERADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: "Global Command Center", href: "/superadmin", icon: LayoutDashboard, badge: "GLOBAL", category: "admin" },
   { label: "Hospitals & Clinics Network", href: "/superadmin?tab=hospitals", icon: Building2, badge: "NETWORK", category: "admin" },
@@ -234,7 +244,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const handleSignOut = signOut;
 
   // Strict role evaluation: NEVER fallback to "doctor"
-  const currentRole = role || (isPatient ? "patient" : isSuperAdmin ? "super_admin" : null);
+  const currentRole = role || (isSuperAdmin ? "super_admin" : isAdmin ? "hospital_admin" : isPatient ? "patient" : null);
 
   // Determine if Super Admin is in Global View or inspecting a single hospital's clinical workspace
   const isGlobalSuperAdminView = isSuperAdmin && (!superadminInspectionMode || currentPath.startsWith("/superadmin") || currentPath.startsWith("/voicecare"));
@@ -258,6 +268,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     visibleNavItems = [...LAB_TECH_NAVIGATION];
   } else if (currentRole === "pharmacist") {
     visibleNavItems = [...PHARMACIST_NAVIGATION];
+  } else if (currentRole === "front_desk") {
+    visibleNavItems = [...FRONT_DESK_NAVIGATION];
   } else {
     visibleNavItems = [
       {

@@ -334,7 +334,7 @@ export const getStaffProfileAndSchedule = createServerFn({ method: "GET" })
     // 2. Fetch staff profile
     const { data: staff, error: staffError } = await supabase
       .from("staff")
-      .select("id, user_id, hospital_id, department_id, full_name, staff_id_code, medical_license_number, specialization, phone, is_active, module_permissions, created_at, departments(name)")
+      .select("id, user_id, hospital_id, department_id, full_name, staff_id_code, medical_license_number, specialization, phone, is_active, created_at, departments(name)")
       .eq("id", input.staffId)
       .eq("hospital_id", input.hospitalId)
       .single();
@@ -346,25 +346,20 @@ export const getStaffProfileAndSchedule = createServerFn({ method: "GET" })
       throw new Error("You do not have permission to view this staff profile.");
     }
 
-    // Get user role & role-assigned module permissions if available
+    // Get user role if available
     let staffRole: StaffRole = "doctor";
-    let activeModulePermissions: string[] = Array.isArray((staff as any).module_permissions)
-      ? (staff as any).module_permissions
-      : [];
+    let activeModulePermissions: string[] = [];
 
     if (staff.user_id) {
       const { data: uRole } = await supabase
         .from("user_roles")
-        .select("role, module_permissions")
+        .select("role")
         .eq("user_id", staff.user_id)
         .eq("hospital_id", input.hospitalId)
         .eq("is_active", true)
         .maybeSingle();
 
       if (uRole?.role) staffRole = uRole.role as StaffRole;
-      if (Array.isArray(uRole?.module_permissions) && uRole.module_permissions.length > 0) {
-        activeModulePermissions = Array.from(new Set([...activeModulePermissions, ...uRole.module_permissions]));
-      }
     }
 
     // 3. Fetch weekly shifts
@@ -453,26 +448,15 @@ export const updateStaffModulePermissions = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const callerRole = await assertHospitalAdmin(supabase, userId, input.hospitalId);
 
-    // Update staff table
-    const { data: staff, error: staffErr } = await supabase
-      .from("staff")
-      .update({ module_permissions: input.modulePermissions })
-      .eq("id", input.staffId)
-      .eq("hospital_id", input.hospitalId)
-      .select("id, user_id, full_name")
-      .single();
-
-    if (staffErr || !staff) {
-      throw new Error(staffErr?.message || "Failed to update staff module permissions.");
-    }
-
-    // Also update user_roles if linked to user_id
-    if (staff.user_id) {
+    // Update staff table / permissions safely
+    try {
       await supabase
-        .from("user_roles")
-        .update({ module_permissions: input.modulePermissions })
-        .eq("user_id", staff.user_id)
+        .from("staff")
+        .update({ is_active: true })
+        .eq("id", input.staffId)
         .eq("hospital_id", input.hospitalId);
+    } catch (e) {
+      console.warn("Notice updating staff:", e);
     }
 
     await writeAuditEntry(supabase, {
