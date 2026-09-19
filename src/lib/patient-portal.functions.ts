@@ -338,7 +338,6 @@ export const selfRegisterNewPatientAccount = createServerFn({ method: "POST" })
           allergies: input.allergies,
           chronic_conditions: input.chronicConditions,
           emergency_contact: emergencyContactObj,
-          is_active: true,
         })
         .select("id")
         .single();
@@ -614,8 +613,11 @@ export const getPatientPortalDashboardData = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<PatientPortalDashboardResponse> => {
     const { supabase, userId } = context;
 
-    // 1. Fetch Patient Record for signed-in user
-    const { data: patientRow, error: pErr } = await (supabase as any)
+    // 1. Fetch Patient Record for signed-in user or by matching email
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email?.toLowerCase() ?? "";
+
+    let { data: patientRow, error: pErr } = await (supabase as any)
       .from("patients")
       .select(`
         id, nin, first_name, last_name, date_of_birth, gender, phone, email,
@@ -626,8 +628,61 @@ export const getPatientPortalDashboardData = createServerFn({ method: "GET" })
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (pErr || !patientRow) {
-      throw new Error("No linked patient record found for this account. Please verify your NIN at registration.");
+    if (!patientRow && userEmail) {
+      const { data: pByEmail } = await (supabase as any)
+        .from("patients")
+        .select(`
+          id, nin, first_name, last_name, date_of_birth, gender, phone, email,
+          blood_group, genotype, allergies, chronic_conditions, emergency_contact,
+          insurance_provider, insurance_policy_number, insurance_plan_type, insurance_expiry_date,
+          created_at
+        `)
+        .eq("email", userEmail)
+        .maybeSingle();
+
+      if (pByEmail) {
+        patientRow = pByEmail;
+        try {
+          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+          await supabaseAdmin.from("patients").update({ user_id: userId }).eq("id", pByEmail.id);
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (!patientRow) {
+      // Return clean initial portal state for unlinked accounts
+      const fallbackPatient = {
+        id: "00000000-0000-0000-0000-000000000000",
+        nin: "UNLINKED",
+        fullName: userData?.user?.user_metadata?.["full_name"] || userEmail.split("@")[0] || "Patient",
+        firstName: userData?.user?.user_metadata?.["full_name"] || "Patient",
+        lastName: "",
+        dateOfBirth: "2000-01-01",
+        gender: "other",
+        phone: null,
+        email: userEmail,
+        bloodGroup: null,
+        genotype: null,
+        allergies: [],
+        chronicConditions: [],
+        emergencyContact: null,
+        insuranceProvider: null,
+        insurancePolicyNumber: null,
+        insurancePlanType: null,
+        insuranceExpiryDate: null,
+        registeredAt: new Date().toISOString(),
+      };
+      return {
+        patient: fallbackPatient,
+        upcomingAppointments: [],
+        recentEncounters: [],
+        recentLabResults: [],
+        activePrescriptions: [],
+        invoices: [],
+        availableHospitals: [],
+      };
     }
 
     const patientId = patientRow.id;
