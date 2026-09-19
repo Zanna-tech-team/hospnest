@@ -31,6 +31,7 @@ import {
   User,
   Users,
 } from "lucide-react";
+import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -347,8 +348,14 @@ function MaternityDepartmentPage() {
   );
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header */}
+    <RoleGuard
+      allowedRoles={["doctor", "nurse", "hospital_admin", "super_admin"]}
+      requiredPermission="maternity"
+      fallbackTitle="Maternity & ANC Ward Restricted"
+      fallbackMessage="Maternal and child health records, antenatal visits, delivery logs, and neonatal immunizations are restricted to licensed Obstetricians, Doctors, Midwives, Nurses, and Hospital Administrators."
+    >
+      <div className="space-y-6 pb-12">
+        {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-wider">
@@ -1341,6 +1348,7 @@ function MaternityDepartmentPage() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </RoleGuard>
   );
 }

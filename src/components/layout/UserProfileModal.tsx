@@ -19,13 +19,14 @@ import {
 } from "lucide-react";
 import type { AppShellData } from "@/lib/auth-shell.functions";
 import type { StaffRole } from "@/lib/team.functions";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface UserProfileModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   shellData?: AppShellData | undefined;
-  currentRole: StaffRole | "patient";
-  onSignOut: () => void;
+  currentRole?: StaffRole | "patient";
+  onSignOut?: () => void;
 }
 
 const ROLE_META: Record<StaffRole | "patient", { label: string; bg: string; text: string; border: string; desc: string }> = {
@@ -83,15 +84,20 @@ const ROLE_META: Record<StaffRole | "patient", { label: string; bg: string; text
 export function UserProfileModal({
   open,
   onOpenChange,
-  shellData,
-  currentRole,
-  onSignOut,
+  shellData: propsShellData,
+  currentRole: propsCurrentRole,
+  onSignOut: propsOnSignOut,
 }: UserProfileModalProps) {
-  const profile = shellData?.profileDetails;
-  const user = shellData?.user;
-  const activeHospital = shellData?.activeWorkplace;
-  const roleInfo = ROLE_META[currentRole] || {
-    label: currentRole,
+  const auth = useAuth();
+  const shellData = propsShellData || auth.shellData;
+  const currentRole = propsCurrentRole || auth.role || (auth.isPatient ? "patient" : auth.isSuperAdmin ? "super_admin" : null);
+  const onSignOut = propsOnSignOut || auth.signOut;
+
+  const profile = shellData?.profileDetails || auth.profile;
+  const user = shellData?.user || auth.user;
+  const activeHospital = shellData?.activeWorkplace || auth.activeWorkplace;
+  const roleInfo = (currentRole && ROLE_META[currentRole]) || {
+    label: currentRole ? currentRole.replace("_", " ").toUpperCase() : "Clinical Member",
     bg: "bg-muted",
     text: "text-foreground",
     border: "border-border",
@@ -101,7 +107,7 @@ export function UserProfileModal({
   const displayName = profile?.fullName || user?.fullName || "Staff Member";
   const displayEmail = profile?.email || user?.email || "user@hospnest.org";
   const initial = displayName.charAt(0).toUpperCase() || "U";
-  const permissions = shellData?.modulePermissions || [];
+  const permissions = shellData?.modulePermissions || auth.modulePermissions || [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

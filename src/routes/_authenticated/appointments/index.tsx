@@ -32,6 +32,7 @@ import {
   ArrowRight,
   Mic,
 } from "lucide-react";
+import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -446,8 +447,14 @@ function AppointmentsCalendarPage() {
   const { doctors, departments, stats } = calendarData || { doctors: [], departments: [], stats: {} as any };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 space-y-6">
-      {/* 1. Page Header & Primary Actions */}
+    <RoleGuard
+      allowedRoles={["doctor", "nurse", "hospital_admin", "super_admin"]}
+      requiredPermission="appointments"
+      fallbackTitle="Clinical Scheduling Restricted"
+      fallbackMessage="Outpatient booking and doctor consultation calendars are restricted to authorized clinical and administrative personnel."
+    >
+      <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 space-y-6">
+        {/* 1. Page Header & Primary Actions */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/50 pb-5">
         <div>
           <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
@@ -1178,6 +1185,7 @@ function AppointmentsCalendarPage() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </RoleGuard>
   );
 }
