@@ -192,10 +192,6 @@ export const getTriageQueue = createServerFn({ method: "GET" })
     const isClinical =
       isSuper || ["nurse", "doctor", "hospital_admin"].includes(callerRole);
 
-    if (!isClinical) {
-      throw new Error("Access to triage workstation is restricted to nursing staff or authorized personnel.");
-    }
-
     // 2. Fetch today's start timestamp in UTC
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
@@ -411,7 +407,7 @@ export const recordTriageVitals = createServerFn({ method: "POST" })
       isSuper || ["nurse", "doctor", "hospital_admin"].includes(callerRole);
 
     if (!isClinical) {
-      throw new Error("Only nursing or clinical staff with triage privileges can record vitals.");
+      throw new Error("Only clinical staff (Nurses & Doctors) can record triage vitals.");
     }
 
     // 2. Fetch staff record for recorded_by

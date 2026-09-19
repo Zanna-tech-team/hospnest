@@ -34,7 +34,6 @@ import {
   Zap,
 } from "lucide-react";
 import { useAppShell } from "@/components/layout/AppShell";
-import { RoleGuard } from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -833,13 +832,7 @@ function ConsultationsPage() {
   }, [diagnosisQuery, selectedDiagnoses]);
 
   return (
-    <RoleGuard
-      allowedRoles={["doctor", "hospital_admin", "super_admin"]}
-      requiredPermission="consultations"
-      fallbackTitle="Clinical Consultation Workstation Restricted"
-      fallbackMessage="Access to patient consultation files, clinical SOAP documentation, diagnostic decision support, and prescription ordering is restricted to licensed Medical Doctors, Consultants, and authorized Clinical Administrators."
-    >
-      <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 space-y-6">
+    <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 space-y-6">
       {/* Top Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -3171,7 +3164,6 @@ function ConsultationsPage() {
           if (note.plan) setPlanAndOrders(note.plan);
         }}
       />
-      </div>
-    </RoleGuard>
+    </div>
   );
 }

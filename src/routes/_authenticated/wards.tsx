@@ -31,7 +31,6 @@ import {
 } from "lucide-react";
 import { PrintableDocumentModal } from "@/components/clinical-docs/PrintableDocumentModal";
 import { DischargeSummaryDocument } from "@/components/clinical-docs/DischargeSummaryDocument";
-import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -318,14 +317,8 @@ function WardManagementPage() {
   };
 
   return (
-    <RoleGuard
-      allowedRoles={["doctor", "nurse", "hospital_admin", "super_admin"]}
-      requiredPermission="wards"
-      fallbackTitle="Ward Bed Management Restricted"
-      fallbackMessage="Inpatient bed allocation, admissions, and ward transfers are restricted to authorized Clinical Doctors, Ward Nurses, and Hospital Administrators."
-    >
-      <div className="space-y-6 pb-16">
-        {/* Header */}
+    <div className="space-y-6 pb-16">
+      {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-2.5">
@@ -1346,7 +1339,6 @@ function WardManagementPage() {
           />
         </PrintableDocumentModal>
       )}
-      </div>
-    </RoleGuard>
+    </div>
   );
 }

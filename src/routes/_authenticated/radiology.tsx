@@ -28,7 +28,6 @@ import {
   ChevronRight,
   Printer,
 } from "lucide-react";
-import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,14 +150,8 @@ function RadiologyDepartmentPage() {
   }
 
   return (
-    <RoleGuard
-      allowedRoles={["hospital_admin", "super_admin"]}
-      requiredPermission="radiology"
-      fallbackTitle="Radiology & Imaging Suite Restricted"
-      fallbackMessage="Diagnostic imaging, DICOM reports, and PACS radiology studies are restricted to licensed Radiologists and authorized Clinical Administrators."
-    >
-      <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 space-y-6">
-        {/* 1. Header Bar */}
+    <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 space-y-6">
+      {/* 1. Header Bar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/50 pb-5">
         <div>
           <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
@@ -439,7 +432,6 @@ function RadiologyDepartmentPage() {
           />
         </PrintableDocumentModal>
       )}
-      </div>
-    </RoleGuard>
+    </div>
   );
 }

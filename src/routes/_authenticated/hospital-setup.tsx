@@ -278,18 +278,6 @@ function HospitalSetupWizardPage() {
     }
   }, [progressData?.hospital?.id]);
 
-  useEffect(() => {
-    if (shellData?.user?.fullName && !quickAdminName) {
-      setQuickAdminName(shellData.user.fullName);
-    }
-  }, [shellData?.user?.fullName, quickAdminName]);
-
-  useEffect(() => {
-    if (!hospName && myHospitalsData?.hospitals?.[0]?.name) {
-      setHospName(myHospitalsData.hospitals[0].name);
-    }
-  }, [myHospitalsData?.hospitals, hospName]);
-
   // Initial preset selection for departments if empty
   useEffect(() => {
     if (selectedDepartments.length === 0) {
@@ -436,8 +424,8 @@ function HospitalSetupWizardPage() {
     );
   };
 
-  const handleQuickOnboardSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
-    if (e?.preventDefault) e.preventDefault();
+  const handleQuickOnboardSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!hospName.trim()) {
       toast.error("Please enter the hospital name.");
       return;
@@ -450,7 +438,10 @@ function HospitalSetupWizardPage() {
       toast.error("Please select a state of operation.");
       return;
     }
-    const adminName = quickAdminName.trim() || shellData?.user?.fullName || "Hospital Administrator";
+    if (!quickAdminName.trim()) {
+      toast.error("Please enter the administrator's full name.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -465,7 +456,7 @@ function HospitalSetupWizardPage() {
           address: address.trim() || undefined,
           contactEmail: contactEmail.trim() || undefined,
           contactPhone: contactPhone.trim() || undefined,
-          adminFullName: adminName,
+          adminFullName: quickAdminName.trim(),
           consultationFee: parseFloat(quickConsultationFee) || 3000,
           specialistFee: parseFloat(quickSpecialistFee) || 7500,
           slotDurationMinutes: parseInt(quickSlotDuration, 10) || 30,
@@ -490,10 +481,6 @@ function HospitalSetupWizardPage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleQuickRegister = async (e?: React.FormEvent | React.MouseEvent) => {
-    return handleQuickOnboardSubmit(e);
   };
 
   const copyBookingUrl = () => {

@@ -19,7 +19,6 @@ import {
   Users,
 } from "lucide-react";
 
-import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAppShell } from "@/components/layout/AppShell";
 import {
   getPatientsDirectory,
@@ -79,14 +78,8 @@ function PatientsDirectoryPage() {
   });
 
   return (
-    <RoleGuard
-      allowedRoles={["doctor", "nurse", "hospital_admin", "super_admin"]}
-      requiredPermission="patients"
-      fallbackTitle="Patient Directory Restricted"
-      fallbackMessage="Patient health directories, electronic medical records, and national histories are restricted to licensed clinical staff and hospital administrators."
-    >
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-8">
-        {/* Page Header */}
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-8">
+      {/* Page Header */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
           <div className="flex items-center gap-2.5">
@@ -300,7 +293,6 @@ function PatientsDirectoryPage() {
           </div>
         )}
       </div>
-      </div>
-    </RoleGuard>
+    </div>
   );
 }

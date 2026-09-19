@@ -1,6 +1,7 @@
 import { useState, createContext, useContext } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import {
   Activity,
   ArrowRightLeft,
@@ -48,7 +49,8 @@ import {
   Globe,
 } from "lucide-react";
 
-import type { AppShellData, Workplace } from "@/lib/auth-shell.functions";
+import { supabase } from "@/integrations/supabase/client";
+import { getAppShellData, type AppShellData, type Workplace } from "@/lib/auth-shell.functions";
 import type { StaffRole } from "@/lib/team.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -70,7 +72,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { GlobalCommandPalette } from "@/components/navigation/GlobalCommandPalette";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
-import { UserProfileModal } from "@/components/layout/UserProfileModal";
 import logo from "@/assets/hospnest-logo.png.asset.json";
 
 type AppShellContextType = {
@@ -99,8 +100,6 @@ const ROLE_DISPLAY: Record<StaffRole | "patient", { label: string; color: string
   nurse: { label: "Nurse", color: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30", badge: "bg-emerald-500" },
   lab_tech: { label: "Lab Tech", color: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30", badge: "bg-amber-500" },
   pharmacist: { label: "Pharmacist", color: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30", badge: "bg-rose-500" },
-  front_desk: { label: "Front Desk", color: "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30", badge: "bg-sky-500" },
-  billing_officer: { label: "Billing Officer", color: "bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/30", badge: "bg-orange-500" },
   patient: { label: "Patient", color: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30", badge: "bg-cyan-500" },
 };
 
@@ -108,191 +107,254 @@ type NavItem = {
   label: string;
   href: string;
   icon: any;
-  badge?: string | undefined;
+  roles?: StaffRole[] | undefined;
+  patientOnly?: boolean | undefined;
   category?: "core" | "clinical" | "operations" | "admin" | undefined;
+  badge?: string | undefined;
 };
 
-// 1. PATIENT NAVIGATION (Isolated strictly to patient features)
-const PATIENT_NAVIGATION: NavItem[] = [
-  { label: "My Health Portal", href: "/portal", icon: HeartPulse, category: "core" },
-  { label: "Book Appointment", href: "/portal", icon: Calendar, category: "clinical" },
-  { label: "My Prescriptions", href: "/portal", icon: Pill, category: "operations" },
-  { label: "My Invoices & Bills", href: "/portal", icon: CreditCard, category: "operations" },
+const NAVIGATION_ITEMS: NavItem[] = [
+  {
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    category: "core",
+  },
+  {
+    label: "My Health Portal",
+    href: "/portal",
+    icon: HeartPulse,
+    patientOnly: true,
+    category: "core",
+  },
+  {
+    label: "VoiceCare Platform",
+    href: "/voicecare",
+    icon: Mic,
+    badge: "VOICE",
+    category: "core",
+  },
+  {
+    label: "Front Desk Intake",
+    href: "/front-desk",
+    icon: IdCard,
+    category: "clinical",
+  },
+  {
+    label: "Appointments & Scheduling",
+    href: "/appointments",
+    icon: Calendar,
+    category: "clinical",
+  },
+  {
+    label: "Patients Directory",
+    href: "/patients",
+    icon: User,
+    category: "clinical",
+  },
+  {
+    label: "Triage & Vitals",
+    href: "/triage",
+    icon: Activity,
+    category: "clinical",
+  },
+  {
+    label: "Consultations",
+    href: "/consultations",
+    icon: Stethoscope,
+    category: "clinical",
+  },
+  {
+    label: "Inpatient Admissions",
+    href: "/admissions",
+    icon: Bed,
+    category: "clinical",
+  },
+  {
+    label: "Ward & Bed Matrix",
+    href: "/wards",
+    icon: Building2,
+    category: "clinical",
+  },
+  {
+    label: "Maternity & ANC",
+    href: "/maternity",
+    icon: Baby,
+    category: "clinical",
+  },
+  {
+    label: "Patient Transfers",
+    href: "/transfers",
+    icon: ArrowRightLeft,
+    category: "clinical",
+  },
+  {
+    label: "Radiology & Imaging",
+    href: "/radiology",
+    icon: Scan,
+    category: "operations",
+  },
+  {
+    label: "Laboratory",
+    href: "/lab",
+    icon: FlaskConical,
+    category: "operations",
+  },
+  {
+    label: "Pharmacy Dispensary",
+    href: "/pharmacy",
+    icon: Pill,
+    category: "operations",
+  },
+  {
+    label: "Drug Inventory",
+    href: "/pharmacy/inventory",
+    icon: Package,
+    category: "operations",
+  },
+  {
+    label: "Billing & Claims",
+    href: "/billing",
+    icon: CreditCard,
+    category: "operations",
+  },
+  {
+    label: "Staff & Roster",
+    href: "/team",
+    icon: Users,
+    roles: ["hospital_admin", "super_admin"],
+    category: "admin",
+  },
+  {
+    label: "Reports & Analytics",
+    href: "/reports",
+    icon: FileSpreadsheet,
+    roles: ["hospital_admin", "super_admin"],
+    category: "admin",
+  },
+  {
+    label: "Audit Ledger",
+    href: "/audit",
+    icon: ShieldCheck,
+    roles: ["hospital_admin", "super_admin"],
+    category: "admin",
+  },
+  {
+    label: "Super Admin Platform",
+    href: "/superadmin",
+    icon: ShieldAlert,
+    roles: ["super_admin"],
+    category: "admin",
+    badge: "GLOBAL",
+  },
+  {
+    label: "Hospital Settings",
+    href: "/settings",
+    icon: Settings,
+    category: "admin",
+  },
 ];
 
-// 2. DOCTOR NAVIGATION (Isolated to clinical practice)
-const DOCTOR_NAVIGATION: NavItem[] = [
-  { label: "Clinical Dashboard", href: "/dashboard", icon: LayoutDashboard, category: "core" },
-  { label: "Consultations & SOAP", href: "/consultations", icon: Stethoscope, category: "clinical" },
-  { label: "Patient Directory", href: "/patients", icon: User, category: "clinical" },
-  { label: "Inpatient Admissions", href: "/admissions", icon: Bed, category: "clinical" },
-  { label: "Maternity & ANC", href: "/maternity", icon: Baby, category: "clinical" },
-  { label: "VoiceCare AI Assistant", href: "/voicecare", icon: Mic, badge: "VOICE", category: "core" },
-];
-
-// 3. NURSE NAVIGATION (Includes triage and patient intake deck)
-const NURSE_NAVIGATION: NavItem[] = [
-  { label: "Nursing Station", href: "/dashboard", icon: LayoutDashboard, category: "core" },
-  { label: "Triage & Vitals Queue", href: "/triage", icon: Activity, category: "clinical" },
-  { label: "Front Desk & Intake Deck", href: "/front-desk", icon: IdCard, category: "clinical" },
-  { label: "Ward & Bed Management", href: "/wards", icon: Building2, category: "clinical" },
-  { label: "Inpatient Admissions", href: "/admissions", icon: Bed, category: "clinical" },
-  { label: "Patient Directory", href: "/patients", icon: User, category: "clinical" },
-  { label: "Maternity & ANC", href: "/maternity", icon: Baby, category: "clinical" },
-];
-
-// 4. LAB TECHNICIAN NAVIGATION (Strictly laboratory diagnostics)
-const LAB_TECH_NAVIGATION: NavItem[] = [
-  { label: "Lab Diagnostic Hub", href: "/dashboard", icon: LayoutDashboard, category: "core" },
-  { label: "Lab Worklist & Tests", href: "/lab", icon: FlaskConical, category: "operations" },
-];
-
-// 5. PHARMACIST NAVIGATION (Strictly dispensary & inventory)
-const PHARMACIST_NAVIGATION: NavItem[] = [
-  { label: "Pharmacy Operations", href: "/dashboard", icon: LayoutDashboard, category: "core" },
-  { label: "Prescription Dispensary", href: "/pharmacy", icon: Pill, category: "operations" },
-  { label: "Drug Inventory & Stock", href: "/pharmacy/inventory", icon: Package, category: "operations" },
-];
-
-// 6. FRONT DESK & INTAKE NAVIGATION (Strictly intake and appointments)
-const FRONT_DESK_NAVIGATION: NavItem[] = [
-  { label: "Front Desk Station", href: "/dashboard", icon: LayoutDashboard, category: "core" },
-  { label: "Patient Intake Deck", href: "/front-desk", icon: IdCard, category: "clinical" },
-  { label: "Appointments & Schedule", href: "/appointments", icon: Calendar, category: "clinical" },
-  { label: "Patient Directory", href: "/patients", icon: User, category: "clinical" },
-];
-
-// 7. HOSPITAL ADMIN NAVIGATION (Full hospital management)
-const HOSPITAL_ADMIN_NAVIGATION: NavItem[] = [
-  { label: "Executive Dashboard", href: "/dashboard", icon: LayoutDashboard, category: "core" },
-  { label: "Front Desk Intake", href: "/front-desk", icon: IdCard, category: "clinical" },
-  { label: "Appointments & Schedule", href: "/appointments", icon: Calendar, category: "clinical" },
-  { label: "Patient Directory", href: "/patients", icon: User, category: "clinical" },
-  { label: "Triage & Vitals", href: "/triage", icon: Activity, category: "clinical" },
-  { label: "Consultations", href: "/consultations", icon: Stethoscope, category: "clinical" },
-  { label: "Inpatient Admissions", href: "/admissions", icon: Bed, category: "clinical" },
-  { label: "Wards & Bed Matrix", href: "/wards", icon: Building2, category: "clinical" },
-  { label: "Maternity & ANC", href: "/maternity", icon: Baby, category: "clinical" },
-  { label: "Patient Transfers", href: "/transfers", icon: ArrowRightLeft, category: "clinical" },
-  { label: "Radiology & Imaging", href: "/radiology", icon: Scan, category: "operations" },
-  { label: "Laboratory", href: "/lab", icon: FlaskConical, category: "operations" },
-  { label: "Pharmacy Dispensary", href: "/pharmacy", icon: Pill, category: "operations" },
-  { label: "Drug Inventory", href: "/pharmacy/inventory", icon: Package, category: "operations" },
-  { label: "Billing & Claims", href: "/billing", icon: CreditCard, category: "operations" },
-  { label: "Staff & Roster", href: "/team", icon: Users, category: "admin" },
-  { label: "Reports & Analytics", href: "/reports", icon: FileSpreadsheet, category: "admin" },
-  { label: "Audit Ledger", href: "/audit", icon: ShieldCheck, category: "admin" },
-  { label: "Hospital Settings", href: "/settings", icon: Settings, category: "admin" },
-];
-
-// 8. SUPER ADMIN NAVIGATION
 const SUPERADMIN_NAVIGATION_ITEMS: NavItem[] = [
-  { label: "Global Command Center", href: "/superadmin", icon: LayoutDashboard, badge: "GLOBAL", category: "admin" },
-  { label: "Hospitals & Clinics Network", href: "/superadmin?tab=hospitals", icon: Building2, badge: "NETWORK", category: "admin" },
-  { label: "VoiceCare Platform & Labs", href: "/voicecare", icon: Mic, badge: "VOICE", category: "core" },
-  { label: "Platform Users & Roles", href: "/superadmin?tab=users", icon: Users, category: "admin" },
-  { label: "Emergency Break-Glass Ledger", href: "/superadmin?tab=breakglass", icon: ShieldAlert, badge: "OVERSIGHT", category: "admin" },
-  { label: "Cryptographic Audit Ledger", href: "/superadmin?tab=audit", icon: ShieldCheck, badge: "SHA-256", category: "admin" },
-  { label: "Platform Tiers & Policies", href: "/superadmin?tab=settings", icon: Settings, category: "admin" },
+  {
+    label: "Global Command Center",
+    href: "/superadmin",
+    icon: LayoutDashboard,
+    badge: "GLOBAL",
+    category: "admin",
+  },
+  {
+    label: "Hospitals & Clinics Network",
+    href: "/superadmin?tab=hospitals",
+    icon: Building2,
+    badge: "NETWORK",
+    category: "admin",
+  },
+  {
+    label: "VoiceCare Platform & Labs",
+    href: "/voicecare",
+    icon: Mic,
+    badge: "VOICE",
+    category: "core",
+  },
+  {
+    label: "Platform Users & Roles",
+    href: "/superadmin?tab=users",
+    icon: Users,
+    category: "admin",
+  },
+  {
+    label: "Emergency Break-Glass Ledger",
+    href: "/superadmin?tab=breakglass",
+    icon: ShieldAlert,
+    badge: "OVERSIGHT",
+    category: "admin",
+  },
+  {
+    label: "Cryptographic Audit Ledger",
+    href: "/superadmin?tab=audit",
+    icon: ShieldCheck,
+    badge: "SHA-256",
+    category: "admin",
+  },
+  {
+    label: "Platform Tiers & Policies",
+    href: "/superadmin?tab=settings",
+    icon: Settings,
+    category: "admin",
+  },
 ];
-
-const DELEGATED_MODULE_LOOKUP: Record<string, NavItem> = {
-  front_desk: { label: "Front Desk Intake", href: "/front-desk", icon: IdCard, category: "clinical" },
-  appointments: { label: "Appointments", href: "/appointments", icon: Calendar, category: "clinical" },
-  patients: { label: "Patient Directory", href: "/patients", icon: User, category: "clinical" },
-  triage: { label: "Triage & Vitals", href: "/triage", icon: Activity, category: "clinical" },
-  consultations: { label: "Consultations", href: "/consultations", icon: Stethoscope, category: "clinical" },
-  admissions: { label: "Inpatient Admissions", href: "/admissions", icon: Bed, category: "clinical" },
-  wards: { label: "Wards & Bed Matrix", href: "/wards", icon: Building2, category: "clinical" },
-  maternity: { label: "Maternity & ANC", href: "/maternity", icon: Baby, category: "clinical" },
-  transfers: { label: "Patient Transfers", href: "/transfers", icon: ArrowRightLeft, category: "clinical" },
-  radiology: { label: "Radiology & Imaging", href: "/radiology", icon: Scan, category: "operations" },
-  lab: { label: "Laboratory", href: "/lab", icon: FlaskConical, category: "operations" },
-  pharmacy: { label: "Pharmacy Dispensary", href: "/pharmacy", icon: Pill, category: "operations" },
-  billing: { label: "Billing & Claims", href: "/billing", icon: CreditCard, category: "operations" },
-  team: { label: "Staff & Roster", href: "/team", icon: Users, category: "admin" },
-  voicecare: { label: "VoiceCare AI", href: "/voicecare", icon: Mic, badge: "VOICE", category: "core" },
-};
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouterState();
   const currentPath = router.location.pathname;
 
+  const [selectedHospitalId, setSelectedHospitalId] = useState<string>("");
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [superadminInspectionMode, setSuperadminInspectionMode] = useState<boolean>(false);
 
-  const {
-    user,
-    role,
-    activeHospitalId,
-    setActiveHospitalId,
-    shellData,
-    profile,
-    workplaces,
-    activeWorkplace,
-    modulePermissions,
-    isAdmin,
-    isSuperAdmin,
-    isPatient,
-    isLoading,
-    signOut,
-  } = useAuth();
+  const shellFn = useServerFn(getAppShellData);
+  const { data: shellData, isLoading } = useQuery({
+    queryKey: ["app-shell-data", selectedHospitalId],
+    queryFn: () => shellFn({ data: { hospitalId: selectedHospitalId || undefined } }),
+  });
 
-  const handleSignOut = signOut;
+  const activeHospitalId = selectedHospitalId || shellData?.activeWorkplace?.hospitalId || "";
+  const isPatientUser = Boolean(shellData?.isPatient);
+  const isSuperAdmin = Boolean(shellData?.isSuperAdmin);
+  const hasStaffWorkplaces = (shellData?.workplaces?.length ?? 0) > 0;
+  const currentRole = shellData?.activeWorkplace?.role || (isPatientUser ? "patient" : isSuperAdmin ? "super_admin" : "doctor");
+  const isAdmin = shellData?.isAdmin || false;
 
-  // Strict role evaluation: NEVER fallback to "doctor"
-  const currentRole = role || (isSuperAdmin ? "super_admin" : isAdmin ? "hospital_admin" : isPatient ? "patient" : null);
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/auth";
+  };
 
   // Determine if Super Admin is in Global View or inspecting a single hospital's clinical workspace
   const isGlobalSuperAdminView = isSuperAdmin && (!superadminInspectionMode || currentPath.startsWith("/superadmin") || currentPath.startsWith("/voicecare"));
 
-  // Strictly isolated navigation based on role
-  let visibleNavItems: NavItem[] = [];
+  // Filter navigation items by role
+  const visibleNavItems = isGlobalSuperAdminView
+    ? SUPERADMIN_NAVIGATION_ITEMS
+    : NAVIGATION_ITEMS.filter((item) => {
+        if (item.href === "/superadmin") {
+          return isSuperAdmin;
+        }
+        if (item.patientOnly) {
+          return isPatientUser || !hasStaffWorkplaces;
+        }
+        if (!hasStaffWorkplaces && isPatientUser) {
+          return false;
+        }
+        if (!item.roles) return true;
+        return item.roles.includes(currentRole as StaffRole) || (isAdmin && item.roles.includes("hospital_admin"));
+      });
 
-  if (isLoading) {
-    visibleNavItems = [];
-  } else if (isPatient) {
-    visibleNavItems = PATIENT_NAVIGATION;
-  } else if (isGlobalSuperAdminView) {
-    visibleNavItems = SUPERADMIN_NAVIGATION_ITEMS;
-  } else if (isAdmin || currentRole === "hospital_admin") {
-    visibleNavItems = HOSPITAL_ADMIN_NAVIGATION;
-  } else if (currentRole === "doctor") {
-    visibleNavItems = [...DOCTOR_NAVIGATION];
-  } else if (currentRole === "nurse") {
-    visibleNavItems = [...NURSE_NAVIGATION];
-  } else if (currentRole === "lab_tech") {
-    visibleNavItems = [...LAB_TECH_NAVIGATION];
-  } else if (currentRole === "pharmacist") {
-    visibleNavItems = [...PHARMACIST_NAVIGATION];
-  } else if (currentRole === "front_desk") {
-    visibleNavItems = [...FRONT_DESK_NAVIGATION];
-  } else {
-    visibleNavItems = [
-      {
-        label: "My Station",
-        href: "/dashboard",
-        icon: LayoutDashboard,
-        category: "core",
-      },
-    ];
-  }
-
-  // Dynamic delegated permissions: If staff has module assigned by admin, append it if not already in list
-  if (!isPatient && !isAdmin && !isSuperAdmin && modulePermissions.length > 0) {
-    for (const perm of modulePermissions) {
-      const extraItem = DELEGATED_MODULE_LOOKUP[perm];
-      if (extraItem && !visibleNavItems.some((it) => it.href === extraItem.href)) {
-        visibleNavItems.push(extraItem);
-      }
-    }
-  }
-
-  const roleMeta = (currentRole && ROLE_DISPLAY[currentRole]) || {
-    label: currentRole ? currentRole.replace("_", " ").toUpperCase() : "Clinical Member",
+  const roleMeta = ROLE_DISPLAY[currentRole] || {
+    label: currentRole,
     color: "bg-muted text-foreground border-border",
     badge: "bg-teal-500",
   };
@@ -303,13 +365,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
   const currentTitle = isGlobalSuperAdminView && currentPath.startsWith("/superadmin")
     ? "National Platform Control Center"
-    : currentNav?.label || (isPatient ? "Patient Health Portal" : "Workspace");
+    : currentNav?.label || "Workspace";
 
   return (
     <AppShellContext.Provider
       value={{
         activeHospitalId,
-        setActiveHospitalId,
+        setActiveHospitalId: setSelectedHospitalId,
         shellData,
         isLoading,
         isCollapsed,
@@ -362,29 +424,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="p-3 border-b border-border/60">
             {isLoading ? (
               <div className="h-10 animate-pulse rounded-xl bg-muted" />
-            ) : isPatient ? (
-              isCollapsed ? (
-                <div
-                  className="flex size-10 mx-auto items-center justify-center rounded-xl font-bold text-xs bg-teal-500/10 text-teal-600"
-                  title="Patient Health Portal"
-                >
-                  <HeartPulse className="size-4" />
-                </div>
-              ) : (
-                <div className="flex items-center gap-2.5 rounded-xl border border-teal-500/30 bg-teal-500/10 px-3 py-2 shadow-2xs">
-                  <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white shadow-xs">
-                    <HeartPulse className="size-4" />
-                  </div>
-                  <div className="overflow-hidden">
-                    <p className="truncate text-xs font-bold text-foreground">
-                      Personal Health
-                    </p>
-                    <p className="text-[9px] text-teal-700 dark:text-teal-300 uppercase font-mono tracking-wider">
-                      PATIENT PORTAL
-                    </p>
-                  </div>
-                </div>
-              )
             ) : isCollapsed ? (
               <div
                 className={`flex size-10 mx-auto items-center justify-center rounded-xl font-bold text-xs ${
@@ -441,7 +480,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {shellData?.workplaces.map((w: Workplace) => (
                     <DropdownMenuItem
                       key={w.hospitalId}
-                      onClick={() => setActiveHospitalId(w.hospitalId)}
+                      onClick={() => setSelectedHospitalId(w.hospitalId)}
                       className="flex items-center justify-between text-xs font-medium py-2 cursor-pointer"
                     >
                       <div className="truncate">
@@ -484,65 +523,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Navigation Links List */}
           <nav className="flex-1 space-y-1 overflow-y-auto px-2.5 py-4 scrollbar-thin">
-            {isLoading ? (
-              <div className="space-y-2 px-1">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="h-9 w-full rounded-xl bg-muted/60 animate-pulse" />
-                ))}
-              </div>
-            ) : (
-              <>
-                {!isCollapsed && (
-                  <p className="px-3 pb-2 text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
-                    {isGlobalSuperAdminView
-                      ? "National Governance"
-                      : isPatient
-                      ? "Patient Health Records"
-                      : "Clinical Modules"}
-                  </p>
-                )}
-                {visibleNavItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = currentPath === item.href || (item.href !== "/" && currentPath.startsWith(item.href));
-
-                  return (
-                    <Link
-                      key={item.href}
-                      to={item.href}
-                      title={isCollapsed ? item.label : undefined}
-                      className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-all duration-150 ${
-                        isActive
-                          ? "bg-teal-600 text-white shadow-soft font-bold"
-                          : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-                      } ${isCollapsed ? "justify-center px-2" : ""}`}
-                    >
-                      <Icon className={`size-4 shrink-0 transition-transform group-hover:scale-110 ${isActive ? "text-white" : "text-muted-foreground group-hover:text-foreground"}`} />
-                      {!isCollapsed && <span className="truncate">{item.label}</span>}
-                      {isActive && !isCollapsed && (
-                        <span className="ml-auto size-1.5 rounded-full bg-white animate-pulse" />
-                      )}
-                    </Link>
-                  );
-                })}
-              </>
+            {!isCollapsed && (
+              <p className="px-3 pb-2 text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
+                {isGlobalSuperAdminView ? "National Governance" : "Clinical Modules"}
+              </p>
             )}
+            {visibleNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentPath === item.href || (item.href !== "/" && currentPath.startsWith(item.href));
+
+              return (
+                <Link
+                  key={item.href}
+                  to={item.href}
+                  title={isCollapsed ? item.label : undefined}
+                  className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-all duration-150 ${
+                    isActive
+                      ? "bg-teal-600 text-white shadow-soft font-bold"
+                      : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                  } ${isCollapsed ? "justify-center px-2" : ""}`}
+                >
+                  <Icon className={`size-4 shrink-0 transition-transform group-hover:scale-110 ${isActive ? "text-white" : "text-muted-foreground group-hover:text-foreground"}`} />
+                  {!isCollapsed && <span className="truncate">{item.label}</span>}
+                  {isActive && !isCollapsed && (
+                    <span className="ml-auto size-1.5 rounded-full bg-white animate-pulse" />
+                  )}
+                </Link>
+              );
+            })}
           </nav>
 
           {/* Footer & Expand/Collapse Trigger */}
           <div className="border-t border-border/70 p-3 space-y-2">
-            {isLoading ? (
-              <div className="h-10 w-full bg-muted/60 rounded-xl animate-pulse" />
-            ) : isCollapsed ? (
+            {isCollapsed ? (
               <div className="flex flex-col items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setIsProfileModalOpen(true)}
-                  className="size-9 rounded-xl bg-teal-600 text-white font-display text-xs font-bold shadow-xs hover:bg-teal-700"
-                  title="View Profile & Credentials"
-                >
-                  {shellData?.user?.fullName?.charAt(0).toUpperCase() || "U"}
-                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -563,19 +577,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Button>
               </div>
             ) : (
-              <div className="flex items-center justify-between rounded-2xl border border-border/80 bg-background/60 p-2 shadow-2xs hover:border-teal-500/40 transition-colors">
-                <button
-                  type="button"
-                  onClick={() => setIsProfileModalOpen(true)}
-                  className="flex items-center gap-2.5 overflow-hidden text-left flex-1 hover:opacity-90 transition-opacity p-0.5 rounded-xl cursor-pointer"
-                  title="Click to view full profile & credentials"
-                >
+              <div className="flex items-center justify-between rounded-2xl border border-border/80 bg-background/60 p-2.5 shadow-2xs">
+                <div className="flex items-center gap-2.5 overflow-hidden">
                   <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-teal-600 text-white font-display text-xs font-bold shadow-xs">
                     {shellData?.user?.fullName?.charAt(0).toUpperCase() || "U"}
                   </div>
                   <div className="overflow-hidden">
-                    <p className="truncate text-xs font-bold text-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
-                      {shellData?.user?.fullName || (isPatient ? "Patient Member" : "Staff Member")}
+                    <p className="truncate text-xs font-bold text-foreground">
+                      {shellData?.user?.fullName || "Staff Member"}
                     </p>
                     <span
                       className={`inline-block truncate rounded-md border px-1.5 py-0.2 text-[9px] font-bold uppercase ${roleMeta.color}`}
@@ -583,11 +592,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       {roleMeta.label}
                     </span>
                   </div>
-                </button>
+                </div>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-7 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg shrink-0 ml-1"
+                  className="size-7 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg shrink-0"
                   onClick={handleSignOut}
                   title="Sign Out"
                 >
@@ -682,30 +691,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {/* User Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="size-8 rounded-full border border-border bg-teal-600 text-white font-bold text-xs shadow-xs hover:bg-teal-700 cursor-pointer">
+                  <Button variant="ghost" size="icon" className="size-8 rounded-full border border-border bg-teal-600 text-white font-bold text-xs shadow-xs">
                     {shellData?.user?.fullName?.charAt(0).toUpperCase() || "U"}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuLabel className="text-xs">
                     <p className="font-bold text-foreground">{shellData?.user?.fullName || "Staff Member"}</p>
                     <p className="text-[10px] text-muted-foreground font-normal">{roleMeta.label}</p>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setIsProfileModalOpen(true)} className="text-xs cursor-pointer font-medium">
-                    <UserCheck className="mr-2 size-3.5 text-teal-600" /> View Profile & Credentials
+                  <DropdownMenuItem asChild>
+                    <Link to="/settings" className="text-xs cursor-pointer">
+                      <Settings className="mr-2 size-3.5" /> Settings & Facility
+                    </Link>
                   </DropdownMenuItem>
-                  {(isAdmin || isSuperAdmin) && (
-                    <DropdownMenuItem asChild>
-                      <Link to="/settings" className="text-xs cursor-pointer">
-                        <Settings className="mr-2 size-3.5" /> Settings & Facility
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
-                  {isPatient && (
+                  {isPatientUser && (
                     <DropdownMenuItem asChild>
                       <Link to="/portal" className="text-xs cursor-pointer">
-                        <HeartPulse className="mr-2 size-3.5 text-teal-600" /> My Health Portal
+                        <HeartPulse className="mr-2 size-3.5 text-teal-600" /> Health Portal
                       </Link>
                     </DropdownMenuItem>
                   )}
@@ -722,13 +726,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {mobileMenuOpen && (
             <div className="border-b border-border bg-card px-4 py-4 lg:hidden space-y-4 shadow-lift">
               {/* Mobile Hospital Switcher */}
-              {!isPatient && (shellData?.workplaces?.length ?? 0) > 1 && (
+              {(shellData?.workplaces?.length ?? 0) > 1 && (
                 <div className="space-y-1">
                   <Label className="text-xs font-semibold text-muted-foreground">Active Hospital</Label>
                   <Select
                     value={activeHospitalId}
                     onValueChange={(v) => {
-                      setActiveHospitalId(v);
+                      setSelectedHospitalId(v);
                       setMobileMenuOpen(false);
                     }}
                   >
@@ -770,17 +774,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </nav>
 
               <div className="flex items-center justify-between border-t border-border pt-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    setIsProfileModalOpen(true);
-                  }}
-                  className="text-xs text-left hover:opacity-80 transition-opacity"
-                >
+                <div className="text-xs">
                   <p className="font-bold text-foreground">{shellData?.user?.fullName}</p>
-                  <p className="text-[11px] text-teal-600 font-semibold">{roleMeta.label} • View Profile</p>
-                </button>
+                  <p className="text-[11px] text-muted-foreground">{roleMeta.label}</p>
+                </div>
                 <Button
                   size="sm"
                   variant="outline"
@@ -821,15 +818,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </main>
         </div>
       </div>
-
-      {/* Global User Profile & Credentials Modal */}
-      <UserProfileModal
-        open={isProfileModalOpen}
-        onOpenChange={setIsProfileModalOpen}
-        shellData={shellData}
-        currentRole={currentRole as any}
-        onSignOut={handleSignOut}
-      />
 
       {/* Global Command Palette (⌘K / Ctrl+K) */}
       <GlobalCommandPalette open={isCommandPaletteOpen} onOpenChange={setIsCommandPaletteOpen} />

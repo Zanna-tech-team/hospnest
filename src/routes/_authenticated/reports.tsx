@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useAppShell } from "@/components/layout/AppShell";
-import { RoleGuard } from "@/components/auth/RoleGuard";
 import {
   getHospitalReportsData,
   exportHospitalReportCsv,
@@ -153,13 +152,7 @@ export function HospitalReportsPage() {
   });
 
   return (
-    <RoleGuard
-      allowedRoles={["hospital_admin", "super_admin"]}
-      requiredPermission="reports"
-      fallbackTitle="Reports & Analytics Restricted"
-      fallbackMessage="Only hospital administrators, data officers, or staff with reports privileges can access hospital analytics and dataset exports."
-    >
-      <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950/30 p-4 sm:p-6 lg:p-8 space-y-6">
+    <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950/30 p-4 sm:p-6 lg:p-8 space-y-6">
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -457,6 +450,5 @@ export function HospitalReportsPage() {
         </Card>
       </Tabs>
     </div>
-    </RoleGuard>
   );
 }

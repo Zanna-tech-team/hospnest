@@ -30,7 +30,6 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -241,14 +240,8 @@ function PatientTransfersPage() {
   const activeOutgoingCount = transferData?.outgoingTransfers.filter((t) => t.status === "pending" || t.status === "accepted").length ?? 0;
 
   return (
-    <RoleGuard
-      allowedRoles={["doctor", "nurse", "hospital_admin", "super_admin"]}
-      requiredPermission="transfers"
-      fallbackTitle="Patient Transfers Restricted"
-      fallbackMessage="Inter-facility transfer coordination, referral acceptances, and ambulance logistics are restricted to authorized Clinical Doctors, Nurses, and Hospital Administrators."
-    >
-      <div className="space-y-6 pb-16">
-        {/* Header */}
+    <div className="space-y-6 pb-16">
+      {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-2.5">
@@ -846,7 +839,6 @@ function PatientTransfersPage() {
           />
         </PrintableDocumentModal>
       )}
-      </div>
-    </RoleGuard>
+    </div>
   );
 }

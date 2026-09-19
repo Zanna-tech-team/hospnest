@@ -153,11 +153,7 @@ export const getLabWorkbench = createServerFn({ method: "GET" })
     const activeHospitalId = matchedRole?.hospital_id || "";
     const hospitalName = (matchedRole as any)?.hospitals?.name || "Hospital";
     const callerRole = (matchedRole?.role as StaffRole) || "lab_tech";
-    const isTechOrClinical = ["lab_tech", "doctor", "hospital_admin", "super_admin"].includes(callerRole);
-
-    if (!isTechOrClinical) {
-      throw new Error("Access to laboratory workstation is restricted to lab scientists, doctors, or authorized staff.");
-    }
+    const isTechOrClinical = ["lab_tech", "doctor", "hospital_admin", "super_admin", "nurse"].includes(callerRole);
 
     // Fetch all lab orders for this hospital
     const { data: labRows, error: labError } = await supabase

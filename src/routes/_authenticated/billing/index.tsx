@@ -61,7 +61,6 @@ import {
 } from "@/lib/billing.functions";
 import { PrintableDocumentModal } from "@/components/clinical-docs/PrintableDocumentModal";
 import { PaymentReceiptDocument } from "@/components/clinical-docs/PaymentReceiptDocument";
-import { RoleGuard } from "@/components/auth/RoleGuard";
 
 export const Route = createFileRoute("/_authenticated/billing/")({
   component: BillingPage,
@@ -268,13 +267,7 @@ export function BillingPage() {
   };
 
   return (
-    <RoleGuard
-      allowedRoles={["hospital_admin", "super_admin"]}
-      requiredPermission="billing"
-      fallbackTitle="Billing & Revenue Restricted"
-      fallbackMessage="Only hospital administrators, finance officers, or staff with billing privileges can access the hospital billing ledger and financial tariffs."
-    >
-      <div className="space-y-6">
+    <div className="space-y-6">
       {/* Top Header */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
@@ -1093,6 +1086,5 @@ export function BillingPage() {
         </PrintableDocumentModal>
       )}
     </div>
-    </RoleGuard>
   );
 }

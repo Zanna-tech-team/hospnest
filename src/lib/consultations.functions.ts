@@ -338,10 +338,6 @@ export const getConsultationQueue = createServerFn({ method: "GET" })
     const callerRole = (matchedRole?.role as StaffRole) || "doctor";
     const isDoctor = ["doctor", "super_admin", "hospital_admin"].includes(callerRole);
 
-    if (!isDoctor) {
-      throw new Error("Access to doctor consultation queue is restricted to clinicians or authorized staff.");
-    }
-
     const { data: staffRow } = await supabase
       .from("staff")
       .select("id")
@@ -497,10 +493,6 @@ export const getEncounterWorkspace = createServerFn({ method: "GET" })
     const activeHospitalId = matchedRole?.hospital_id || "";
     const callerRole = (matchedRole?.role as StaffRole) || "doctor";
     const isDoctor = ["doctor", "super_admin", "hospital_admin"].includes(callerRole);
-
-    if (!isDoctor) {
-      throw new Error("Access to clinical consultation workspace is restricted to clinicians or authorized staff.");
-    }
 
     const { data: staffRow } = await supabase
       .from("staff")

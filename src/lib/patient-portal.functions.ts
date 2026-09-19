@@ -171,154 +171,6 @@ async function writeAuditEntry(
   }
 }
 
-export async function getOrLinkPatientRecord(supabaseUserClient: any, userId: string) {
-  // 1. Try querying directly with user client
-  try {
-    const { data: directPatient } = await (supabaseUserClient as any)
-      .from("patients")
-      .select(`
-        id, nin, first_name, last_name, date_of_birth, gender, phone, email,
-        blood_group, genotype, allergies, chronic_conditions, emergency_contact,
-        insurance_provider, insurance_policy_number, insurance_plan_type, insurance_expiry_date,
-        created_at
-      `)
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (directPatient) {
-      return directPatient;
-    }
-  } catch (err) {
-    console.warn("Direct patient fetch notice:", err);
-  }
-
-  // 2. Admin lookup fallback to ensure linked record exists
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-  // Lookup in patients with user_id = userId
-  const { data: adminPatientByUserId } = await (supabaseAdmin as any)
-    .from("patients")
-    .select(`
-      id, nin, first_name, last_name, date_of_birth, gender, phone, email,
-      blood_group, genotype, allergies, chronic_conditions, emergency_contact,
-      insurance_provider, insurance_policy_number, insurance_plan_type, insurance_expiry_date,
-      created_at
-    `)
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (adminPatientByUserId) {
-    await (supabaseAdmin as any).from("user_roles").upsert(
-      { user_id: userId, role: "patient", is_active: true },
-      { onConflict: "user_id,hospital_id,role" }
-    );
-    return adminPatientByUserId;
-  }
-
-  // Lookup user info from Supabase Auth
-  const { data: authUserData } = await supabaseAdmin.auth.admin.getUserById(userId);
-  const authUser = authUserData?.user;
-  const userEmail = authUser?.email?.toLowerCase();
-  const userNin = authUser?.user_metadata?.nin;
-  const fullName = authUser?.user_metadata?.full_name || authUser?.user_metadata?.name || "Patient";
-
-  let matchedPatient: any = null;
-
-  if (userNin) {
-    const { data: pByNin } = await (supabaseAdmin as any)
-      .from("patients")
-      .select(`
-        id, nin, first_name, last_name, date_of_birth, gender, phone, email,
-        blood_group, genotype, allergies, chronic_conditions, emergency_contact,
-        insurance_provider, insurance_policy_number, insurance_plan_type, insurance_expiry_date,
-        created_at
-      `)
-      .eq("nin", userNin)
-      .maybeSingle();
-    if (pByNin) matchedPatient = pByNin;
-  }
-
-  if (!matchedPatient && userEmail) {
-    const { data: pByEmail } = await (supabaseAdmin as any)
-      .from("patients")
-      .select(`
-        id, nin, first_name, last_name, date_of_birth, gender, phone, email,
-        blood_group, genotype, allergies, chronic_conditions, emergency_contact,
-        insurance_provider, insurance_policy_number, insurance_plan_type, insurance_expiry_date,
-        created_at
-      `)
-      .ilike("email", userEmail)
-      .maybeSingle();
-    if (pByEmail) matchedPatient = pByEmail;
-  }
-
-  // If patient@example.com or any seed email, try matching by first name or general pattern if no direct email match
-  if (!matchedPatient && userEmail && (userEmail.includes("patient") || userEmail.includes("test"))) {
-    const { data: pFirst } = await (supabaseAdmin as any)
-      .from("patients")
-      .select(`
-        id, nin, first_name, last_name, date_of_birth, gender, phone, email,
-        blood_group, genotype, allergies, chronic_conditions, emergency_contact,
-        insurance_provider, insurance_policy_number, insurance_plan_type, insurance_expiry_date,
-        created_at
-      `)
-      .limit(1);
-    if (pFirst && pFirst.length > 0) {
-      matchedPatient = pFirst[0];
-    }
-  }
-
-  if (matchedPatient) {
-    await (supabaseAdmin as any)
-      .from("patients")
-      .update({ user_id: userId, email: matchedPatient.email || userEmail })
-      .eq("id", matchedPatient.id);
-
-    await (supabaseAdmin as any).from("user_roles").upsert(
-      { user_id: userId, role: "patient", is_active: true },
-      { onConflict: "user_id,hospital_id,role" }
-    );
-
-    return matchedPatient;
-  }
-
-  // Auto-provision fallback record if none exists
-  const nameParts = fullName.trim().split(" ");
-  const firstName = nameParts[0] || "Verified";
-  const lastName = nameParts.slice(1).join(" ") || "Patient";
-  const generatedNin = userNin || `1100${Math.floor(1000000 + Math.random() * 9000000)}`;
-
-  const { data: newPatient } = await (supabaseAdmin as any)
-    .from("patients")
-    .insert({
-      user_id: userId,
-      nin: generatedNin,
-      first_name: firstName,
-      last_name: lastName,
-      email: userEmail || null,
-      is_active: true,
-      allergies: [],
-      chronic_conditions: [],
-    })
-    .select(`
-      id, nin, first_name, last_name, date_of_birth, gender, phone, email,
-      blood_group, genotype, allergies, chronic_conditions, emergency_contact,
-      insurance_provider, insurance_policy_number, insurance_plan_type, insurance_expiry_date,
-      created_at
-    `)
-    .single();
-
-  if (newPatient) {
-    await (supabaseAdmin as any).from("user_roles").upsert(
-      { user_id: userId, role: "patient", is_active: true },
-      { onConflict: "user_id,hospital_id,role" }
-    );
-    return newPatient;
-  }
-
-  return null;
-}
-
 /**
  * Self-service registration for new patients (Prompt 39).
  * Allows members of the public to create an account without pre-existing hospital records.
@@ -673,80 +525,39 @@ export const getAuthUserRoleRedirect = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    // 1. Check existing roles & user metadata
-    const [{ data: roleRows }, { data: userData }] = await Promise.all([
-      supabase
-        .from("user_roles")
-        .select("role, hospital_id, hospitals(id, name, is_verified)")
-        .eq("user_id", userId)
-        .eq("is_active", true),
-      supabase.auth.getUser(),
-    ]);
-
-    const email = userData?.user?.email?.toLowerCase() ?? "";
-    const userRoleMeta = (userData?.user?.user_metadata?.["role"] as string) ?? "";
+    // 1. Check existing roles
+    const { data: roleRows } = await supabase
+      .from("user_roles")
+      .select("role, hospital_id")
+      .eq("user_id", userId)
+      .eq("is_active", true);
 
     const roles = roleRows ?? [];
-    const isSuperAdmin =
-      roles.some((r: any) => r.role === "super_admin" || r.role === "superadmin") ||
-      userRoleMeta === "super_admin" ||
-      userRoleMeta === "superadmin" ||
-      email.startsWith("superadmin") ||
-      email.includes("superadmin@") ||
-      email === "admin@hospnest.com";
-
+    const isSuperAdmin = roles.some((r: any) => r.role === "super_admin" || r.role === "superadmin");
     if (isSuperAdmin) {
       return { redirectPath: "/superadmin", isSuperAdmin: true, isPatient: false };
     }
 
-    const hospitalAdminRole = roles.find((r: any) => r.role === "hospital_admin") ||
-      (userRoleMeta === "hospital_admin" ? { hospital_id: "" } : null);
-
-    if (hospitalAdminRole) {
-      return {
-        redirectPath: "/dashboard",
-        isPatient: false,
-        isHospitalAdmin: true,
-        hospitalId: hospitalAdminRole.hospital_id || "",
-      };
-    }
-
     const hasStaffRole = roles.some((r: any) =>
-      ["doctor", "nurse", "pharmacist", "lab_tech", "front_desk", "billing_officer"].includes(r.role)
+      ["hospital_admin", "doctor", "nurse", "pharmacist", "lab_tech"].includes(r.role)
     );
+
+    const isPatientRole = roles.some((r: any) => r.role === "patient");
 
     if (hasStaffRole) {
       return { redirectPath: "/dashboard", isPatient: false };
     }
 
-    const isPatientRole = roles.some((r: any) => r.role === "patient");
     if (isPatientRole) {
       return { redirectPath: "/portal", isPatient: true };
     }
 
-    // 2. Check if user has a pending staff join request
+    // 2. If no staff role, check if user matches a patient record by user_id or email
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData?.user?.email;
+
     try {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-      const { data: joinReq } = await supabaseAdmin
-        .from("staff_join_requests")
-        .select("id, hospital_id, status, requested_role, hospitals(name)")
-        .or(`user_id.eq.${userId},email.eq.${email}`)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (joinReq && joinReq.status === "pending") {
-        return {
-          redirectPath: "/auth?status=pending_approval",
-          isPendingStaff: true,
-          isPatient: false,
-          hospitalName: (joinReq.hospitals as any)?.name || "the hospital",
-          requestedRole: joinReq.requested_role,
-        };
-      }
-
-      // 3. If no staff role or join request, check if user matches a patient record
       let matchedPatient = null;
 
       if (email) {
@@ -766,12 +577,14 @@ export const getAuthUserRoleRedirect = createServerFn({ method: "GET" })
       }
 
       if (matchedPatient) {
+        // Link user_id if not linked
         if (!matchedPatient.user_id) {
           await supabaseAdmin
             .from("patients")
             .update({ user_id: userId })
             .eq("id", matchedPatient.id);
         }
+        // Ensure user_roles has patient entry
         await supabaseAdmin
           .from("user_roles")
           .upsert(
@@ -786,10 +599,10 @@ export const getAuthUserRoleRedirect = createServerFn({ method: "GET" })
         return { redirectPath: "/portal", isPatient: true };
       }
     } catch (e) {
-      console.warn("User lookup warning in redirect:", e);
+      console.warn("Patient lookup warning in redirect:", e);
     }
 
-    // 4. Default to patient portal
+    // 3. Default to patient portal for users without staff roles to avoid leaking hospital admin setup
     return { redirectPath: "/portal", isPatient: true };
   });
 
@@ -802,9 +615,18 @@ export const getPatientPortalDashboardData = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
 
     // 1. Fetch Patient Record for signed-in user
-    const patientRow = await getOrLinkPatientRecord(supabase, userId);
+    const { data: patientRow, error: pErr } = await (supabase as any)
+      .from("patients")
+      .select(`
+        id, nin, first_name, last_name, date_of_birth, gender, phone, email,
+        blood_group, genotype, allergies, chronic_conditions, emergency_contact,
+        insurance_provider, insurance_policy_number, insurance_plan_type, insurance_expiry_date,
+        created_at
+      `)
+      .eq("user_id", userId)
+      .maybeSingle();
 
-    if (!patientRow) {
+    if (pErr || !patientRow) {
       throw new Error("No linked patient record found for this account. Please verify your NIN at registration.");
     }
 
@@ -1090,8 +912,13 @@ export const bookPatientAppointment = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
 
     // 1. Fetch patient
-    const patientRow = await getOrLinkPatientRecord(supabase, userId);
-    if (!patientRow) throw new Error("Patient profile not found.");
+    const { data: patientRow, error: pErr } = await (supabase as any)
+      .from("patients")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
+    if (pErr || !patientRow) throw new Error("Patient profile not found.");
 
     // 2. Insert Appointment
     const { data: newAppt, error: apptErr } = await (supabase as any)
@@ -1153,9 +980,6 @@ export const updatePatientSelfProfile = createServerFn({ method: "POST" })
   .handler(async ({ context, data: input }) => {
     const { supabase, userId } = context;
 
-    const patientRow = await getOrLinkPatientRecord(supabase, userId);
-    if (!patientRow) throw new Error("Patient profile not found.");
-
     const { error: updErr } = await (supabase as any)
       .from("patients")
       .update({
@@ -1164,7 +988,7 @@ export const updatePatientSelfProfile = createServerFn({ method: "POST" })
         emergency_contact: input.emergencyContact,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", patientRow.id);
+      .eq("user_id", userId);
 
     if (updErr) throw new Error(updErr.message);
 
@@ -1245,7 +1069,12 @@ export const savePatientHospitalConsents = createServerFn({ method: "POST" })
   .handler(async ({ context, data: input }) => {
     const { supabase, userId } = context;
 
-    const patientRow = await getOrLinkPatientRecord(supabase, userId);
+    const { data: patientRow } = await (supabase as any)
+      .from("patients")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
     if (!patientRow) throw new Error("Patient record not found.");
 
     const patientId = patientRow.id;
@@ -1356,7 +1185,12 @@ export const bookDirectOnlineAppointment = createServerFn({ method: "POST" })
   .handler(async ({ context, data: input }) => {
     const { supabase, userId } = context;
 
-    const patientRow = await getOrLinkPatientRecord(supabase, userId);
+    const { data: patientRow } = await (supabase as any)
+      .from("patients")
+      .select("id, first_name, last_name, phone, email, nin")
+      .eq("user_id", userId)
+      .single();
+
     if (!patientRow) throw new Error("Patient profile not found. Please complete registration.");
 
     // Fetch hospital details
@@ -1425,7 +1259,7 @@ export const bookDirectOnlineAppointment = createServerFn({ method: "POST" })
       hospitalPhone: hospitalRow?.phone || "0800-HOSP-NEST",
       appointmentDate: input.date,
       timeSlot: input.timeSlot,
-      patientName: `${patientRow.first_name || patientRow.firstName || "Patient"} ${patientRow.last_name || patientRow.lastName || ""}`,
+      patientName: `${patientRow.first_name} ${patientRow.last_name}`,
       symptomsSummary: input.symptomsSummary,
       createdAt: newAppt.created_at,
     };
@@ -1452,7 +1286,12 @@ export const updatePatientSharingConsent = createServerFn({ method: "POST" })
   .handler(async ({ context, data: input }) => {
     const { supabase, userId } = context;
 
-    const patientRow = await getOrLinkPatientRecord(supabase, userId);
+    const { data: patientRow } = await (supabase as any)
+      .from("patients")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
     if (!patientRow) throw new Error("Patient not found.");
 
     await (supabase as any).from("patient_consents").upsert({
@@ -1490,7 +1329,12 @@ export const getPatientAccessLogs = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    const patientRow = await getOrLinkPatientRecord(supabase, userId);
+    const { data: patientRow } = await (supabase as any)
+      .from("patients")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
     if (!patientRow) return [];
 
     const { data: logs } = await (supabase as any)
@@ -1522,14 +1366,13 @@ export const getPatientPrivacySettings = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    const patientRow = await getOrLinkPatientRecord(supabase, userId);
-    if (!patientRow) {
-      return {
-        isGlobalShare: true,
-        hospitals: [],
-        accessLogs: [],
-      };
-    }
+    const { data: patientRow } = await (supabase as any)
+      .from("patients")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
+    if (!patientRow) throw new Error("Patient record not found.");
 
     // Fetch all hospitals where patient has encounters or appointments
     const [{ data: encHospitals }, { data: apptHospitals }, { data: allHospitals }, { data: consents }] =
@@ -1624,7 +1467,12 @@ export const updateGlobalSharingConsent = createServerFn({ method: "POST" })
   .handler(async ({ data: input, context }) => {
     const { supabase, userId } = context;
 
-    const patientRow = await getOrLinkPatientRecord(supabase, userId);
+    const { data: patientRow } = await (supabase as any)
+      .from("patients")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
     if (!patientRow) throw new Error("Patient record not found.");
 
     await (supabase as any)

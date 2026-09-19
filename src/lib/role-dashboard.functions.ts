@@ -319,9 +319,8 @@ function calculateAge(dob: string | null): string {
  */
 export const getRoleDashboardData = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .validator((input?: { hospitalId?: string | undefined; role?: StaffRole | "patient" | undefined }) => ({
+  .inputValidator((input?: { hospitalId?: string | undefined }) => ({
     hospitalId: input?.hospitalId ? String(input.hospitalId).trim() : undefined,
-    role: input?.role ? (String(input.role).trim() as StaffRole | "patient") : undefined,
   }))
   .handler(async ({ context, data: input }): Promise<RoleDashboardResult> => {
     const { supabase, userId } = context;
@@ -333,60 +332,10 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
       .eq("user_id", userId)
       .eq("is_active", true);
 
-    const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin" || r.role === "superadmin");
-    let staffRoles = (roleRows ?? []).filter((r: any) => r.hospital_id && r.role !== "patient");
+    const staffRoles = (roleRows ?? []).filter((r: any) => r.hospital_id && r.role !== "patient");
     const isPatient = (roleRows ?? []).some((r: any) => r.role === "patient");
 
-    // Super Admin global overview handler
-    if (isSuperAdmin && (!input?.hospitalId || input?.role === "super_admin")) {
-      let hospitalName = "National Platform Control Center";
-      if (input?.hospitalId) {
-        const { data: h } = await supabase.from("hospitals").select("name").eq("id", input.hospitalId).maybeSingle();
-        if (h?.name) hospitalName = h.name;
-      }
-      const adminStats = await (async () => {
-        try {
-          const stats = await getAdminDashboardStats({ data: { hospitalId: input?.hospitalId || "" } });
-          return stats;
-        } catch {
-          return undefined;
-        }
-      })();
-      return {
-        role: "super_admin",
-        hospitalName,
-        hospitalId: input?.hospitalId || "",
-        adminData: adminStats,
-      };
-    }
-
-    // Auto-heal if staffRoles is empty: check if user exists in public.staff or auth user metadata
-    if (staffRoles.length === 0 && !isSuperAdmin && !isPatient) {
-      try {
-        const { data: staffMatch } = await supabase
-          .from("staff")
-          .select("id, hospital_id, specialization, medical_license_number, hospitals(id, name)")
-          .eq("user_id", userId)
-          .eq("is_active", true)
-          .limit(1)
-          .maybeSingle();
-
-        if (staffMatch && staffMatch.hospital_id) {
-          const derivedRole: StaffRole = input?.role || "doctor";
-          staffRoles = [
-            {
-              role: derivedRole,
-              hospital_id: staffMatch.hospital_id,
-              hospitals: staffMatch.hospitals,
-            },
-          ];
-        }
-      } catch (err) {
-        console.warn("Staff auto-heal check error:", err);
-      }
-    }
-
-    if (staffRoles.length === 0 && !isSuperAdmin) {
+    if (staffRoles.length === 0) {
       // Handle patient role dashboard
       const { data: patientRow } = await supabase
         .from("patients")
@@ -396,96 +345,53 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
 
       const patientId = patientRow?.id;
       if (!patientId) {
-        // Safe fallback if user has no data yet
-        return {
-          role: input?.role || "doctor",
-          hospitalName: "Clinical Operations",
-          hospitalId: input?.hospitalId || "",
-          doctorData: input?.role === "doctor" || !input?.role ? {
-            queueCount: 0,
-            myPatientsCount: 0,
-            unassignedCount: 0,
-            urgentVitalsCount: 0,
-            pendingLabOrdersCount: 0,
-            completedLabResultsCount: 0,
-            supervisedInpatientsCount: 0,
-            appointmentMetrics: {
-              todayTotal: 0,
-              completed: 0,
-              checkedIn: 0,
-              pending: 0,
-              cancelled: 0,
-              noShowRate: 0,
-              externalOnlineBookings: 0,
-              hourlyTraffic: [],
-            },
-            patientAssignmentQueues: {
-              waitingTriage: [],
-              waitingDoctor: [],
-              inConsultation: [],
-              diagnosticHold: [],
-              pharmacyHold: [],
-            },
-            waitingQueue: [],
-            inpatients: [],
-            criticalLabAlerts: [],
-            recentLabResults: [],
-            labStatusSummary: {
-              requestedToday: 0,
-              pendingResults: 0,
-              completedToday: 0,
-              criticalAlertsCount: 0,
-            },
-            notifications: [],
-          } : undefined,
-        };
+        throw new Error("No active staff or patient profile found.");
       }
 
-      // Fetch all patient portal data in parallel for speed
-      const [
-        { data: appts },
-        { data: encs },
-        { data: rxRows },
-        { data: labs },
-      ] = await Promise.all([
-        // Upcoming & recent appointments
-        supabase
-          .from("appointments")
-          .select("id, appointment_date, status, hospitals(name)")
-          .eq("patient_id", patientId)
-          .order("appointment_date", { ascending: false })
-          .limit(6),
+      // Fetch appointments
+      const { data: appts } = await supabase
+        .from("appointments")
+        .select(`
+          id, appointment_date, appointment_time, status, booking_reference,
+          hospitals (name)
+        `)
+        .eq("patient_id", patientId)
+        .order("appointment_date", { ascending: false })
+        .limit(6);
 
-        // Recent encounters / consultations
-        supabase
-          .from("encounters")
-          .select("id, created_at, diagnosis, encounter_status, hospitals(name), practitioner:practitioner_id(full_name)")
-          .eq("patient_id", patientId)
-          .order("created_at", { ascending: false })
-          .limit(6),
+      // Fetch encounters
+      const { data: encs } = await supabase
+        .from("encounters")
+        .select(`
+          id, created_at, diagnosis, status,
+          hospitals (name),
+          practitioner:practitioner_id (full_name)
+        `)
+        .eq("patient_id", patientId)
+        .order("created_at", { ascending: false })
+        .limit(6);
 
-        // Active prescriptions — query prescriptions first, then items
-        supabase
-          .from("prescriptions")
-          .select("id, created_at, prescription_items(id, dosage, frequency, duration, drug:drug_id(generic_name, brand_name))")
-          .eq("patient_id", patientId)
-          .order("created_at", { ascending: false })
-          .limit(4),
+      // Fetch prescriptions
+      const { data: rxs } = await supabase
+        .from("prescription_items")
+        .select(`
+          id, dosage, frequency, duration, created_at,
+          drug:drug_id (generic_name, brand_name)
+        `)
+        .eq("prescriptions.patient_id", patientId)
+        .limit(6);
 
-        // Completed lab reports
-        supabase
-          .from("lab_orders")
-          .select("id, created_at, result_value, is_critical, status, result_metadata, test:test_id(test_catalog:test_catalog_id(name))")
-          .eq("patient_id", patientId)
-          .in("status", ["completed", "verified"])
-          .order("created_at", { ascending: false })
-          .limit(6),
-      ]);
-
-      // Flatten prescription items from prescription rows
-      const rxs = (rxRows ?? []).flatMap((rx: any) =>
-        (rx.prescription_items ?? []).map((item: any) => ({ ...item, created_at: rx.created_at }))
-      );
+      // Fetch completed lab reports
+      const { data: labs } = await supabase
+        .from("lab_orders")
+        .select(`
+          id, created_at, result_value, units, is_critical, status,
+          test:test_id (test_catalog (name))
+        `)
+        .eq("patient_id", patientId)
+        .in("status", ["completed", "verified"])
+        .order("created_at", { ascending: false })
+        .limit(6);
 
       return {
         role: "patient",
@@ -496,9 +402,9 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
             id: a.id,
             hospitalName: a.hospitals?.name || "Hospital",
             appointmentDate: a.appointment_date,
-            appointmentTime: a.appointment_date ? new Date(a.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : "09:00",
+            appointmentTime: a.appointment_time || "09:00",
             status: a.status,
-            bookingReference: null,
+            bookingReference: a.booking_reference,
           })),
           recentEncounters: (encs ?? []).map((e: any) => ({
             id: e.id,
@@ -517,9 +423,9 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
           })),
           completedLabReports: (labs ?? []).map((l: any) => ({
             id: l.id,
-            testName: (l.test as any)?.test_catalog?.name || (l.result_metadata as any)?.test_name || "Diagnostic Investigation",
+            testName: (l.test as any)?.test_catalog?.name || "Diagnostic Investigation",
             date: l.created_at,
-            resultSummary: l.result_value ? `${l.result_value} ${(l.result_metadata as any)?.units || ""}` : "Completed",
+            resultSummary: l.result_value ? `${l.result_value} ${l.units || ""}` : "Completed",
             isCritical: Boolean(l.is_critical),
           })),
         },
@@ -527,31 +433,12 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
     }
 
     const matched = input?.hospitalId
-      ? (input.role
-          ? staffRoles.find((r: any) => r.hospital_id === input.hospitalId && r.role === input.role)
-          : null) ||
-        staffRoles.find((r: any) => r.hospital_id === input.hospitalId) ||
-        staffRoles[0]
-      : (input?.role ? staffRoles.find((r: any) => r.role === input.role) : null) || staffRoles[0];
+      ? staffRoles.find((r: any) => r.hospital_id === input.hospitalId) || staffRoles[0]
+      : staffRoles[0];
 
-    const activeHospitalId = input?.hospitalId || (matched?.hospital_id as string) || "";
-    // Strict role resolution: NEVER default to "doctor" — use the matched DB role
-    const callerRole = (input?.role as StaffRole) || (matched?.role as StaffRole) || null;
-    let hospitalName = (matched?.hospitals as any)?.name || "Hospital";
-
-    if (!hospitalName || hospitalName === "Hospital") {
-      const { data: h } = await supabase.from("hospitals").select("name").eq("id", activeHospitalId).maybeSingle();
-      if (h?.name) hospitalName = h.name;
-    }
-
-    // Guard: if role is still null, return a safe empty state
-    if (!callerRole) {
-      return {
-        role: "doctor" as StaffRole,
-        hospitalName,
-        hospitalId: activeHospitalId,
-      };
-    }
+    const activeHospitalId = (matched?.hospital_id as string) || "";
+    const callerRole = (matched?.role as StaffRole) || "doctor";
+    const hospitalName = (matched?.hospitals as any)?.name || "Hospital";
 
     // Get current staff profile id
     const { data: staffRow } = await supabase
@@ -564,389 +451,328 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
     const staffId = staffRow?.id;
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    const tomorrowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
 
     // 1. DOCTOR DASHBOARD
     if (callerRole === "doctor") {
-      try {
-        const [
-          { data: queueRaw },
-          { data: inpatientsRaw },
-          { data: labOrdersAllRaw },
-          { data: todayApptsRaw },
-          { data: allLiveEncsRaw },
-          { data: pendingRxRaw },
-          { data: notificationsRaw },
-        ] = await Promise.all([
-          // Waiting & In-Consultation Encounters
-          supabase
-            .from("encounters")
-            .select(`
-              id, patient_id, created_at, encounter_status, chief_complaint, practitioner_id,
-              patient:patient_id (id, first_name, last_name, nin, gender, date_of_birth),
-              triage_vitals (
-                body_temperature, systolic_bp, diastolic_bp, pulse_rate, spo2, recorded_at
-              )
-            `)
-            .eq("hospital_id", activeHospitalId)
-            .in("encounter_status", ["consultation", "triage"])
-            .order("created_at", { ascending: true })
-            .limit(30),
+      const todayDate = now.toISOString().slice(0, 10);
 
-          // Inpatients Supervised by Doctor
-          supabase
-            .from("admissions")
-            .select(`
-              id, admission_date, initial_condition,
-              patient:patient_id (first_name, last_name),
-              ward:ward_id (name),
-              bed:bed_id (bed_number)
-            `)
-            .eq("hospital_id", activeHospitalId)
-            .eq("status", "admitted")
-            .eq("admitting_doctor_id", staffId || "00000000-0000-0000-0000-000000000000")
-            .limit(10),
+      const [
+        { data: queueRaw },
+        { data: inpatientsRaw },
+        { data: labOrdersAllRaw },
+        { data: todayApptsRaw },
+        { data: allLiveEncsRaw },
+        { data: pendingRxRaw },
+        { data: notificationsRaw },
+      ] = await Promise.all([
+        // Waiting & In-Consultation Encounters
+        supabase
+          .from("encounters")
+          .select(`
+            id, patient_id, created_at, encounter_status, chief_complaint, practitioner_id,
+            patient:patient_id (id, first_name, last_name, nin, gender, date_of_birth),
+            triage_vitals (
+              body_temperature, systolic_bp, diastolic_bp, pulse_rate, spo2, recorded_at
+            )
+          `)
+          .eq("hospital_id", activeHospitalId)
+          .in("encounter_status", ["consultation", "triage"])
+          .order("created_at", { ascending: true })
+          .limit(30),
 
-          // Completed & Critical Lab Orders
-          supabase
-            .from("lab_orders")
-            .select(`
-              id, patient_id, status, is_critical, result_value, created_at, result_metadata, sample_type,
-              patient:patient_id (id, first_name, last_name, nin),
-              test:test_id (test_catalog:test_catalog_id (name))
-            `)
-            .eq("hospital_id", activeHospitalId)
-            .order("created_at", { ascending: false })
-            .limit(40),
+        // Inpatients Supervised by Doctor
+        supabase
+          .from("admissions")
+          .select(`
+            id, admission_date, initial_condition,
+            patient:patient_id (first_name, last_name),
+            ward:ward_id (name),
+            bed:bed_id (bed_number)
+          `)
+          .eq("hospital_id", activeHospitalId)
+          .eq("status", "admitted")
+          .eq("admitting_doctor_id", staffId || "00000000-0000-0000-0000-000000000000")
+          .limit(10),
 
-          // Today's Appointments (using date range on appointment_date TIMESTAMPTZ)
-          supabase
-            .from("appointments")
-            .select("id, status, is_external_booking, appointment_date, created_at, doctor_id")
-            .eq("hospital_id", activeHospitalId)
-            .gte("appointment_date", todayStart)
-            .lt("appointment_date", tomorrowStart),
+        // Completed & Critical Lab Orders
+        supabase
+          .from("lab_orders")
+          .select(`
+            id, patient_id, status, is_critical, is_out_of_range, result_value, units, reference_range,
+            urgency, technician_name, completed_at, acknowledged_at, acknowledged_by_name, created_at,
+            patient:patient_id (id, first_name, last_name, nin),
+            test:test_id (test_catalog:test_catalog_id (name))
+          `)
+          .eq("hospital_id", activeHospitalId)
+          .order("created_at", { ascending: false })
+          .limit(40),
 
-          // All live encounters today for queues
-          supabase
-            .from("encounters")
-            .select(`
-              id, patient_id, created_at, encounter_status, chief_complaint, practitioner_id,
-              patient:patient_id (first_name, last_name, nin),
-              practitioner:practitioner_id (full_name),
-              triage_vitals (body_temperature, systolic_bp, diastolic_bp, pulse_rate, spo2)
-            `)
-            .eq("hospital_id", activeHospitalId)
-            .gte("created_at", todayStart),
+        // Today's Appointments
+        supabase
+          .from("appointments")
+          .select("id, status, is_external_booking, appointment_time, created_at, doctor_id")
+          .eq("hospital_id", activeHospitalId)
+          .eq("appointment_date", todayDate),
 
-          // Active Prescriptions (pharmacy hold queue)
-          supabase
-            .from("prescriptions")
-            .select("id, created_at, status, patient:patient_id (first_name, last_name), prescription_items (id)")
-            .eq("hospital_id", activeHospitalId)
-            .in("status", ["pending", "partially_dispensed"])
-            .limit(15),
+        // All live encounters today for queues
+        supabase
+          .from("encounters")
+          .select(`
+            id, patient_id, created_at, encounter_status, chief_complaint, practitioner_id,
+            patient:patient_id (first_name, last_name, nin),
+            practitioner:practitioner_id (full_name),
+            triage_vitals (body_temperature, systolic_bp, diastolic_bp, pulse_rate, spo2)
+          `)
+          .eq("hospital_id", activeHospitalId)
+          .gte("created_at", todayStart),
 
-          // Doctor's Notifications
-          supabase
-            .from("notifications")
-            .select("*")
-            .eq("recipient_user_id", userId)
-            .order("created_at", { ascending: false })
-            .limit(15),
-        ]);
+        // Active Prescriptions (pharmacy hold queue)
+        supabase
+          .from("prescriptions")
+          .select("id, created_at, status, patient:patient_id (first_name, last_name), prescription_items (id)")
+          .eq("hospital_id", activeHospitalId)
+          .in("status", ["pending", "partially_dispensed"])
+          .limit(15),
 
-        let myPatientsCount = 0;
-        let unassignedCount = 0;
-        let urgentVitalsCount = 0;
+        // Doctor's Notifications
+        supabase
+          .from("notifications")
+          .select("*")
+          .eq("recipient_user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(15),
+      ]);
 
-        const waitingQueue = (queueRaw ?? []).map((e: any) => {
-          const p = e.patient || {};
-          const v = Array.isArray(e.triage_vitals) && e.triage_vitals.length > 0 ? e.triage_vitals[0] : null;
-          const isClaimedByMe = e.practitioner_id === staffId;
-          if (isClaimedByMe) myPatientsCount++;
-          if (!e.practitioner_id) unassignedCount++;
+      let myPatientsCount = 0;
+      let unassignedCount = 0;
+      let urgentVitalsCount = 0;
 
-          let isUrgent = false;
-          if (v) {
-            if ((v.systolic_bp && v.systolic_bp >= 140) || (v.body_temperature && v.body_temperature >= 38.0) || (v.spo2 && v.spo2 < 95)) {
-              isUrgent = true;
-              urgentVitalsCount++;
-            }
+      const waitingQueue = (queueRaw ?? []).map((e: any) => {
+        const p = e.patient || {};
+        const v = Array.isArray(e.triage_vitals) && e.triage_vitals.length > 0 ? e.triage_vitals[0] : null;
+        const isClaimedByMe = e.practitioner_id === staffId;
+        if (isClaimedByMe) myPatientsCount++;
+        if (!e.practitioner_id) unassignedCount++;
+
+        let isUrgent = false;
+        if (v) {
+          if ((v.systolic_bp && v.systolic_bp >= 140) || (v.body_temperature && v.body_temperature >= 38.0) || (v.spo2 && v.spo2 < 95)) {
+            isUrgent = true;
+            urgentVitalsCount++;
           }
+        }
 
+        return {
+          encounterId: e.id,
+          patientId: e.patient_id,
+          patientName: `${p.first_name || ""} ${p.last_name || ""}`.trim() || "Patient",
+          nin: p.nin || "",
+          age: calculateAge(p.date_of_birth),
+          gender: p.gender || null,
+          chiefComplaint: e.chief_complaint,
+          checkedInAt: e.created_at,
+          vitals: v ? {
+            temperature: v.body_temperature,
+            bp: v.systolic_bp ? `${v.systolic_bp}/${v.diastolic_bp || ""}` : null,
+            pulse: v.pulse_rate,
+            spo2: v.spo2,
+            isUrgent,
+          } : null,
+        };
+      });
+
+      // Appointment Metrics
+      const todayAppts = todayApptsRaw || [];
+      const apptTotal = todayAppts.length;
+      const apptCompleted = todayAppts.filter((a: any) => a.status === "completed").length;
+      const apptCheckedIn = todayAppts.filter((a: any) => ["checked_in", "in_consultation", "completed"].includes(a.status)).length;
+      const apptPending = todayAppts.filter((a: any) => ["scheduled", "confirmed"].includes(a.status)).length;
+      const apptCancelled = todayAppts.filter((a: any) => a.status === "cancelled").length;
+      const apptNoShow = todayAppts.filter((a: any) => a.status === "no_show").length;
+      const apptExternal = todayAppts.filter((a: any) => a.is_external_booking).length;
+      const noShowRate = apptTotal > 0 ? Math.round((apptNoShow / apptTotal) * 100) : 0;
+
+      const hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+      const hourlyTraffic = hours.map((hour) => ({
+        hour,
+        count: todayAppts.filter((a: any) => a.appointment_time?.startsWith(hour.slice(0, 2))).length,
+      }));
+
+      // Inpatients
+      const inpatients = (inpatientsRaw ?? []).map((adm: any) => ({
+        admissionId: adm.id,
+        patientName: `${adm.patient?.first_name || ""} ${adm.patient?.last_name || ""}`.trim() || "Inpatient",
+        wardName: adm.ward?.name || "Ward",
+        bedNumber: adm.bed?.bed_number || "--",
+        admissionDate: adm.admission_date,
+        lengthOfStayDays: calculateDays(adm.admission_date),
+        initialCondition: adm.initial_condition,
+      }));
+
+      // Patient Flow Queues
+      const liveEncs = allLiveEncsRaw || [];
+      const waitingTriage = liveEncs
+        .filter((e: any) => e.encounter_status === "triage")
+        .map((e: any) => ({
+          encounterId: e.id,
+          patientId: e.patient_id,
+          patientName: `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim() || "Patient",
+          nin: e.patient?.nin || "—",
+          checkedInAt: e.created_at,
+          chiefComplaint: e.chief_complaint,
+        }));
+
+      const waitingDoctor = liveEncs
+        .filter((e: any) => e.encounter_status === "consultation" && !e.practitioner_id)
+        .map((e: any) => {
+          const v = Array.isArray(e.triage_vitals) && e.triage_vitals.length > 0 ? e.triage_vitals[0] : null;
           return {
-            encounterId: e.id,
-            patientId: e.patient_id,
-            patientName: `${p.first_name || ""} ${p.last_name || ""}`.trim() || "Patient",
-            nin: p.nin || "",
-            age: calculateAge(p.date_of_birth),
-            gender: p.gender || null,
-            chiefComplaint: e.chief_complaint,
-            checkedInAt: e.created_at,
-            vitals: v ? {
-              temperature: v.body_temperature,
-              bp: v.systolic_bp ? `${v.systolic_bp}/${v.diastolic_bp || ""}` : null,
-              pulse: v.pulse_rate,
-              spo2: v.spo2,
-              isUrgent,
-            } : null,
-          };
-        });
-
-        // Appointment Metrics
-        const todayAppts = todayApptsRaw || [];
-        const apptTotal = todayAppts.length;
-        const apptCompleted = todayAppts.filter((a: any) => a.status === "completed").length;
-        const apptCheckedIn = todayAppts.filter((a: any) => ["checked_in", "in_consultation", "completed"].includes(a.status)).length;
-        const apptPending = todayAppts.filter((a: any) => ["scheduled", "confirmed"].includes(a.status)).length;
-        const apptCancelled = todayAppts.filter((a: any) => a.status === "cancelled").length;
-        const apptNoShow = todayAppts.filter((a: any) => a.status === "no_show").length;
-        const apptExternal = todayAppts.filter((a: any) => a.is_external_booking).length;
-        const noShowRate = apptTotal > 0 ? Math.round((apptNoShow / apptTotal) * 100) : 0;
-
-        const hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
-        const hourlyTraffic = hours.map((hour) => ({
-          hour,
-          count: todayAppts.filter((a: any) => {
-            if (!a.appointment_date) return false;
-            const d = new Date(a.appointment_date);
-            const h = String(d.getHours()).padStart(2, "0");
-            return h === hour.slice(0, 2);
-          }).length,
-        }));
-
-        // Inpatients
-        const inpatients = (inpatientsRaw ?? []).map((adm: any) => ({
-          admissionId: adm.id,
-          patientName: `${adm.patient?.first_name || ""} ${adm.patient?.last_name || ""}`.trim() || "Inpatient",
-          wardName: adm.ward?.name || "Ward",
-          bedNumber: adm.bed?.bed_number || "--",
-          admissionDate: adm.admission_date,
-          lengthOfStayDays: calculateDays(adm.admission_date),
-          initialCondition: adm.initial_condition,
-        }));
-
-        // Patient Flow Queues
-        const liveEncs = allLiveEncsRaw || [];
-        const waitingTriage = liveEncs
-          .filter((e: any) => e.encounter_status === "triage")
-          .map((e: any) => ({
             encounterId: e.id,
             patientId: e.patient_id,
             patientName: `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim() || "Patient",
             nin: e.patient?.nin || "—",
             checkedInAt: e.created_at,
             chiefComplaint: e.chief_complaint,
-          }));
+            vitals: v ? {
+              temperature: v.body_temperature,
+              bp: v.systolic_bp ? `${v.systolic_bp}/${v.diastolic_bp || ""}` : null,
+              pulse: v.pulse_rate,
+              spo2: v.spo2,
+              isUrgent: Boolean((v.systolic_bp && v.systolic_bp >= 140) || (v.body_temperature && v.body_temperature >= 38.0)),
+            } : null,
+          };
+        });
 
-        const waitingDoctor = liveEncs
-          .filter((e: any) => e.encounter_status === "consultation" && !e.practitioner_id)
-          .map((e: any) => {
-            const v = Array.isArray(e.triage_vitals) && e.triage_vitals.length > 0 ? e.triage_vitals[0] : null;
-            return {
-              encounterId: e.id,
-              patientId: e.patient_id,
-              patientName: `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim() || "Patient",
-              nin: e.patient?.nin || "—",
-              checkedInAt: e.created_at,
-              chiefComplaint: e.chief_complaint,
-              vitals: v ? {
-                temperature: v.body_temperature,
-                bp: v.systolic_bp ? `${v.systolic_bp}/${v.diastolic_bp || ""}` : null,
-                pulse: v.pulse_rate,
-                spo2: v.spo2,
-                isUrgent: Boolean((v.systolic_bp && v.systolic_bp >= 140) || (v.body_temperature && v.body_temperature >= 38.0)),
-              } : null,
-            };
-          });
-
-        const inConsultation = liveEncs
-          .filter((e: any) => e.encounter_status === "consultation" && e.practitioner_id)
-          .map((e: any) => ({
-            encounterId: e.id,
-            patientId: e.patient_id,
-            patientName: `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim() || "Patient",
-            doctorName: e.practitioner?.full_name ? `Dr. ${e.practitioner.full_name}` : "Attending",
-            isMine: e.practitioner_id === staffId,
-            startedAt: e.created_at,
-            chiefComplaint: e.chief_complaint,
-          }));
-
-        const allLabs = labOrdersAllRaw || [];
-        const diagnosticHold = allLabs
-          .filter((l: any) => ["ordered", "sample_collected", "processing"].includes(l.status))
-          .map((l: any) => ({
-            orderId: l.id,
-            patientId: l.patient_id,
-            patientName: `${l.patient?.first_name || ""} ${l.patient?.last_name || ""}`.trim() || "Patient",
-            testName: (l.test as any)?.test_catalog?.name || (l.result_metadata as any)?.test_name || "Diagnostic Test",
-            status: l.status,
-            orderedAt: l.created_at,
-            isCritical: Boolean(l.is_critical),
-          }));
-
-        const pharmacyHold = (pendingRxRaw ?? []).map((rx: any) => ({
-          prescriptionId: rx.id,
-          patientName: `${rx.patient?.first_name || ""} ${rx.patient?.last_name || ""}`.trim() || "Patient",
-          drugsCount: rx.prescription_items?.length || 1,
-          orderedAt: rx.created_at,
+      const inConsultation = liveEncs
+        .filter((e: any) => e.encounter_status === "consultation" && e.practitioner_id)
+        .map((e: any) => ({
+          encounterId: e.id,
+          patientId: e.patient_id,
+          patientName: `${e.patient?.first_name || ""} ${e.patient?.last_name || ""}`.trim() || "Patient",
+          doctorName: e.practitioner?.full_name ? `Dr. ${e.practitioner.full_name}` : "Attending",
+          isMine: e.practitioner_id === staffId,
+          startedAt: e.created_at,
+          chiefComplaint: e.chief_complaint,
         }));
 
-        // Critical Lab Alerts & Recent Lab Results with resilient metadata extraction
-        const criticalLabAlerts = allLabs
-          .filter((l: any) => {
-            const meta = l.result_metadata || {};
-            const isCrit = Boolean(l.is_critical || meta.is_critical || l.status === "critical");
-            const isOut = Boolean(meta.is_out_of_range || l.is_out_of_range);
-            return (isCrit || isOut) && (l.status === "completed" || l.status === "critical" || l.status === "verified");
-          })
-          .map((l: any) => {
-            const meta = l.result_metadata || {};
-            return {
-              orderId: l.id,
-              patientId: l.patient_id,
-              patientName: `${l.patient?.first_name || ""} ${l.patient?.last_name || ""}`.trim() || "Patient",
-              nin: l.patient?.nin || "—",
-              testName: (l.test as any)?.test_catalog?.name || meta.test_name || "Lab Investigation",
-              resultValue: l.result_value || meta.result_value || "Panic Value",
-              units: meta.units || l.units || "",
-              referenceRange: meta.reference_range || l.reference_range || null,
-              isCritical: Boolean(l.is_critical || meta.is_critical || l.status === "critical"),
-              isOutOfRange: Boolean(meta.is_out_of_range || l.is_out_of_range),
-              technicianName: meta.technician_name || l.technician_name || "Diagnostic Lab",
-              completedAt: meta.completed_at || l.completed_at || l.created_at,
-              acknowledgedAt: meta.acknowledged_at || l.acknowledged_at || null,
-              acknowledgedByName: meta.acknowledged_by_name || l.acknowledged_by_name || null,
-              urgency: meta.urgency || l.urgency || "stat",
-            };
-          });
-
-        const recentLabResults = allLabs
-          .filter((l: any) => l.status === "completed" || l.status === "verified" || l.status === "critical")
-          .slice(0, 8)
-          .map((l: any) => {
-            const meta = l.result_metadata || {};
-            return {
-              orderId: l.id,
-              patientId: l.patient_id,
-              patientName: `${l.patient?.first_name || ""} ${l.patient?.last_name || ""}`.trim() || "Patient",
-              testName: (l.test as any)?.test_catalog?.name || meta.test_name || "Lab Investigation",
-              resultValue: l.result_value || meta.result_value || null,
-              units: meta.units || l.units || null,
-              completedAt: meta.completed_at || l.completed_at || l.created_at,
-              hasAbnormal: Boolean(meta.is_out_of_range || l.is_out_of_range || l.is_critical || meta.is_critical),
-              isCritical: Boolean(l.is_critical || meta.is_critical),
-            };
-          });
-
-        const requestedToday = allLabs.filter((l: any) => l.created_at >= todayStart).length;
-        const completedToday = allLabs.filter((l: any) => (l.status === "completed" || l.status === "critical" || l.status === "verified") && (l.created_at >= todayStart)).length;
-        const pendingResults = allLabs.filter((l: any) => ["ordered", "sample_collected", "processing"].includes(l.status)).length;
-        const criticalAlertsCount = criticalLabAlerts.length;
-
-        // Notifications formatted for doctor
-        const notifications = (notificationsRaw ?? []).map((n: any) => ({
-          id: n.id,
-          type: n.type,
-          title: n.title,
-          message: n.body,
-          patientId: n.metadata?.patientId,
-          patientName: n.metadata?.patientName,
-          encounterId: n.metadata?.encounterId,
-          orderId: n.metadata?.labOrderId,
-          timestamp: n.created_at,
-          isRead: Boolean(n.is_read),
-          priority: (n.priority as any) || "routine",
+      const allLabs = labOrdersAllRaw || [];
+      const diagnosticHold = allLabs
+        .filter((l: any) => ["ordered", "sample_collected", "processing"].includes(l.status))
+        .map((l: any) => ({
+          orderId: l.id,
+          patientId: l.patient_id,
+          patientName: `${l.patient?.first_name || ""} ${l.patient?.last_name || ""}`.trim() || "Patient",
+          testName: (l.test as any)?.test_catalog?.name || "Diagnostic Test",
+          status: l.status,
+          orderedAt: l.created_at,
+          isCritical: Boolean(l.is_critical),
         }));
 
-        return {
-          role: "doctor",
-          hospitalName,
-          hospitalId: activeHospitalId,
-          doctorData: {
-            queueCount: queueRaw?.length ?? 0,
-            myPatientsCount,
-            unassignedCount,
-            urgentVitalsCount,
-            pendingLabOrdersCount: pendingResults,
-            completedLabResultsCount: completedToday,
-            supervisedInpatientsCount: inpatients.length,
-            appointmentMetrics: {
-              todayTotal: apptTotal,
-              completed: apptCompleted,
-              checkedIn: apptCheckedIn,
-              pending: apptPending,
-              cancelled: apptCancelled,
-              noShowRate,
-              externalOnlineBookings: apptExternal,
-              hourlyTraffic,
-            },
-            patientAssignmentQueues: {
-              waitingTriage,
-              waitingDoctor,
-              inConsultation,
-              diagnosticHold,
-              pharmacyHold,
-            },
-            waitingQueue,
-            inpatients,
-            criticalLabAlerts,
-            recentLabResults,
-            labStatusSummary: {
-              requestedToday,
-              pendingResults,
-              completedToday,
-              criticalAlertsCount,
-            },
-            notifications,
+      const pharmacyHold = (pendingRxRaw ?? []).map((rx: any) => ({
+        prescriptionId: rx.id,
+        patientName: `${rx.patient?.first_name || ""} ${rx.patient?.last_name || ""}`.trim() || "Patient",
+        drugsCount: rx.prescription_items?.length || 1,
+        orderedAt: rx.created_at,
+      }));
+
+      // Critical Lab Alerts & Recent Lab Results
+      const criticalLabAlerts = allLabs
+        .filter((l: any) => (l.is_critical || l.is_out_of_range || l.status === "critical") && (l.status === "completed" || l.status === "critical"))
+        .map((l: any) => ({
+          orderId: l.id,
+          patientId: l.patient_id,
+          patientName: `${l.patient?.first_name || ""} ${l.patient?.last_name || ""}`.trim() || "Patient",
+          nin: l.patient?.nin || "—",
+          testName: (l.test as any)?.test_catalog?.name || "Lab Investigation",
+          resultValue: l.result_value || "Panic Value",
+          units: l.units || "",
+          referenceRange: l.reference_range || null,
+          isCritical: Boolean(l.is_critical || l.status === "critical"),
+          isOutOfRange: Boolean(l.is_out_of_range),
+          technicianName: l.technician_name || "Diagnostic Lab",
+          completedAt: l.completed_at || l.created_at,
+          acknowledgedAt: l.acknowledged_at || null,
+          acknowledgedByName: l.acknowledged_by_name || null,
+          urgency: l.urgency || "stat",
+        }));
+
+      const recentLabResults = allLabs
+        .filter((l: any) => l.status === "completed" || l.status === "critical")
+        .slice(0, 8)
+        .map((l: any) => ({
+          orderId: l.id,
+          patientId: l.patient_id,
+          patientName: `${l.patient?.first_name || ""} ${l.patient?.last_name || ""}`.trim() || "Patient",
+          testName: (l.test as any)?.test_catalog?.name || "Lab Investigation",
+          resultValue: l.result_value || null,
+          units: l.units || null,
+          completedAt: l.completed_at || l.created_at,
+          hasAbnormal: Boolean(l.is_out_of_range || l.is_critical),
+          isCritical: Boolean(l.is_critical),
+        }));
+
+      const requestedToday = allLabs.filter((l: any) => l.created_at >= todayStart).length;
+      const completedToday = allLabs.filter((l: any) => (l.status === "completed" || l.status === "critical") && (l.completed_at >= todayStart || l.created_at >= todayStart)).length;
+      const pendingResults = allLabs.filter((l: any) => ["ordered", "sample_collected", "processing"].includes(l.status)).length;
+      const criticalAlertsCount = criticalLabAlerts.length;
+
+      // Notifications formatted for doctor
+      const notifications = (notificationsRaw ?? []).map((n: any) => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        message: n.body,
+        patientId: n.metadata?.patientId,
+        patientName: n.metadata?.patientName,
+        encounterId: n.metadata?.encounterId,
+        orderId: n.metadata?.labOrderId,
+        timestamp: n.created_at,
+        isRead: Boolean(n.is_read),
+        priority: (n.priority as any) || "routine",
+      }));
+
+      return {
+        role: "doctor",
+        hospitalName,
+        hospitalId: activeHospitalId,
+        doctorData: {
+          queueCount: queueRaw?.length ?? 0,
+          myPatientsCount,
+          unassignedCount,
+          urgentVitalsCount,
+          pendingLabOrdersCount: pendingResults,
+          completedLabResultsCount: completedToday,
+          supervisedInpatientsCount: inpatients.length,
+          appointmentMetrics: {
+            todayTotal: apptTotal,
+            completed: apptCompleted,
+            checkedIn: apptCheckedIn,
+            pending: apptPending,
+            cancelled: apptCancelled,
+            noShowRate,
+            externalOnlineBookings: apptExternal,
+            hourlyTraffic,
           },
-        };
-      } catch (err) {
-        console.error("Doctor dashboard query error:", err);
-        return {
-          role: "doctor",
-          hospitalName,
-          hospitalId: activeHospitalId,
-          doctorData: {
-            queueCount: 0,
-            myPatientsCount: 0,
-            unassignedCount: 0,
-            urgentVitalsCount: 0,
-            pendingLabOrdersCount: 0,
-            completedLabResultsCount: 0,
-            supervisedInpatientsCount: 0,
-            appointmentMetrics: {
-              todayTotal: 0,
-              completed: 0,
-              checkedIn: 0,
-              pending: 0,
-              cancelled: 0,
-              noShowRate: 0,
-              externalOnlineBookings: 0,
-              hourlyTraffic: [],
-            },
-            patientAssignmentQueues: {
-              waitingTriage: [],
-              waitingDoctor: [],
-              inConsultation: [],
-              diagnosticHold: [],
-              pharmacyHold: [],
-            },
-            waitingQueue: [],
-            inpatients: [],
-            criticalLabAlerts: [],
-            recentLabResults: [],
-            labStatusSummary: {
-              requestedToday: 0,
-              pendingResults: 0,
-              completedToday: 0,
-              criticalAlertsCount: 0,
-            },
-            notifications: [],
+          patientAssignmentQueues: {
+            waitingTriage,
+            waitingDoctor,
+            inConsultation,
+            diagnosticHold,
+            pharmacyHold,
           },
-        };
-      }
+          waitingQueue,
+          inpatients,
+          criticalLabAlerts,
+          recentLabResults,
+          labStatusSummary: {
+            requestedToday,
+            pendingResults,
+            completedToday,
+            criticalAlertsCount,
+          },
+          notifications,
+        },
+      };
     }
 
     // 2. NURSE DASHBOARD
@@ -1189,93 +1015,75 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
 
     // 5. FRONT DESK DASHBOARD
     if (callerRole === "front_desk") {
-      try {
-        // Fetch today's appointments safely
-        const { data: apptsRaw } = await supabase
-          .from("appointments")
-          .select(`
-            id, appointment_date, status, is_external_booking,
-            patient:patient_id (first_name, last_name, nin, phone),
-            staff:doctor_id (full_name)
-          `)
-          .eq("hospital_id", activeHospitalId)
-          .gte("appointment_date", todayStart)
-          .lt("appointment_date", tomorrowStart)
-          .order("appointment_date", { ascending: true });
+      // Fetch today's appointments
+      const todayDate = new Date().toISOString().slice(0, 10);
+      const { data: apptsRaw } = await supabase
+        .from("appointments")
+        .select(`
+          id, appointment_time, status, is_external_booking, booking_reference,
+          patient:patient_id (first_name, last_name, nin, phone),
+          staff:doctor_id (full_name)
+        `)
+        .eq("hospital_id", activeHospitalId)
+        .eq("appointment_date", todayDate)
+        .order("appointment_time", { ascending: true });
 
-        const todayAppointments = (apptsRaw ?? []).map((a: any) => ({
-          id: a.id,
-          patientName: `${a.patient?.first_name || ""} ${a.patient?.last_name || ""}`.trim() || "Patient",
-          nin: a.patient?.nin || "—",
-          phone: a.patient?.phone || null,
-          appointmentTime: a.appointment_date ? new Date(a.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : "09:00",
-          status: a.status,
-          isExternalBooking: Boolean(a.is_external_booking),
-          bookingReference: null,
-          doctorName: a.staff?.full_name ? `Dr. ${a.staff.full_name}` : null,
-        }));
+      const todayAppointments = (apptsRaw ?? []).map((a: any) => ({
+        id: a.id,
+        patientName: `${a.patient?.first_name || ""} ${a.patient?.last_name || ""}`.trim() || "Patient",
+        nin: a.patient?.nin || "—",
+        phone: a.patient?.phone || null,
+        appointmentTime: a.appointment_time || "09:00",
+        status: a.status,
+        isExternalBooking: Boolean(a.is_external_booking),
+        bookingReference: a.booking_reference,
+        doctorName: a.staff?.full_name ? `Dr. ${a.staff.full_name}` : null,
+      }));
 
-        const onlineBookingsCount = todayAppointments.filter((a) => a.isExternalBooking).length;
+      const onlineBookingsCount = todayAppointments.filter((a) => a.isExternalBooking).length;
 
-        // Live Triage Queue safely using encounter_status
-        const { data: queueRaw } = await supabase
-          .from("encounters")
-          .select(`
-            id, created_at, encounter_status,
-            patient:patient_id (first_name, last_name)
-          `)
-          .eq("hospital_id", activeHospitalId)
-          .in("encounter_status", ["triage", "waiting", "consultation"])
-          .order("created_at", { ascending: true });
+      // Live Triage Queue
+      const { data: queueRaw } = await supabase
+        .from("encounters")
+        .select(`
+          id, queue_number, created_at, status,
+          patient:patient_id (first_name, last_name)
+        `)
+        .eq("hospital_id", activeHospitalId)
+        .in("status", ["checked_in", "triage", "waiting_for_doctor"])
+        .order("created_at", { ascending: true });
 
-        const liveTriageQueue = (queueRaw ?? []).map((q: any) => ({
-          encounterId: q.id,
-          patientName: `${q.patient?.first_name || ""} ${q.patient?.last_name || ""}`.trim() || "Patient",
-          queueNumber: null,
-          checkedInAt: q.created_at,
-          status: q.encounter_status,
-        }));
+      const liveTriageQueue = (queueRaw ?? []).map((q: any) => ({
+        encounterId: q.id,
+        patientName: `${q.patient?.first_name || ""} ${q.patient?.last_name || ""}`.trim() || "Patient",
+        queueNumber: q.queue_number,
+        checkedInAt: q.created_at,
+        status: q.status,
+      }));
 
-        // Beds lookup
-        const { data: bedsRaw } = await supabase
-          .from("beds")
-          .select("id, status")
-          .eq("hospital_id", activeHospitalId);
+      // Beds lookup
+      const { data: bedsRaw } = await supabase
+        .from("beds")
+        .select("id, status")
+        .eq("hospital_id", activeHospitalId);
 
-        const totalBedsCount = bedsRaw?.length || 0;
-        const availableBedsCount = (bedsRaw ?? []).filter((b: any) => b.status === "available").length;
+      const totalBedsCount = bedsRaw?.length || 0;
+      const availableBedsCount = (bedsRaw ?? []).filter((b: any) => b.status === "available").length;
 
-        return {
-          role: "front_desk",
-          hospitalName,
-          hospitalId: activeHospitalId,
-          frontDeskData: {
-            todayAppointmentsCount: todayAppointments.length,
-            onlineBookingsCount,
-            checkedInTodayCount: liveTriageQueue.length,
-            availableBedsCount,
-            totalBedsCount,
-            todayAppointments,
-            liveTriageQueue,
-          },
-        };
-      } catch (err) {
-        console.error("Front desk dashboard query error:", err);
-        return {
-          role: "front_desk",
-          hospitalName,
-          hospitalId: activeHospitalId,
-          frontDeskData: {
-            todayAppointmentsCount: 0,
-            onlineBookingsCount: 0,
-            checkedInTodayCount: 0,
-            availableBedsCount: 0,
-            totalBedsCount: 0,
-            todayAppointments: [],
-            liveTriageQueue: [],
-          },
-        };
-      }
+      return {
+        role: "front_desk",
+        hospitalName,
+        hospitalId: activeHospitalId,
+        frontDeskData: {
+          todayAppointmentsCount: todayAppointments.length,
+          onlineBookingsCount,
+          checkedInTodayCount: liveTriageQueue.length,
+          availableBedsCount,
+          totalBedsCount,
+          todayAppointments,
+          liveTriageQueue,
+        },
+      };
     }
 
     // 6. HOSPITAL ADMIN & SUPER ADMIN DASHBOARD

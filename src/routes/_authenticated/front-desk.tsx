@@ -46,7 +46,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAppShell } from "@/components/layout/AppShell";
-import { RoleGuard } from "@/components/auth/RoleGuard";
 
 const title = "Front Desk & Intake — HospNest";
 const description =
@@ -245,13 +244,7 @@ function FrontDesk() {
   const bookedCount = appointmentsList.filter((a: any) => a.status === "booked").length;
 
   return (
-    <RoleGuard
-      allowedRoles={["nurse", "hospital_admin", "super_admin"]}
-      requiredPermission="front_desk"
-      fallbackTitle="Front Desk Restricted"
-      fallbackMessage="Only nurses, hospital administrators, or staff with front-desk intake privileges can access this module."
-    >
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-8">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl font-bold text-foreground sm:text-3xl">
@@ -682,7 +675,6 @@ function FrontDesk() {
         onCheckIn={(appointmentId) => checkInMutation.mutate(appointmentId)}
       />
     </div>
-    </RoleGuard>
   );
 }
 

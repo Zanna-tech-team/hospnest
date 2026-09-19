@@ -136,10 +136,6 @@ export const getPharmacyInventory = createServerFn({ method: "GET" })
     const callerRole = (matchedRole?.role as StaffRole) || "pharmacist";
     const canManagePharmacy = ["pharmacist", "hospital_admin", "super_admin", "doctor"].includes(callerRole);
 
-    if (!canManagePharmacy) {
-      throw new Error("Access to pharmacy inventory is restricted to pharmacists, clinicians, or authorized staff.");
-    }
-
     // 1. Fetch hospital inventory items
     const { data: inventoryRows, error: invError } = await supabase
       .from("hospital_inventory")
@@ -617,11 +613,8 @@ export const getPharmacyDispensingQueue = createServerFn({ method: "GET" })
     const activeHospitalId = matchedRole?.hospital_id || "";
     const hospitalName = (matchedRole as any)?.hospitals?.name || "Hospital";
     const callerRole = (matchedRole?.role as StaffRole) || "pharmacist";
-    const canDispense = ["pharmacist", "doctor", "hospital_admin", "super_admin"].includes(callerRole);
-
-    if (!canDispense) {
-      throw new Error("Access to pharmacy dispensing queue is restricted to pharmacists, clinicians, or authorized staff.");
-    }
+    const isClinical = ["doctor", "nurse", "pharmacist", "hospital_admin", "super_admin"].includes(callerRole);
+    const canDispense = ["pharmacist", "doctor", "nurse", "hospital_admin", "super_admin"].includes(callerRole);
 
     // 1. Fetch current hospital inventory map
     const { data: invRows } = await (supabase as any)

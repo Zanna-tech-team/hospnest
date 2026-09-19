@@ -31,11 +31,6 @@ async function assertHospitalStaff(
 
   const match = rows.find((r) => r.hospital_id === hospitalId && r.role !== "patient");
   if (!match) throw new Error("You are not assigned to this hospital.");
-
-  const allowed = ["nurse", "hospital_admin", "doctor", "front_desk"].includes(match.role);
-  if (!allowed) {
-    throw new Error("You do not have front-desk patient intake or enrollment privileges.");
-  }
   return match.role as StaffRole;
 }
 

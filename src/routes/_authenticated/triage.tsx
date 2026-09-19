@@ -25,7 +25,6 @@ import {
 
 import { VoiceTriageAssistantModal } from "@/components/voicecare/VoiceTriageAssistantModal";
 import { useAppShell } from "@/components/layout/AppShell";
-import { RoleGuard } from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -264,13 +263,7 @@ function TriageQueuePage() {
   }, [triageData?.queue, searchQuery]);
 
   return (
-    <RoleGuard
-      allowedRoles={["nurse", "doctor", "hospital_admin", "super_admin"]}
-      requiredPermission="triage"
-      fallbackTitle="Triage & Vitals Restricted"
-      fallbackMessage="Access to outpatient vital signs capture, NEWS2 early warning scoring, and clinical priority queueing is restricted to licensed Nurses, Triage Officers, and Medical Practitioners."
-    >
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-8 space-y-6">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-8 space-y-6">
       {/* Top Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -808,6 +801,5 @@ function TriageQueuePage() {
         }}
       />
     </div>
-    </RoleGuard>
   );
 }

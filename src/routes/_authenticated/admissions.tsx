@@ -2,7 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useTransition, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { RoleGuard } from "@/components/auth/RoleGuard";
 import {
   Bed,
   Building2,
@@ -330,14 +329,8 @@ function InpatientsAdmissionsPage() {
   const { wards, metrics } = dashboardData || { wards: [], metrics: {} as any };
 
   return (
-    <RoleGuard
-      allowedRoles={["doctor", "nurse", "hospital_admin", "super_admin"]}
-      requiredPermission="admissions"
-      fallbackTitle="Inpatient Admissions Restricted"
-      fallbackMessage="Inpatient admissions, ward rounds, and bed assignments are restricted to authorized Clinical Doctors, Ward Nurses, and Hospital Administrators."
-    >
-      <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 space-y-6">
-        {/* 1. Header & Actions */}
+    <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 space-y-6">
+      {/* 1. Header & Actions */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/50 pb-5">
         <div>
           <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
@@ -1065,7 +1058,6 @@ function InpatientsAdmissionsPage() {
           />
         </PrintableDocumentModal>
       )}
-      </div>
-    </RoleGuard>
+    </div>
   );
 }

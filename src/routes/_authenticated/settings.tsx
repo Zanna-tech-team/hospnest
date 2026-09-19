@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 
 import { useAppShell } from "@/components/layout/AppShell";
-import { RoleGuard } from "@/components/auth/RoleGuard";
 import {
   getHospitalSettingsData,
   updateHospitalProfile,
@@ -358,12 +357,7 @@ function SettingsPage() {
   const { hospital } = data;
 
   return (
-    <RoleGuard
-      allowedRoles={["hospital_admin", "super_admin"]}
-      fallbackTitle="Hospital Settings Restricted"
-      fallbackMessage="Only hospital administrators and system administrators can configure facility parameters, departments, and clinical tariffs."
-    >
-      <div className="space-y-8 pb-16">
+    <div className="space-y-8 pb-16">
       {/* Header Banner */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b pb-6">
         <div>
@@ -1315,6 +1309,5 @@ function SettingsPage() {
         </DialogContent>
       </Dialog>
     </div>
-    </RoleGuard>
   );
 }

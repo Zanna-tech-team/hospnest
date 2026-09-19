@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useAppShell } from "@/components/layout/AppShell";
-import { RoleGuard } from "@/components/auth/RoleGuard";
 import {
   getHospitalAuditLogs,
   verifyAuditHashChain,
@@ -219,13 +218,7 @@ export function AuditLogViewerPage() {
   const activeStaffDetail = selectedStaffId ? staffSummaries.find((s) => s.accessorId === selectedStaffId || s.accessorName === selectedStaffId) : null;
 
   return (
-    <RoleGuard
-      allowedRoles={["hospital_admin", "super_admin"]}
-      requiredPermission="audit"
-      fallbackTitle="Audit Ledger Restricted"
-      fallbackMessage="Only hospital administrators, compliance officers, or staff with audit privileges can inspect the hospital audit trail and cryptographic hash chain."
-    >
-      <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950/30 p-4 sm:p-6 lg:p-8 space-y-6">
+    <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950/30 p-4 sm:p-6 lg:p-8 space-y-6">
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -834,6 +827,5 @@ export function AuditLogViewerPage() {
         </DialogContent>
       </Dialog>
     </div>
-    </RoleGuard>
   );
 }
