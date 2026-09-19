@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -16,6 +16,7 @@ import {
   Activity,
   AlertTriangle,
   FlaskConical,
+  LayoutDashboard,
   Pill,
   RefreshCw,
   Stethoscope,
@@ -30,6 +31,8 @@ import { PharmacistDashboard } from "@/components/dashboard/PharmacistDashboard"
 import { HospitalAdminDashboard } from "@/components/dashboard/HospitalAdminDashboard";
 import { FrontDeskDashboard } from "@/components/dashboard/FrontDeskDashboard";
 import { PatientDashboard } from "@/components/dashboard/PatientDashboard";
+
+// ─── Safe empty default data structures for instant pre-data rendering ─────────
 
 const DEFAULT_DOCTOR_DATA: DoctorDashboardData = {
   queueCount: 0,
@@ -111,6 +114,62 @@ const DEFAULT_FRONT_DESK_DATA: FrontDeskDashboardData = {
   liveTriageQueue: [],
 };
 
+// ─── Role metadata for dashboard header labels & action buttons ────────────────
+
+const ROLE_CONFIG: Record<
+  string,
+  { title: string; subtitle: string; badgeLabel: string; badgeColor: string }
+> = {
+  doctor: {
+    title: "Doctor Clinical Workspace",
+    subtitle: "Your consultation queue, patient vitals, and clinical metrics.",
+    badgeLabel: "Doctor",
+    badgeColor: "border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-300",
+  },
+  nurse: {
+    title: "Nursing & Triage Station",
+    subtitle: "Triage queue, ward beds, and shift summary.",
+    badgeLabel: "Nurse",
+    badgeColor: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  },
+  lab_tech: {
+    title: "Laboratory Diagnostic Hub",
+    subtitle: "Specimen worklist, test processing, and critical result alerts.",
+    badgeLabel: "Lab Tech",
+    badgeColor: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  },
+  pharmacist: {
+    title: "Pharmacy Operations Center",
+    subtitle: "Prescription dispensary queue, drug inventory, and stock alerts.",
+    badgeLabel: "Pharmacist",
+    badgeColor: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  },
+  front_desk: {
+    title: "Front Desk & Intake",
+    subtitle: "Daily appointments, walk-in check-ins, and lobby queue.",
+    badgeLabel: "Front Desk",
+    badgeColor: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+  },
+  hospital_admin: {
+    title: "Executive Hospital Dashboard",
+    subtitle: "Full facility overview, financials, staff, and operational metrics.",
+    badgeLabel: "Hospital Admin",
+    badgeColor: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  },
+  super_admin: {
+    title: "Executive Hospital Dashboard",
+    subtitle: "Platform-level oversight and clinical operations.",
+    badgeLabel: "Super Admin",
+    badgeColor: "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300",
+  },
+  billing_officer: {
+    title: "Billing & Revenue Dashboard",
+    subtitle: "Invoices, claims, collections, and financial reporting.",
+    badgeLabel: "Billing Officer",
+    badgeColor: "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300",
+  },
+};
+
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
@@ -133,99 +192,104 @@ export function DashboardPage() {
     isPatient,
     isSuperAdmin,
     isLoading: isAuthLoading,
+    shellData,
   } = useAuth();
   const getDashboardDataFn = useServerFn(getRoleDashboardData);
 
+  // Patient: redirect immediately — don't wait for dashboard data
   useEffect(() => {
     if (isAuthLoading) return;
-
     if (isPatient) {
       navigate({ to: "/portal" });
       return;
     }
-    // If user is superadmin and not actively inspecting a specific hospital, send them to global command center
     if (isSuperAdmin && !activeHospitalId) {
       navigate({ to: "/superadmin" });
     }
   }, [isPatient, isSuperAdmin, activeHospitalId, isAuthLoading, navigate]);
 
-  const { data, isLoading, isError, refetch, isRefetching } = useQuery<RoleDashboardResult>({
-    queryKey: ["role-dashboard-data", activeHospitalId, authRole],
+  // Effective role: use authRole immediately (includes cached role from localStorage)
+  // so UI renders the correct skeleton while server data is loading
+  const effectiveRole = authRole;
+
+  const { data, isLoading: isDashLoading, isError, refetch, isRefetching } = useQuery<RoleDashboardResult>({
+    queryKey: ["role-dashboard-data", activeHospitalId, effectiveRole],
     queryFn: () =>
       getDashboardDataFn({
         data: {
           hospitalId: activeHospitalId || undefined,
-          role: authRole || undefined,
+          role: effectiveRole || undefined,
         },
       }),
     enabled:
       !isAuthLoading &&
       !isPatient &&
+      Boolean(effectiveRole) &&
       (Boolean(activeHospitalId) || Boolean(isSuperAdmin)),
-    refetchInterval: 20000,
+    staleTime: 1000 * 20, // 20s — refresh every 20s
+    refetchInterval: 30000,
   });
 
-  if (isAuthLoading) {
+  // ── Loading state: show role-branded skeleton while auth resolves ──────────
+  if (isAuthLoading && !effectiveRole) {
     return (
-      <div className="flex h-[80vh] flex-col items-center justify-center gap-3">
-        <RefreshCw className="h-8 w-8 animate-spin text-teal-600" />
-        <p className="text-sm font-medium text-muted-foreground">
-          Authenticating workspace...
-        </p>
+      <div className="flex h-[80vh] flex-col items-center justify-center gap-4">
+        <div className="flex size-14 items-center justify-center rounded-2xl bg-teal-500/10">
+          <LayoutDashboard className="size-7 text-teal-600 animate-pulse" />
+        </div>
+        <div className="space-y-1 text-center">
+          <p className="text-sm font-semibold text-foreground">Loading your workspace...</p>
+          <p className="text-xs text-muted-foreground">Authenticating and resolving your role permissions</p>
+        </div>
+        <RefreshCw className="h-5 w-5 animate-spin text-teal-500/60" />
       </div>
     );
   }
 
+  // Patient redirect placeholder
   if (isPatient) {
     return (
       <div className="flex h-[80vh] flex-col items-center justify-center gap-3">
         <RefreshCw className="h-8 w-8 animate-spin text-teal-600" />
-        <p className="text-sm font-medium text-muted-foreground">
-          Redirecting to Patient Health Portal...
-        </p>
+        <p className="text-sm font-medium text-muted-foreground">Redirecting to Patient Health Portal...</p>
       </div>
     );
   }
 
+  // Super admin without hospital: redirect placeholder
   if (isSuperAdmin && !activeHospitalId) {
     return (
       <div className="flex h-[80vh] flex-col items-center justify-center gap-3">
         <RefreshCw className="h-8 w-8 animate-spin text-purple-600" />
-        <p className="text-sm font-medium text-muted-foreground">
-          Redirecting to Super Admin Global Command Center...
-        </p>
+        <p className="text-sm font-medium text-muted-foreground">Redirecting to Super Admin Command Center...</p>
       </div>
     );
   }
 
-  // Strict role determination: prioritize authenticated role, then API returned role
-  const effectiveRole = authRole || data?.role;
-
-  if (isLoading && !effectiveRole) {
+  // No role resolved at all (auth complete but no role record) — show clear error
+  if (!isAuthLoading && !effectiveRole) {
     return (
-      <div className="flex h-[80vh] flex-col items-center justify-center gap-3">
-        <RefreshCw className="h-8 w-8 animate-spin text-teal-600" />
-        <p className="text-sm font-medium text-muted-foreground">
-          Loading your clinical workspace dashboard...
-        </p>
+      <div className="flex h-[80vh] flex-col items-center justify-center gap-4 text-center">
+        <AlertTriangle className="size-12 text-amber-500" />
+        <div className="space-y-1">
+          <p className="text-base font-semibold text-foreground">Workspace Role Not Found</p>
+          <p className="text-sm text-muted-foreground max-w-sm">
+            Your account is not yet linked to a hospital workspace. Please contact your hospital administrator
+            or sign in with the correct account.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          <RefreshCw className="mr-2 size-3.5" /> Try Again
+        </Button>
       </div>
     );
   }
 
-  if (!effectiveRole) {
-    return (
-      <div className="flex h-[80vh] flex-col items-center justify-center gap-3">
-        <RefreshCw className="h-8 w-8 animate-spin text-teal-600" />
-        <p className="text-sm font-medium text-muted-foreground">
-          Resolving workspace role permissions...
-        </p>
-      </div>
-    );
-  }
+  const roleCfg = effectiveRole ? ROLE_CONFIG[effectiveRole] : ROLE_CONFIG["hospital_admin"];
 
   return (
     <div className="space-y-6 pb-16">
-      {/* Non-fatal error notice if server query was interrupted */}
+      {/* Non-fatal network error notice */}
       {isError && (
         <div className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-700 dark:text-amber-300">
           <div className="flex items-center gap-2">
@@ -243,34 +307,25 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* Header */}
+      {/* Dashboard Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="font-display text-2xl font-bold tracking-tight text-foreground md:text-3xl">
-              {effectiveRole === "doctor"
-                ? "Doctor Clinical Workspace"
-                : effectiveRole === "nurse"
-                ? "Nursing & Triage Station"
-                : effectiveRole === "lab_tech"
-                ? "Laboratory Diagnostic Hub"
-                : effectiveRole === "pharmacist"
-                ? "Pharmacy Operations Center"
-                : effectiveRole === "front_desk"
-                ? "Front Desk & Intake"
-                : effectiveRole === "patient"
-                ? "Patient Personal Portal"
-                : "Executive Hospital Dashboard"}
+              {roleCfg?.title ?? "Clinical Workspace"}
             </h1>
-            <Badge
-              variant="outline"
-              className="border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-300 font-semibold uppercase text-[10px]"
-            >
-              {effectiveRole.replace("_", " ")}
-            </Badge>
+            {effectiveRole && (
+              <Badge
+                variant="outline"
+                className={`font-semibold uppercase text-[10px] ${roleCfg?.badgeColor}`}
+              >
+                {roleCfg?.badgeLabel ?? effectiveRole.replace("_", " ")}
+              </Badge>
+            )}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            {data?.hospitalName || "Active Facility"} • Real-time patient queues, clinical metrics, and department actions.
+            {data?.hospitalName || shellData?.activeWorkplace?.name || "Active Facility"}{" "}
+            {roleCfg?.subtitle && `• ${roleCfg.subtitle}`}
           </p>
         </div>
 
@@ -279,18 +334,17 @@ export function DashboardPage() {
             size="sm"
             variant="outline"
             onClick={() => refetch()}
-            disabled={isRefetching}
+            disabled={isRefetching || isDashLoading}
             className="gap-1.5 border-border"
           >
-            <RefreshCw className={`size-3.5 ${isRefetching ? "animate-spin" : ""}`} />
+            <RefreshCw className={`size-3.5 ${isRefetching || isDashLoading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
 
-          {/* Role-Specific Primary Action */}
           {effectiveRole === "doctor" && (
             <Button asChild size="sm" className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white shadow-sm font-semibold">
               <Link to="/consultations">
-                <Stethoscope className="size-3.5" /> Open Consultations Queue
+                <Stethoscope className="size-3.5" /> Consultations Queue
               </Link>
             </Button>
           )}
@@ -315,14 +369,9 @@ export function DashboardPage() {
               </Link>
             </Button>
           )}
-          {effectiveRole === "front_desk" && (
-            <Button asChild size="sm" className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white shadow-sm font-semibold">
-              <Link to="/front-desk">
-                <UserPlus className="size-3.5" /> Patient Intake
-              </Link>
-            </Button>
-          )}
-          {(effectiveRole === "hospital_admin" || effectiveRole === "super_admin") && (
+          {(effectiveRole === "front_desk" ||
+            effectiveRole === "hospital_admin" ||
+            effectiveRole === "super_admin") && (
             <Button asChild size="sm" className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white shadow-sm font-semibold">
               <Link to="/front-desk">
                 <UserPlus className="size-3.5" /> Patient Intake
@@ -332,25 +381,27 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Role-Specific Modular Dashboards (with safe default fallbacks) */}
+      {/* ── Role-Specific Modular Dashboards ─────────────────────────────────── */}
+      {/* Each dashboard receives live data OR safe default — renders immediately */}
+
       {effectiveRole === "doctor" && (
-        <DoctorDashboard data={data?.doctorData || DEFAULT_DOCTOR_DATA} refetch={refetch} />
+        <DoctorDashboard data={data?.doctorData ?? DEFAULT_DOCTOR_DATA} refetch={refetch} />
       )}
 
       {effectiveRole === "nurse" && (
-        <NurseDashboard data={data?.nurseData || DEFAULT_NURSE_DATA} />
+        <NurseDashboard data={data?.nurseData ?? DEFAULT_NURSE_DATA} />
       )}
 
       {effectiveRole === "lab_tech" && (
-        <LabTechDashboard data={data?.labTechData || DEFAULT_LAB_DATA} />
+        <LabTechDashboard data={data?.labTechData ?? DEFAULT_LAB_DATA} />
       )}
 
       {effectiveRole === "pharmacist" && (
-        <PharmacistDashboard data={data?.pharmacistData || DEFAULT_PHARMACIST_DATA} />
+        <PharmacistDashboard data={data?.pharmacistData ?? DEFAULT_PHARMACIST_DATA} />
       )}
 
       {effectiveRole === "front_desk" && (
-        <FrontDeskDashboard data={data?.frontDeskData || DEFAULT_FRONT_DESK_DATA} />
+        <FrontDeskDashboard data={data?.frontDeskData ?? DEFAULT_FRONT_DESK_DATA} />
       )}
 
       {(effectiveRole === "hospital_admin" ||

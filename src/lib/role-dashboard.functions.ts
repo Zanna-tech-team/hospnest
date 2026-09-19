@@ -441,50 +441,51 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
         };
       }
 
-      // Fetch appointments safely
-      const { data: appts } = await supabase
-        .from("appointments")
-        .select(`
-          id, appointment_date, status,
-          hospitals (name)
-        `)
-        .eq("patient_id", patientId)
-        .order("appointment_date", { ascending: false })
-        .limit(6);
+      // Fetch all patient portal data in parallel for speed
+      const [
+        { data: appts },
+        { data: encs },
+        { data: rxRows },
+        { data: labs },
+      ] = await Promise.all([
+        // Upcoming & recent appointments
+        supabase
+          .from("appointments")
+          .select("id, appointment_date, status, hospitals(name)")
+          .eq("patient_id", patientId)
+          .order("appointment_date", { ascending: false })
+          .limit(6),
 
-      // Fetch encounters safely
-      const { data: encs } = await supabase
-        .from("encounters")
-        .select(`
-          id, created_at, diagnosis, encounter_status,
-          hospitals (name),
-          practitioner:practitioner_id (full_name)
-        `)
-        .eq("patient_id", patientId)
-        .order("created_at", { ascending: false })
-        .limit(6);
+        // Recent encounters / consultations
+        supabase
+          .from("encounters")
+          .select("id, created_at, diagnosis, encounter_status, hospitals(name), practitioner:practitioner_id(full_name)")
+          .eq("patient_id", patientId)
+          .order("created_at", { ascending: false })
+          .limit(6),
 
-      // Fetch prescriptions safely
-      const { data: rxs } = await supabase
-        .from("prescription_items")
-        .select(`
-          id, dosage, frequency, duration, created_at,
-          drug:drug_id (generic_name, brand_name)
-        `)
-        .eq("prescriptions.patient_id", patientId)
-        .limit(6);
+        // Active prescriptions — query prescriptions first, then items
+        supabase
+          .from("prescriptions")
+          .select("id, created_at, prescription_items(id, dosage, frequency, duration, drug:drug_id(generic_name, brand_name))")
+          .eq("patient_id", patientId)
+          .order("created_at", { ascending: false })
+          .limit(4),
 
-      // Fetch completed lab reports safely
-      const { data: labs } = await supabase
-        .from("lab_orders")
-        .select(`
-          id, created_at, result_value, is_critical, status, result_metadata,
-          test:test_id (test_catalog:test_catalog_id (name))
-        `)
-        .eq("patient_id", patientId)
-        .in("status", ["completed", "verified"])
-        .order("created_at", { ascending: false })
-        .limit(6);
+        // Completed lab reports
+        supabase
+          .from("lab_orders")
+          .select("id, created_at, result_value, is_critical, status, result_metadata, test:test_id(test_catalog:test_catalog_id(name))")
+          .eq("patient_id", patientId)
+          .in("status", ["completed", "verified"])
+          .order("created_at", { ascending: false })
+          .limit(6),
+      ]);
+
+      // Flatten prescription items from prescription rows
+      const rxs = (rxRows ?? []).flatMap((rx: any) =>
+        (rx.prescription_items ?? []).map((item: any) => ({ ...item, created_at: rx.created_at }))
+      );
 
       return {
         role: "patient",
@@ -534,12 +535,22 @@ export const getRoleDashboardData = createServerFn({ method: "GET" })
       : (input?.role ? staffRoles.find((r: any) => r.role === input.role) : null) || staffRoles[0];
 
     const activeHospitalId = input?.hospitalId || (matched?.hospital_id as string) || "";
-    const callerRole = (input?.role as StaffRole) || (matched?.role as StaffRole) || "doctor";
+    // Strict role resolution: NEVER default to "doctor" — use the matched DB role
+    const callerRole = (input?.role as StaffRole) || (matched?.role as StaffRole) || null;
     let hospitalName = (matched?.hospitals as any)?.name || "Hospital";
 
     if (!hospitalName || hospitalName === "Hospital") {
       const { data: h } = await supabase.from("hospitals").select("name").eq("id", activeHospitalId).maybeSingle();
       if (h?.name) hospitalName = h.name;
+    }
+
+    // Guard: if role is still null, return a safe empty state
+    if (!callerRole) {
+      return {
+        role: "doctor" as StaffRole,
+        hospitalName,
+        hospitalId: activeHospitalId,
+      };
     }
 
     // Get current staff profile id

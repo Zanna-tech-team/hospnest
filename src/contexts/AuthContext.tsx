@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, type ReactNode } from "react";
+﻿import React, { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,21 +32,34 @@ export type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const STORAGE_HOSPITAL_KEY = "hospnest_active_hospital_id";
+const STORAGE_ROLE_KEY = "hospnest_cached_role";
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [selectedHospitalId, setSelectedHospitalIdState] = useState<string>(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("hospnest_active_hospital_id") || "";
+      return localStorage.getItem(STORAGE_HOSPITAL_KEY) || "";
     }
     return "";
+  });
+
+  // Cached role from previous session — used for instant skeleton render
+  // while server query is still in-flight
+  const [cachedRole, setCachedRole] = useState<StaffRole | "patient" | null>(() => {
+    if (typeof window !== "undefined") {
+      const r = localStorage.getItem(STORAGE_ROLE_KEY);
+      return r ? (r as StaffRole | "patient") : null;
+    }
+    return null;
   });
 
   const setSelectedHospitalId = (id: string) => {
     setSelectedHospitalIdState(id);
     if (typeof window !== "undefined") {
       if (id) {
-        localStorage.setItem("hospnest_active_hospital_id", id);
+        localStorage.setItem(STORAGE_HOSPITAL_KEY, id);
       } else {
-        localStorage.removeItem("hospnest_active_hospital_id");
+        localStorage.removeItem(STORAGE_HOSPITAL_KEY);
       }
     }
   };
@@ -59,23 +72,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   } = useQuery({
     queryKey: ["auth-shell-data", selectedHospitalId],
     queryFn: () => shellFn({ data: { hospitalId: selectedHospitalId || undefined } }),
-    staleTime: 1000 * 60 * 5, // 5 minutes fresh
+    staleTime: 1000 * 60 * 3,   // 3 minutes — no re-fetch on every navigation
+    gcTime: 1000 * 60 * 10,     // 10 minutes in cache
+    retry: 1,
   });
 
   const activeHospitalId =
     selectedHospitalId || shellData?.activeWorkplace?.hospitalId || "";
 
   // Strict role extraction: NO hardcoded fallback to "doctor" or "hospital_admin"
-  let role: StaffRole | "patient" | null = null;
+  let resolvedRole: StaffRole | "patient" | null = null;
   if (!isLoading && shellData) {
     if (shellData.activeWorkplace?.role) {
-      role = shellData.activeWorkplace.role as StaffRole;
+      resolvedRole = shellData.activeWorkplace.role as StaffRole;
     } else if (shellData.isPatient) {
-      role = "patient";
+      resolvedRole = "patient";
     } else if (shellData.isSuperAdmin) {
-      role = "super_admin";
+      resolvedRole = "super_admin";
     }
   }
+
+  // The effective role: either the freshly resolved server role, or the cached one
+  // while loading (for instant skeleton render — never used for access control)
+  const role: StaffRole | "patient" | null = resolvedRole ?? (isLoading ? cachedRole : null);
+
+  // Persist resolved role to localStorage for instant next-session render
+  useEffect(() => {
+    if (resolvedRole && typeof window !== "undefined") {
+      localStorage.setItem(STORAGE_ROLE_KEY, resolvedRole);
+    }
+  }, [resolvedRole]);
 
   const isSuperAdmin = Boolean(shellData?.isSuperAdmin);
   const isAdmin = Boolean(shellData?.isAdmin);
@@ -84,7 +110,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     try {
       if (typeof window !== "undefined") {
-        localStorage.removeItem("hospnest_active_hospital_id");
+        localStorage.removeItem(STORAGE_HOSPITAL_KEY);
+        localStorage.removeItem(STORAGE_ROLE_KEY);
       }
       await supabase.auth.signOut();
     } catch {

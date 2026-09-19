@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+﻿import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { StaffRole } from "./team.functions";
 
@@ -49,24 +49,28 @@ export const getAppShellData = createServerFn({ method: "GET" })
   .handler(async ({ context, data: input }): Promise<AppShellData> => {
     const { supabase, userId } = context;
 
-    // 1. Fetch user email
-    const { data: userData } = await supabase.auth.getUser();
-    const email = userData?.user?.email ?? "";
-    const userMetaName = (userData?.user?.user_metadata?.["full_name"] as string) ?? "";
-
-    // 2. Fetch user's hospitals & roles (including module_permissions)
-    const { data: roleRows, error: roleError } = await supabase
-      .from("user_roles")
-      .select("role, hospital_id, module_permissions, hospitals(id, name, slug)")
-      .eq("user_id", userId)
-      .eq("is_active", true);
+    // ── PHASE 1: Run core identity queries in parallel ─────────────────────
+    const [{ data: userData }, { data: roleRows, error: roleError }] = await Promise.all([
+      supabase.auth.getUser(),
+      supabase
+        .from("user_roles")
+        .select("role, hospital_id, module_permissions, hospitals(id, name, slug)")
+        .eq("user_id", userId)
+        .eq("is_active", true),
+    ]);
 
     if (roleError) throw new Error(roleError.message);
 
-    let isPatient = (roleRows ?? []).some((r: any) => r.role === "patient");
-    const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin" || r.role === "superadmin");
+    const email = userData?.user?.email ?? "";
+    const userMetaName = (userData?.user?.user_metadata?.["full_name"] as string) ?? "";
+    const userRoleMeta = (userData?.user?.user_metadata?.["role"] as string) ?? "";
 
-    const workplaces: Workplace[] = (roleRows ?? [])
+    const isSuperAdmin = (roleRows ?? []).some(
+      (r: any) => r.role === "super_admin" || r.role === "superadmin"
+    );
+    let isPatient = (roleRows ?? []).some((r: any) => r.role === "patient");
+
+    let workplaces: Workplace[] = (roleRows ?? [])
       .filter((r: any) => r.hospital_id && r.role !== "patient")
       .map((r: any) => ({
         hospitalId: r.hospital_id as string,
@@ -76,128 +80,111 @@ export const getAppShellData = createServerFn({ method: "GET" })
         modulePermissions: Array.isArray(r.module_permissions) ? r.module_permissions : [],
       }));
 
-    // Resilient Staff Auto-Resolution:
-    // If workplaces is empty and user is not superadmin, check public.staff
+    // ── PHASE 2: Parallel profile + fallback resolution ────────────────────
+    // Run staff and patient queries simultaneously regardless of workspace state
+    // This way we have all data ready for profile details even on the fast path
+    const staffQuery = supabase
+      .from("staff")
+      .select(
+        "id, hospital_id, full_name, phone, specialization, medical_license_number, staff_id_code, departments(name), hospitals(id, name, slug)"
+      )
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+
+    const patientQuery =
+      isPatient || workplaces.length === 0
+        ? supabase
+            .from("patients")
+            .select(
+              "id, nin, first_name, last_name, phone, email, blood_group, genotype, date_of_birth, user_id"
+            )
+            .or(`user_id.eq.${userId}${email ? `,email.eq.${email}` : ""}`)
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null });
+
+    const [{ data: staffRow }, { data: pRow }] = await Promise.all([staffQuery, patientQuery]);
+
+    let staffProfile: any = staffRow || null;
+    let patientProfile: any = pRow || null;
+
+    // Auto-resolve workspace from staff table if user_roles was empty
+    if (workplaces.length === 0 && !isSuperAdmin && staffProfile?.hospital_id) {
+      const resolvedRole = (
+        ["doctor", "nurse", "lab_tech", "pharmacist", "hospital_admin", "front_desk"].includes(
+          userRoleMeta
+        )
+          ? userRoleMeta
+          : "doctor"
+      ) as StaffRole;
+
+      workplaces.push({
+        hospitalId: staffProfile.hospital_id,
+        name: (staffProfile.hospitals as any)?.name ?? "Hospital",
+        slug: (staffProfile.hospitals as any)?.slug ?? "hospital",
+        role: resolvedRole,
+        modulePermissions: [],
+      });
+
+      // Auto-heal user_roles — fire and forget, non-blocking
+      supabase
+        .from("user_roles")
+        .upsert(
+          {
+            user_id: userId,
+            hospital_id: staffProfile.hospital_id,
+            role: resolvedRole,
+            is_active: true,
+          },
+          { onConflict: "user_id,hospital_id,role" }
+        )
+        .then(() => {})
+        .catch(() => {});
+    }
+
+    // Patient determination: only if still no workplace
     if (workplaces.length === 0 && !isSuperAdmin) {
-      try {
-        const { data: staffData } = await supabase
-          .from("staff")
-          .select("id, hospital_id, full_name, phone, medical_license_number, specialization, hospitals(id, name, slug)")
-          .eq("user_id", userId)
-          .eq("is_active", true)
-          .limit(1);
-
-        const matchedStaff = staffData?.[0];
-
-        if (matchedStaff && matchedStaff.hospital_id) {
-          const rawRole = (userData?.user?.user_metadata?.["role"] as string) || "doctor";
-          const staffRole = (["doctor", "nurse", "lab_tech", "pharmacist", "hospital_admin"].includes(rawRole)
-            ? rawRole
-            : "doctor") as StaffRole;
-
-          workplaces.push({
-            hospitalId: matchedStaff.hospital_id,
-            name: (matchedStaff.hospitals as any)?.name ?? "Hospital",
-            slug: (matchedStaff.hospitals as any)?.slug ?? "hospital",
-            role: staffRole,
-            modulePermissions: [],
-          });
-
-          // Auto-heal user_roles entry in background/gracefully
-          try {
-            const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-            await supabaseAdmin.from("user_roles").upsert(
-              {
-                user_id: userId,
-                hospital_id: matchedStaff.hospital_id,
-                role: staffRole,
-                is_active: true,
-              },
-              { onConflict: "user_id,hospital_id,role" }
-            );
-          } catch (healErr) {
-            console.warn("Non-fatal user_roles auto-heal notice:", healErr);
-          }
+      if (patientProfile) {
+        isPatient = true;
+        // Link patient record to auth user if not yet linked
+        if (!patientProfile.user_id) {
+          supabase
+            .from("patients")
+            .update({ user_id: userId })
+            .eq("id", patientProfile.id)
+            .then(() => {})
+            .catch(() => {});
         }
-      } catch (err) {
-        console.warn("Staff fallback lookup notice:", err);
+      } else if (
+        userRoleMeta &&
+        ["doctor", "nurse", "lab_tech", "pharmacist", "hospital_admin", "front_desk"].includes(
+          userRoleMeta
+        )
+      ) {
+        // User is staff by metadata but not yet linked — do NOT mark as patient
+        isPatient = false;
+      } else {
+        isPatient = true;
       }
     }
 
-    // Now, if workplaces is STILL empty and not superadmin, check if they are a patient
-    if (workplaces.length === 0 && !isSuperAdmin) {
-      if (!isPatient) {
-        let pQuery = supabase.from("patients").select("id, first_name, last_name, user_id").limit(1);
-        if (email) {
-          pQuery = pQuery.or(`user_id.eq.${userId},email.eq.${email}`);
-        } else {
-          pQuery = pQuery.eq("user_id", userId);
-        }
-        const { data: pData } = await pQuery;
-        if (pData && pData.length > 0) {
-          isPatient = true;
-          if (!pData[0].user_id) {
-            await supabase.from("patients").update({ user_id: userId }).eq("id", pData[0].id);
-          }
-        } else {
-          // Check user metadata before assuming patient
-          const userRoleMeta = userData?.user?.user_metadata?.["role"];
-          if (userRoleMeta && ["doctor", "nurse", "lab_tech", "pharmacist", "hospital_admin"].includes(userRoleMeta)) {
-            // User registered as staff, do NOT set isPatient
-            isPatient = false;
-          } else {
-            isPatient = true;
-          }
-        }
-      }
-    }
-
-    // 3. Fetch staff or patient record name and metadata
+    // ── Resolve display name ───────────────────────────────────────────────
     let fullName = userMetaName;
-    let staffProfile: any = null;
-    let patientProfile: any = null;
-
-    if (workplaces.length > 0 || isSuperAdmin) {
-      const { data: staffRow } = await supabase
-        .from("staff")
-        .select(`
-          id, full_name, phone, specialization, medical_license_number, staff_id_code,
-          departments(name)
-        `)
-        .eq("user_id", userId)
-        .limit(1)
-        .maybeSingle();
-
-      if (staffRow) {
-        staffProfile = staffRow;
-        fullName = staffRow.full_name || fullName;
-      }
+    if (staffProfile?.full_name) {
+      fullName = staffProfile.full_name;
+    } else if (patientProfile) {
+      const pName =
+        `${patientProfile.first_name || ""} ${patientProfile.last_name || ""}`.trim();
+      if (pName) fullName = pName;
     }
-
-    if (isPatient || workplaces.length === 0) {
-      const { data: pRow } = await supabase
-        .from("patients")
-        .select("id, nin, first_name, last_name, phone, email, blood_group, genotype, date_of_birth")
-        .or(`user_id.eq.${userId},email.eq.${email}`)
-        .limit(1)
-        .maybeSingle();
-
-      if (pRow) {
-        patientProfile = pRow;
-        if (!staffProfile) {
-          fullName = `${pRow.first_name || ""} ${pRow.last_name || ""}`.trim() || fullName;
-        }
-      }
-    }
-
     if (!fullName) {
       fullName = email.split("@")[0] ?? "Member";
     }
 
     const allRoles = (roleRows ?? []).map((r: any) => r.role);
-    if (isPatient && !allRoles.includes("patient")) {
-      allRoles.push("patient");
-    }
+    if (isPatient && !allRoles.includes("patient")) allRoles.push("patient");
 
     const profileDetails: UserProfileDetails = {
       id: userId,
@@ -220,16 +207,13 @@ export const getAppShellData = createServerFn({ method: "GET" })
         ? input.hospitalId
         : workplaces[0]?.hospitalId || null;
 
-    const activeWorkplace = workplaces.find((w) => w.hospitalId === activeHospitalId) || workplaces[0] || null;
+    const activeWorkplace =
+      workplaces.find((w) => w.hospitalId === activeHospitalId) || workplaces[0] || null;
 
     const isAdmin = isSuperAdmin || activeWorkplace?.role === "hospital_admin";
 
     return {
-      user: {
-        id: userId,
-        email,
-        fullName,
-      },
+      user: { id: userId, email, fullName },
       profileDetails,
       workplaces,
       activeWorkplace,
