@@ -1,4 +1,4 @@
-﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -266,21 +266,44 @@ export function DashboardPage() {
     );
   }
 
-  // No role resolved at all (auth complete but no role record) — show clear error
+  // No role resolved at all (auth complete but no role record) — check if pending approval
   if (!isAuthLoading && !effectiveRole) {
+    const isPendingStaff = !isPatient && Boolean(shellData?.profileDetails?.id);
+
     return (
-      <div className="flex h-[80vh] flex-col items-center justify-center gap-4 text-center">
-        <AlertTriangle className="size-12 text-amber-500" />
-        <div className="space-y-1">
-          <p className="text-base font-semibold text-foreground">Workspace Role Not Found</p>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            Your account is not yet linked to a hospital workspace. Please contact your hospital administrator
-            or sign in with the correct account.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="mr-2 size-3.5" /> Try Again
-        </Button>
+      <div className="flex h-[80vh] flex-col items-center justify-center gap-4 text-center px-4">
+        {isPendingStaff ? (
+          <>
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-amber-500/10">
+              <Activity className="size-7 text-amber-500" />
+            </div>
+            <div className="space-y-1.5 max-w-sm">
+              <p className="text-base font-semibold text-foreground">Pending Hospital Approval</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Your staff affiliation request has been received. Please wait while the Hospital
+                Administrator reviews and approves your credentials. You will receive a notification
+                once your account is activated.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+              <RefreshCw className="mr-2 size-3.5" /> Check Again
+            </Button>
+          </>
+        ) : (
+          <>
+            <AlertTriangle className="size-12 text-amber-500" />
+            <div className="space-y-1">
+              <p className="text-base font-semibold text-foreground">Workspace Role Not Found</p>
+              <p className="text-sm text-muted-foreground max-w-sm">
+                Your account is not yet linked to a hospital workspace. Please contact your hospital
+                administrator or sign in with the correct account.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCw className="mr-2 size-3.5" /> Try Again
+            </Button>
+          </>
+        )}
       </div>
     );
   }

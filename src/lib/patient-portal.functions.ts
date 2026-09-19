@@ -692,7 +692,7 @@ export const getAuthUserRoleRedirect = createServerFn({ method: "GET" })
     }
 
     const hasStaffRole = roles.some((r: any) =>
-      ["doctor", "nurse", "pharmacist", "lab_tech"].includes(r.role)
+      ["doctor", "nurse", "pharmacist", "lab_tech", "front_desk", "billing_officer"].includes(r.role)
     );
 
     if (hasStaffRole) {

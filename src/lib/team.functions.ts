@@ -7,7 +7,9 @@ export type StaffRole =
   | "doctor"
   | "nurse"
   | "lab_tech"
-  | "pharmacist";
+  | "pharmacist"
+  | "front_desk"
+  | "billing_officer";
 
 export type WeeklyShift = {
   id?: string | undefined;
@@ -1008,7 +1010,10 @@ export const submitStaffJoinRequest = createServerFn({ method: "POST" })
         email: data.email,
         password: data.password,
         email_confirm: true,
-        user_metadata: { full_name: data.fullName },
+        user_metadata: {
+          full_name: data.fullName,
+          role: data.requestedRole,  // ← critical: allows auth-shell to identify as staff
+        },
       });
       if (createErr) throw new Error(createErr.message);
       userId = newUser.user.id;

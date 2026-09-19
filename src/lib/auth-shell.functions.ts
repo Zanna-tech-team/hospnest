@@ -1,4 +1,4 @@
-﻿import { createServerFn } from "@tanstack/react-start";
+import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { StaffRole } from "./team.functions";
 
@@ -82,14 +82,14 @@ export const getAppShellData = createServerFn({ method: "GET" })
 
     // ── PHASE 2: Parallel profile + fallback resolution ────────────────────
     // Run staff and patient queries simultaneously regardless of workspace state
-    // This way we have all data ready for profile details even on the fast path
+    // NOTE: We do NOT filter by is_active on staff — pending/new staff have is_active=false
+    // but should still be recognized as staff (not as patients) during auth shell resolution.
     const staffQuery = supabase
       .from("staff")
       .select(
-        "id, hospital_id, full_name, phone, specialization, medical_license_number, staff_id_code, departments(name), hospitals(id, name, slug)"
+        "id, hospital_id, full_name, phone, specialization, medical_license_number, staff_id_code, departments(name), hospitals(id, name, slug), is_active"
       )
       .eq("user_id", userId)
-      .eq("is_active", true)
       .limit(1)
       .maybeSingle();
 
@@ -112,12 +112,12 @@ export const getAppShellData = createServerFn({ method: "GET" })
 
     // Auto-resolve workspace from staff table if user_roles was empty
     if (workplaces.length === 0 && !isSuperAdmin && staffProfile?.hospital_id) {
+      // Prioritize: 1) user_metadata.role, 2) explicit fallbacks, 3) any staff role
+      const VALID_STAFF_ROLES = ["doctor", "nurse", "lab_tech", "pharmacist", "hospital_admin", "front_desk", "billing_officer"];
       const resolvedRole = (
-        ["doctor", "nurse", "lab_tech", "pharmacist", "hospital_admin", "front_desk"].includes(
-          userRoleMeta
-        )
+        VALID_STAFF_ROLES.includes(userRoleMeta)
           ? userRoleMeta
-          : "doctor"
+          : "doctor"  // last resort: default to doctor — admin can correct in Team management
       ) as StaffRole;
 
       workplaces.push({
@@ -129,19 +129,22 @@ export const getAppShellData = createServerFn({ method: "GET" })
       });
 
       // Auto-heal user_roles — fire and forget, non-blocking
-      supabase
-        .from("user_roles")
-        .upsert(
-          {
-            user_id: userId,
-            hospital_id: staffProfile.hospital_id,
-            role: resolvedRole,
-            is_active: true,
-          },
-          { onConflict: "user_id,hospital_id,role" }
-        )
-        .then(() => {})
-        .catch(() => {});
+      // Only auto-heal if staff is active; pending staff must be approved by admin first
+      if (staffProfile.is_active !== false) {
+        supabase
+          .from("user_roles")
+          .upsert(
+            {
+              user_id: userId,
+              hospital_id: staffProfile.hospital_id,
+              role: resolvedRole,
+              is_active: true,
+            },
+            { onConflict: "user_id,hospital_id,role" }
+          )
+          .then(() => {})
+          .catch(() => {});
+      }
     }
 
     // Patient determination: only if still no workplace
@@ -157,9 +160,12 @@ export const getAppShellData = createServerFn({ method: "GET" })
             .then(() => {})
             .catch(() => {});
         }
+      } else if (staffProfile) {
+        // User has a staff record (even pending/inactive) — they are staff, not a patient
+        isPatient = false;
       } else if (
         userRoleMeta &&
-        ["doctor", "nurse", "lab_tech", "pharmacist", "hospital_admin", "front_desk"].includes(
+        ["doctor", "nurse", "lab_tech", "pharmacist", "hospital_admin", "front_desk", "billing_officer"].includes(
           userRoleMeta
         )
       ) {
