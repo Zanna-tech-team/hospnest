@@ -315,16 +315,45 @@ export function PatientPortalPage() {
     );
   }
 
-  const {
-    patient,
-    upcomingAppointments,
-    recentEncounters,
-    recentLabResults,
-    activePrescriptions,
-    invoices,
-    availableHospitals,
-    counts,
-  } = data;
+  const patient = data?.patient ?? {
+    id: "",
+    nin: "UNLINKED",
+    firstName: "Patient",
+    lastName: "",
+    fullName: "Patient",
+    dateOfBirth: null,
+    gender: null,
+    phone: null,
+    email: null,
+    bloodGroup: null,
+    genotype: null,
+    allergies: [],
+    chronicConditions: [],
+    insuranceProvider: null,
+    insurancePolicyNumber: null,
+    insurancePlanType: null,
+    insuranceExpiryDate: null,
+    emergencyContact: null,
+    createdAt: new Date().toISOString(),
+  };
+
+  const upcomingAppointments = Array.isArray(data?.upcomingAppointments) ? data.upcomingAppointments : [];
+  const recentEncounters = Array.isArray(data?.recentEncounters) ? data.recentEncounters : [];
+  const recentLabResults = Array.isArray(data?.recentLabResults) ? data.recentLabResults : [];
+  const activePrescriptions = Array.isArray(data?.activePrescriptions) ? data.activePrescriptions : [];
+  const invoices = Array.isArray(data?.invoices) ? data.invoices : [];
+  const availableHospitals = Array.isArray(data?.availableHospitals) ? data.availableHospitals : [];
+  const counts = data?.counts ?? {
+    appointments: upcomingAppointments.length,
+    visits: recentEncounters.length,
+    labs: recentLabResults.length,
+    prescriptions: activePrescriptions.length,
+    unpaidBills: invoices.filter((i: any) => (i.balanceDue || 0) > 0).length,
+    totalUnpaidAmount: invoices.reduce((acc: number, i: any) => acc + (i.balanceDue || 0), 0),
+  };
+
+  const patientAllergies = Array.isArray(patient?.allergies) ? patient.allergies : [];
+  const patientChronicConditions = Array.isArray(patient?.chronicConditions) ? patient.chronicConditions : [];
 
   const selectedHospital = availableHospitals.find((h) => h.id === bookHospitalId);
   const selectedHospitalDepts = selectedHospital?.departments || [];
@@ -337,16 +366,16 @@ export function PatientPortalPage() {
         <div className="mx-auto max-w-7xl flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-md font-display text-xl font-bold">
-              {patient.firstName.charAt(0)}
-              {patient.lastName.charAt(0)}
+              {(patient.firstName || "P").charAt(0)}
+              {(patient.lastName || "").charAt(0)}
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="font-display text-2xl font-bold text-foreground">
-                  {patient.fullName}
+                  {patient.fullName || "Patient Portal"}
                 </h1>
                 <Badge variant="outline" className="bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20 font-mono text-xs">
-                  NIN: {patient.nin.slice(0, 3)}••••{patient.nin.slice(-3)}
+                  NIN: {patient.nin && patient.nin.length >= 6 ? `${patient.nin.slice(0, 3)}••••${patient.nin.slice(-3)}` : patient.nin || "Unlinked"}
                 </Badge>
                 <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20 text-xs">
                   <ShieldCheck className="h-3 w-3 mr-1" />
@@ -414,18 +443,18 @@ export function PatientPortalPage() {
         </div>
 
         {/* Clinical alerts ribbon if allergies or chronic conditions exist */}
-        {(patient.allergies.length > 0 || patient.chronicConditions.length > 0) && (
+        {(patientAllergies.length > 0 || patientChronicConditions.length > 0) && (
           <div className="mx-auto max-w-7xl mt-4 pt-4 border-t border-border flex flex-wrap gap-2 items-center">
             <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1 mr-2">
               <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
               Medical Alerts:
             </span>
-            {patient.allergies.map((allergy, i) => (
+            {patientAllergies.map((allergy, i) => (
               <Badge key={i} variant="destructive" className="text-[11px] font-medium">
                 Allergy: {allergy}
               </Badge>
             ))}
-            {patient.chronicConditions.map((cond, i) => (
+            {patientChronicConditions.map((cond, i) => (
               <Badge
                 key={i}
                 variant="outline"

@@ -652,17 +652,45 @@ export const getPatientPortalDashboardData = createServerFn({ method: "GET" })
     }
 
     if (!patientRow) {
-      // Return clean initial portal state for unlinked accounts
-      const fallbackPatient = {
+      // Fetch available hospitals so unlinked patients can browse & book
+      const { data: hospitalRows } = await (supabase as any)
+        .from("hospitals")
+        .select(`
+          id, name,
+          departments (id, name),
+          staff (id, full_name, specialization, department_id, is_active)
+        `)
+        .order("name", { ascending: true });
+
+      const availableHospitals: HospitalBookingOption[] = (hospitalRows ?? []).map((h: any) => ({
+        id: h.id,
+        name: h.name,
+        departments: (h.departments ?? []).map((d: any) => ({ id: d.id, name: d.name })),
+        doctors: (h.staff ?? [])
+          .filter((s: any) => s.is_active)
+          .map((s: any) => ({
+            id: s.id,
+            fullName: s.full_name,
+            specialization: s.specialization,
+            departmentId: s.department_id,
+          })),
+      }));
+
+      const rawFullName = userData?.user?.user_metadata?.["full_name"] || (userEmail ? userEmail.split("@")[0] : "Patient");
+      const nameParts = rawFullName.trim().split(" ");
+      const firstName = nameParts[0] || "Patient";
+      const lastName = nameParts.slice(1).join(" ") || "";
+
+      const fallbackPatient: PatientPortalProfile = {
         id: "00000000-0000-0000-0000-000000000000",
         nin: "UNLINKED",
-        fullName: userData?.user?.user_metadata?.["full_name"] || userEmail.split("@")[0] || "Patient",
-        firstName: userData?.user?.user_metadata?.["full_name"] || "Patient",
-        lastName: "",
+        fullName: rawFullName,
+        firstName,
+        lastName,
         dateOfBirth: "2000-01-01",
         gender: "other",
         phone: null,
-        email: userEmail,
+        email: userEmail || null,
         bloodGroup: null,
         genotype: null,
         allergies: [],
@@ -672,8 +700,9 @@ export const getPatientPortalDashboardData = createServerFn({ method: "GET" })
         insurancePolicyNumber: null,
         insurancePlanType: null,
         insuranceExpiryDate: null,
-        registeredAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
       };
+
       return {
         patient: fallbackPatient,
         upcomingAppointments: [],
@@ -681,7 +710,15 @@ export const getPatientPortalDashboardData = createServerFn({ method: "GET" })
         recentLabResults: [],
         activePrescriptions: [],
         invoices: [],
-        availableHospitals: [],
+        availableHospitals,
+        counts: {
+          appointments: 0,
+          visits: 0,
+          labs: 0,
+          prescriptions: 0,
+          unpaidBills: 0,
+          totalUnpaidAmount: 0,
+        },
       };
     }
 
@@ -967,20 +1004,69 @@ export const bookPatientAppointment = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
 
     // 1. Fetch patient
-    const { data: patientRow, error: pErr } = await (supabase as any)
+    let patientId = "";
+    const { data: patientRow } = await (supabase as any)
       .from("patients")
       .select("id")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
-    if (pErr || !patientRow) throw new Error("Patient profile not found.");
+    if (patientRow?.id) {
+      patientId = patientRow.id;
+    } else {
+      const { data: userData } = await supabase.auth.getUser();
+      const userEmail = userData?.user?.email?.toLowerCase() || "";
+      const rawFullName = (userData?.user?.user_metadata?.["full_name"] as string) || (userEmail ? userEmail.split("@")[0] : "Patient");
+      const nameParts = rawFullName.trim().split(" ");
+      const firstName = nameParts[0] || "Patient";
+      const lastName = nameParts.slice(1).join(" ") || "";
+
+      // Check if patient exists with this email
+      if (userEmail) {
+        const { data: pByEmail } = await (supabase as any)
+          .from("patients")
+          .select("id")
+          .eq("email", userEmail)
+          .maybeSingle();
+        if (pByEmail?.id) {
+          patientId = pByEmail.id;
+          try {
+            const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+            await supabaseAdmin.from("patients").update({ user_id: userId }).eq("id", patientId);
+          } catch {}
+        }
+      }
+
+      if (!patientId) {
+        // Auto-provision minimal patient record
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const generatedNin = `PAT${Date.now().toString().slice(-8)}`;
+        const { data: newPat, error: createErr } = await (supabaseAdmin as any)
+          .from("patients")
+          .insert({
+            user_id: userId,
+            nin: generatedNin,
+            first_name: firstName,
+            last_name: lastName || "Self",
+            email: userEmail || null,
+            gender: "other",
+          })
+          .select("id")
+          .single();
+
+        if (createErr || !newPat) {
+          throw new Error("Could not initialize patient profile. Please contact clinic reception.");
+        }
+        patientId = newPat.id;
+      }
+    }
 
     // 2. Insert Appointment
     const { data: newAppt, error: apptErr } = await (supabase as any)
       .from("appointments")
       .insert({
         hospital_id: input.hospitalId,
-        patient_id: patientRow.id,
+        patient_id: patientId,
         department_id: input.departmentId || null,
         doctor_id: input.doctorId || null,
         appointment_date: input.appointmentDate,
@@ -999,7 +1085,7 @@ export const bookPatientAppointment = createServerFn({ method: "POST" })
       hospital_id: input.hospitalId,
       accessor_id: userId,
       accessor_role: "patient",
-      patient_id: patientRow.id,
+      patient_id: patientId,
       action: "WRITE",
       justification: `Patient booked online appointment for ${new Date(input.appointmentDate).toLocaleDateString()}`,
     });
@@ -1035,17 +1121,44 @@ export const updatePatientSelfProfile = createServerFn({ method: "POST" })
   .handler(async ({ context, data: input }) => {
     const { supabase, userId } = context;
 
-    const { error: updErr } = await (supabase as any)
+    let { data: patientRow } = await (supabase as any)
       .from("patients")
-      .update({
-        phone: input.phone,
-        email: input.email,
-        emergency_contact: input.emergencyContact,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId);
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
 
-    if (updErr) throw new Error(updErr.message);
+    if (!patientRow) {
+      const { data: userData } = await supabase.auth.getUser();
+      const userEmail = userData?.user?.email?.toLowerCase() || "";
+      if (userEmail) {
+        const { data: pByEmail } = await (supabase as any)
+          .from("patients")
+          .select("id")
+          .eq("email", userEmail)
+          .maybeSingle();
+        if (pByEmail) {
+          patientRow = pByEmail;
+          try {
+            const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+            await supabaseAdmin.from("patients").update({ user_id: userId }).eq("id", pByEmail.id);
+          } catch {}
+        }
+      }
+    }
+
+    if (patientRow) {
+      const { error: updErr } = await (supabase as any)
+        .from("patients")
+        .update({
+          phone: input.phone,
+          email: input.email,
+          emergency_contact: input.emergencyContact,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", patientRow.id);
+
+      if (updErr) throw new Error(updErr.message);
+    }
 
     return { success: true };
   });
