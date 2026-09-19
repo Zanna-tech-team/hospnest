@@ -33,7 +33,23 @@ export type AuthContextType = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [selectedHospitalId, setSelectedHospitalId] = useState<string>("");
+  const [selectedHospitalId, setSelectedHospitalIdState] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("hospnest_active_hospital_id") || "";
+    }
+    return "";
+  });
+
+  const setSelectedHospitalId = (id: string) => {
+    setSelectedHospitalIdState(id);
+    if (typeof window !== "undefined") {
+      if (id) {
+        localStorage.setItem("hospnest_active_hospital_id", id);
+      } else {
+        localStorage.removeItem("hospnest_active_hospital_id");
+      }
+    }
+  };
 
   const shellFn = useServerFn(getAppShellData);
   const {
@@ -67,6 +83,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("hospnest_active_hospital_id");
+      }
       await supabase.auth.signOut();
     } catch {
       // ignore

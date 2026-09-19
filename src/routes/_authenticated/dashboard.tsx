@@ -5,10 +5,16 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   getRoleDashboardData,
   type RoleDashboardResult,
+  type DoctorDashboardData,
+  type NurseDashboardData,
+  type LabTechDashboardData,
+  type PharmacistDashboardData,
+  type FrontDeskDashboardData,
 } from "@/lib/role-dashboard.functions";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Activity,
+  AlertTriangle,
   FlaskConical,
   Pill,
   RefreshCw,
@@ -24,6 +30,86 @@ import { PharmacistDashboard } from "@/components/dashboard/PharmacistDashboard"
 import { HospitalAdminDashboard } from "@/components/dashboard/HospitalAdminDashboard";
 import { FrontDeskDashboard } from "@/components/dashboard/FrontDeskDashboard";
 import { PatientDashboard } from "@/components/dashboard/PatientDashboard";
+
+const DEFAULT_DOCTOR_DATA: DoctorDashboardData = {
+  queueCount: 0,
+  myPatientsCount: 0,
+  unassignedCount: 0,
+  urgentVitalsCount: 0,
+  pendingLabOrdersCount: 0,
+  completedLabResultsCount: 0,
+  supervisedInpatientsCount: 0,
+  appointmentMetrics: {
+    todayTotal: 0,
+    completed: 0,
+    checkedIn: 0,
+    pending: 0,
+    cancelled: 0,
+    noShowRate: 0,
+    externalOnlineBookings: 0,
+    hourlyTraffic: [],
+  },
+  patientAssignmentQueues: {
+    waitingTriage: [],
+    waitingDoctor: [],
+    inConsultation: [],
+    diagnosticHold: [],
+    pharmacyHold: [],
+  },
+  waitingQueue: [],
+  inpatients: [],
+  criticalLabAlerts: [],
+  recentLabResults: [],
+  labStatusSummary: {
+    requestedToday: 0,
+    pendingResults: 0,
+    completedToday: 0,
+    criticalAlertsCount: 0,
+  },
+  notifications: [],
+};
+
+const DEFAULT_NURSE_DATA: NurseDashboardData = {
+  triageQueueCount: 0,
+  vitalsCapturedTodayCount: 0,
+  activeInpatientsCount: 0,
+  totalBedsCount: 0,
+  availableBedsCount: 0,
+  occupancyRate: 0,
+  todayShift: null,
+  triageQueue: [],
+  urgentVitalsAlerts: [],
+};
+
+const DEFAULT_LAB_DATA: LabTechDashboardData = {
+  requestedCount: 0,
+  sampleCollectedCount: 0,
+  inProgressCount: 0,
+  completedTodayCount: 0,
+  criticalResultsCount: 0,
+  avgTurnaroundHours: 2.0,
+  activeWorklist: [],
+};
+
+const DEFAULT_PHARMACIST_DATA: PharmacistDashboardData = {
+  pendingPrescriptionsCount: 0,
+  dispensedTodayCount: 0,
+  lowStockItemsCount: 0,
+  outOfStockItemsCount: 0,
+  totalMedicationsCount: 0,
+  pendingQueue: [],
+  lowStockAlerts: [],
+};
+
+const DEFAULT_FRONT_DESK_DATA: FrontDeskDashboardData = {
+  todayAppointmentsCount: 0,
+  onlineBookingsCount: 0,
+  checkedInTodayCount: 0,
+  availableBedsCount: 0,
+  totalBedsCount: 0,
+  todayAppointments: [],
+  liveTriageQueue: [],
+};
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -63,12 +149,12 @@ export function DashboardPage() {
     }
   }, [isPatient, isSuperAdmin, activeHospitalId, isAuthLoading, navigate]);
 
-  const { data, isLoading, refetch, isRefetching } = useQuery<RoleDashboardResult>({
+  const { data, isLoading, isError, refetch, isRefetching } = useQuery<RoleDashboardResult>({
     queryKey: ["role-dashboard-data", activeHospitalId, authRole],
     queryFn: () =>
       getDashboardDataFn({
         data: {
-          hospitalId: activeHospitalId,
+          hospitalId: activeHospitalId || undefined,
           role: authRole || undefined,
         },
       }),
@@ -112,7 +198,10 @@ export function DashboardPage() {
     );
   }
 
-  if (isLoading) {
+  // Strict role determination: prioritize authenticated role, then API returned role
+  const effectiveRole = authRole || data?.role;
+
+  if (isLoading && !effectiveRole) {
     return (
       <div className="flex h-[80vh] flex-col items-center justify-center gap-3">
         <RefreshCw className="h-8 w-8 animate-spin text-teal-600" />
@@ -123,10 +212,37 @@ export function DashboardPage() {
     );
   }
 
-  const effectiveRole = data?.role || authRole || "hospital_admin";
+  if (!effectiveRole) {
+    return (
+      <div className="flex h-[80vh] flex-col items-center justify-center gap-3">
+        <RefreshCw className="h-8 w-8 animate-spin text-teal-600" />
+        <p className="text-sm font-medium text-muted-foreground">
+          Resolving workspace role permissions...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-16">
+      {/* Non-fatal error notice if server query was interrupted */}
+      {isError && (
+        <div className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span>Could not refresh live statistics. Showing workstation in offline-resilient mode.</span>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => refetch()}
+            className="h-7 text-xs font-semibold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20"
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -154,7 +270,7 @@ export function DashboardPage() {
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            {data?.hospitalName} • Real-time patient queues, clinical metrics, and department actions.
+            {data?.hospitalName || "Active Facility"} • Real-time patient queues, clinical metrics, and department actions.
           </p>
         </div>
 
@@ -216,31 +332,32 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Role-Specific Modular Dashboards */}
-      {effectiveRole === "doctor" && data?.doctorData && (
-        <DoctorDashboard data={data.doctorData} refetch={refetch} />
+      {/* Role-Specific Modular Dashboards (with safe default fallbacks) */}
+      {effectiveRole === "doctor" && (
+        <DoctorDashboard data={data?.doctorData || DEFAULT_DOCTOR_DATA} refetch={refetch} />
       )}
 
-      {effectiveRole === "nurse" && data?.nurseData && (
-        <NurseDashboard data={data.nurseData} />
+      {effectiveRole === "nurse" && (
+        <NurseDashboard data={data?.nurseData || DEFAULT_NURSE_DATA} />
       )}
 
-      {effectiveRole === "lab_tech" && data?.labTechData && (
-        <LabTechDashboard data={data.labTechData} />
+      {effectiveRole === "lab_tech" && (
+        <LabTechDashboard data={data?.labTechData || DEFAULT_LAB_DATA} />
       )}
 
-      {effectiveRole === "pharmacist" && data?.pharmacistData && (
-        <PharmacistDashboard data={data.pharmacistData} />
+      {effectiveRole === "pharmacist" && (
+        <PharmacistDashboard data={data?.pharmacistData || DEFAULT_PHARMACIST_DATA} />
       )}
 
-      {effectiveRole === "front_desk" && data?.frontDeskData && (
-        <FrontDeskDashboard data={data.frontDeskData} />
+      {effectiveRole === "front_desk" && (
+        <FrontDeskDashboard data={data?.frontDeskData || DEFAULT_FRONT_DESK_DATA} />
       )}
 
       {(effectiveRole === "hospital_admin" ||
         effectiveRole === "super_admin" ||
-        effectiveRole === "billing_officer") &&
-        data?.adminData && <HospitalAdminDashboard data={data.adminData} />}
+        effectiveRole === "billing_officer") && (
+        <HospitalAdminDashboard data={data?.adminData} />
+      )}
 
       {effectiveRole === "patient" && data?.patientData && (
         <PatientDashboard data={data.patientData} />

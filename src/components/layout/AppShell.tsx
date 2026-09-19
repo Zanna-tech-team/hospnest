@@ -297,7 +297,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <AppShellContext.Provider
       value={{
         activeHospitalId,
-        setActiveHospitalId: setSelectedHospitalId,
+        setActiveHospitalId,
         shellData,
         isLoading,
         isCollapsed,
@@ -429,7 +429,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {shellData?.workplaces.map((w: Workplace) => (
                     <DropdownMenuItem
                       key={w.hospitalId}
-                      onClick={() => setSelectedHospitalId(w.hospitalId)}
+                      onClick={() => setActiveHospitalId(w.hospitalId)}
                       className="flex items-center justify-between text-xs font-medium py-2 cursor-pointer"
                     >
                       <div className="truncate">
@@ -716,7 +716,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <Select
                     value={activeHospitalId}
                     onValueChange={(v) => {
-                      setSelectedHospitalId(v);
+                      setActiveHospitalId(v);
                       setMobileMenuOpen(false);
                     }}
                   >

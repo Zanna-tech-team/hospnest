@@ -76,7 +76,55 @@ export const getAppShellData = createServerFn({ method: "GET" })
         modulePermissions: Array.isArray(r.module_permissions) ? r.module_permissions : [],
       }));
 
-    // If user has no staff workplaces and not superadmin, check if they are a patient
+    // Resilient Staff Auto-Resolution:
+    // If workplaces is empty and user is not superadmin, check public.staff
+    if (workplaces.length === 0 && !isSuperAdmin) {
+      try {
+        const { data: staffData } = await supabase
+          .from("staff")
+          .select("id, hospital_id, full_name, phone, medical_license_number, specialization, hospitals(id, name, slug)")
+          .eq("user_id", userId)
+          .eq("is_active", true)
+          .limit(1);
+
+        const matchedStaff = staffData?.[0];
+
+        if (matchedStaff && matchedStaff.hospital_id) {
+          const rawRole = (userData?.user?.user_metadata?.["role"] as string) || "doctor";
+          const staffRole = (["doctor", "nurse", "lab_tech", "pharmacist", "hospital_admin"].includes(rawRole)
+            ? rawRole
+            : "doctor") as StaffRole;
+
+          workplaces.push({
+            hospitalId: matchedStaff.hospital_id,
+            name: (matchedStaff.hospitals as any)?.name ?? "Hospital",
+            slug: (matchedStaff.hospitals as any)?.slug ?? "hospital",
+            role: staffRole,
+            modulePermissions: [],
+          });
+
+          // Auto-heal user_roles entry in background/gracefully
+          try {
+            const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+            await supabaseAdmin.from("user_roles").upsert(
+              {
+                user_id: userId,
+                hospital_id: matchedStaff.hospital_id,
+                role: staffRole,
+                is_active: true,
+              },
+              { onConflict: "user_id,hospital_id,role" }
+            );
+          } catch (healErr) {
+            console.warn("Non-fatal user_roles auto-heal notice:", healErr);
+          }
+        }
+      } catch (err) {
+        console.warn("Staff fallback lookup notice:", err);
+      }
+    }
+
+    // Now, if workplaces is STILL empty and not superadmin, check if they are a patient
     if (workplaces.length === 0 && !isSuperAdmin) {
       if (!isPatient) {
         let pQuery = supabase.from("patients").select("id, first_name, last_name, user_id").limit(1);
@@ -92,7 +140,14 @@ export const getAppShellData = createServerFn({ method: "GET" })
             await supabase.from("patients").update({ user_id: userId }).eq("id", pData[0].id);
           }
         } else {
-          isPatient = true;
+          // Check user metadata before assuming patient
+          const userRoleMeta = userData?.user?.user_metadata?.["role"];
+          if (userRoleMeta && ["doctor", "nurse", "lab_tech", "pharmacist", "hospital_admin"].includes(userRoleMeta)) {
+            // User registered as staff, do NOT set isPatient
+            isPatient = false;
+          } else {
+            isPatient = true;
+          }
         }
       }
     }
@@ -106,7 +161,7 @@ export const getAppShellData = createServerFn({ method: "GET" })
       const { data: staffRow } = await supabase
         .from("staff")
         .select(`
-          id, full_name, phone, email, specialization, license_number, role,
+          id, full_name, phone, specialization, medical_license_number, staff_id_code,
           departments(name)
         `)
         .eq("user_id", userId)
@@ -150,9 +205,9 @@ export const getAppShellData = createServerFn({ method: "GET" })
       fullName,
       phone: staffProfile?.phone || patientProfile?.phone || null,
       specialization: staffProfile?.specialization || null,
-      licenseNumber: staffProfile?.license_number || null,
+      licenseNumber: staffProfile?.medical_license_number || null,
       departmentName: (staffProfile?.departments as any)?.name || null,
-      staffId: staffProfile?.id || null,
+      staffId: staffProfile?.staff_id_code || staffProfile?.id || null,
       nin: patientProfile?.nin || null,
       bloodGroup: patientProfile?.blood_group || null,
       genotype: patientProfile?.genotype || null,
