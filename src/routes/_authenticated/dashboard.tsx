@@ -168,6 +168,12 @@ const ROLE_CONFIG: Record<
     badgeLabel: "Billing Officer",
     badgeColor: "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300",
   },
+  patient: {
+    title: "Patient Health Portal",
+    subtitle: "Your clinical records, prescriptions, and health overview.",
+    badgeLabel: "Patient",
+    badgeColor: "border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+  },
 };
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -308,7 +314,7 @@ export function DashboardPage() {
     );
   }
 
-  const roleCfg = effectiveRole ? ROLE_CONFIG[effectiveRole] : ROLE_CONFIG["hospital_admin"];
+  const roleCfg = (effectiveRole && ROLE_CONFIG[effectiveRole]) || ROLE_CONFIG["hospital_admin"];
 
   return (
     <div className="space-y-6 pb-16">
