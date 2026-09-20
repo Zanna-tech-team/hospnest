@@ -1,302 +1,196 @@
-# HospNest 
-
-PROMPT 1 — HOSPNEST LANDING PAGE (Build this FIRST)
-
-
-
-
-
-
-
-TASK
-
-
-
-
-
-
-
-Design and build a world-class, motion-rich landing page for HospNest — a multi-tenant SaaS hospital management platform. This page is the public face of the product and must communicate, through animated illustration and motion graphics, the complete end-to-end journey of hospital management: from a patient enrolling with their NIN, to consultation, lab, pharmacy, billing, and follow-up care.
-
-
-
-
-
-
-
-Do NOT build any dashboard, auth, or app functionality yet. This task is the landing page ONLY — but it sets the entire visual identity (colors, typography, spacing, motion language) that the rest of the platform will follow.
-
-
-
-
-
-
-
-BRAND & VISUAL IDENTITY
-
-
-
-
-
-
-
-- Extract the exact color palette from the HospNest logo (deep blue / teal / cyan with lime green accents). Define these as semantic design tokens in the global CSS (`--primary`, `--secondary`, `--accent`, `--background`, etc.) and register them in the Tailwind config so the whole page — and later the whole platform — uses them consistently. Never hardcode hex values in components.
-
-
-
-- Style direction: modern premium SaaS — clean, trustworthy, healthcare-grade. Generous whitespace, rounded corners, soft gradients in the brand palette, subtle glassmorphism on cards, and smooth physics-based motion.
-
-
-
-- Typography: a distinctive modern font pairing (heading + body) loaded via web fonts — no generic default look.
-
-
-
-- Dark sections and light sections may alternate for rhythm, but all colors must come from the token system.
-
-
-
-- Fully responsive (mobile-first), accessible (contrast, alt text, semantic HTML), and SEO-ready: title, meta description, single H1, JSON-LD Organization schema.
-
-
-
-
-
-
-
-MOTION GRAPHICS (CORE REQUIREMENT)
-
-
-
-
-
-
-
-- Use Framer Motion for all UI animation: scroll-triggered reveals, staggered entrances, parallax layers, animated counters, and page transitions.
-
-
-
-- Add Lottie (or an equivalent motion-graphics library) for illustrative animated icons/graphics throughout the page — animated medical illustrations: heartbeat pulse lines, stethoscope, hospital building, patient ID card, lab flask, pill capsule, invoice/receipt, calendar, shield/lock. Each illustration should loop subtly or play on scroll into view.
-
-
-
-- Build an animated end-to-end process section: a horizontal (desktop) / vertical (mobile) journey with a connected animated path where each stage lights up in sequence:
-
-
-
-
-
-
-
-  1. Patient Enrollment — patient registers with their NIN (National Identity Number) as the universal identifier; a digital health ID is created.
-
-
-
-  2. Hospital Sign-Up — a hospital joins the platform, gets verified, and subscribes to a plan.
-
-
-
-  3. Staff Onboarding — the hospital invites its team: doctors, nurses, lab technicians, pharmacists, receptionists — each with role-based access.
-
-
-
-  4. Appointments & Triage — patients book visits; nurses triage vitals; queues are managed.
-
-
-
-  5. Consultation & Records — doctors document encounters in the electronic medical record.
-
-
-
-  6. Laboratory — lab requisitions flow to technicians; results return to the doctor instantly.
-
-
-
-  7. Pharmacy — prescriptions are dispensed; inventory updates automatically.
-
-
-
-  8. Billing & Payment — invoices are generated automatically; payments and insurance claims are processed.
-
-
-
-  9. Patient Portal — the patient views everything: records, results, prescriptions, bills, and upcoming appointments.
-
-
-
-
-
-
-
-  Each stage = an animated Lottie/illustrated icon + short label + one-line description, connected by an animated progress line (SVG path draw animation) that fills as the user scrolls.
-
-
-
-
-
-
-
-PAGE STRUCTURE
-
-
-
-
-
-
-
-1. Sticky navbar — logo, links (Features, How It Works, For Hospitals, For Patients, Pricing), CTA buttons: "Sign In" and "Get Started". Transparent over hero, solid on scroll.
-
-
-
-2. Hero — bold headline positioning HospNest as the operating system for modern hospitals; subheadline mentioning NIN-based universal patient identity; primary CTA "Start Your Hospital" + secondary "See How It Works"; animated hero visual (motion graphic composition of dashboard UI cards floating in the brand palette, subtle parallax on mouse move); trust strip (e.g., "Built for hospitals of every size").
-
-
-
-3. Stats band — animated counters (patients supported, hospitals, uptime).
-
-
-
-4. End-to-End Process — the animated journey section described above (the centerpiece of the page).
-
-
-
-5. Feature grid — 6–8 cards (EMR, Appointments, Laboratory, Pharmacy & Inventory, Billing & Insurance, Staff & Role Management, Patient Portal, AI Clinical Copilot), each with an animated icon and hover micro-interaction.
-
-
-
-6. For Hospitals / For Patients — split section with alternating layout and scroll animations, explaining value for each audience (hospitals: run everything in one place, onboard staff by role; patients: one NIN, one health record, accessible anywhere).
-
-
-
-7. Security & Compliance strip — animated shield/lock graphic; bullet points: role-based access, encrypted records, full audit trails, NIN-verified identity.
-
-
-
-8. Pricing preview — 3 tiers (Starter / Growth / Enterprise) for hospitals, with the brand styling; CTA to sign up.
-
-
-
-9. Testimonials — animated carousel (placeholder quotes acceptable, clearly generic).
-
-
-
-10. Final CTA band — gradient background in brand colors, "Bring your hospital onto HospNest", big CTA button with hover animation.
-
-
-
-11. Footer — logo, nav columns (Product, Company, Legal, Contact), social icons, copyright.
-
-
-
-
-
-
-
-TECHNICAL REQUIREMENTS
-
-
-
-
-
-
-
-- React 18 + Vite + TypeScript + Tailwind CSS + shadcn/ui, consistent with the existing project stack.
-
-
-
-- Install and use `framer-motion` and a Lottie player (e.g., `lottie-react`) — create/source lightweight JSON animations for each icon; keep them performant (lazy-load below-the-fold animations).
-
-
-
-- All animations must respect `prefers-reduced-motion`.
-
-
-
-- 60fps motion only (transform/opacity); no layout-thrashing animations.
-
-
-
-- Route: the landing page lives at `/` and is the default public route.
-
-
-
-- Semantic tokens only — every color, gradient, and shadow defined in `index.css` and referenced via Tailwind semantic classes.
-
-
-
-
-
-
-
-DELIVERABLES
-
-
-
-
-
-
-
-1. A complete, polished, animated landing page at `/` matching the HospNest logo palette.
-
-
-
-2. A design-token foundation (colors, gradients, shadows, typography) that the full platform build will inherit.
-
-
-
-3. The animated end-to-end process journey as the signature section.
-
-
-
-4. Responsive, accessible, SEO-ready output.
-
-
-
-
-
-
-
-ACCEPTANCE CRITERIA
-
-
-
-
-
-
-
-- Scrolling the page reveals smooth, sequenced motion graphics at every section.
-
-
-
-- The end-to-end journey visibly animates through all 9 stages.
-
-
-
-- Colors visibly match the HospNest logo palette everywhere.
-
-
-
-- No console errors; page performs well on mobile.
-
-This project was built with [Lovable](https://lovable.dev).
-
-**Live app**: https://hospnest.lovable.app
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/a01633dc-8c3c-4d69-b5f4-13956f3bced6).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+# HospNest — The Intelligent Operating System for Modern Hospitals 🏥✨
+
+> **HospNest** is an enterprise-grade, multi-tenant hospital management platform (HMIS/EMR) designed for modern healthcare facilities, clinics, and health networks. Powered by **NIN-based Universal Patient Identity**, **Intron Sahara African Dialect Speech AI (VoiceCare™)**, **NEWS2 Clinical Triage**, **LIMS**, **PACS/Radiology**, **Pharmacy Inventory**, and **QR-Verifiable Clinical Documentation**, HospNest bridges the gap between frontline clinical care and operational intelligence.
+
+---
+
+## 🌟 Executive Summary & Vision
+
+HospNest transforms healthcare operations by eliminating siloed records, long patient queues, medication errors, and language barriers in clinical consultations.
+
+```mermaid
+flowchart LR
+    A[Universal NIN Registry] --> B[Front Desk / Public Portal]
+    B --> C[NEWS2 Vitals Triage]
+    C --> D[Doctor EMR + AI Copilot + VoiceCare]
+    D --> E[Lab Orders & LIMS]
+    D --> F[Radiology & PACS]
+    D --> G[Pharmacy & Inventory]
+    D --> H[Inpatient Ward & Bed Matrix]
+    E & F & G & H --> I[Automated Billing & HMO Claims]
+    I --> J[Patient Health Portal & QR Documents]
 ```
+
+---
+
+## 🚀 Key Modules & Capabilities
+
+### 1. 🆔 Universal Patient Identity (NIN-Powered)
+- **National Identity Number (NIN) Integration**: Eliminates duplicate charts across hospital networks with unique national identifier resolution.
+- **Cross-Facility Longitudinal Records**: Complete medical history, chronic conditions, verified allergies, previous admissions, and immunization logs.
+- **Biometric / Quick Search**: Instant lookup by NIN, Hospital File Number, Phone, or Full Name.
+
+---
+
+### 2. 🎙️ HospNest VoiceCare™ & Speech AI Suite
+Built specifically for multilingual African healthcare environments:
+- **African Dialect Speech-to-Intent**: Real-time voice processing supporting **Nigerian Pidgin, Yoruba, Hausa, Igbo, Kenyan Swahili**, and heavy regional English accents via **Intron Sahara CodeSwitch AI**.
+- **Voice-Powered Patient Booking**: Patients can schedule consultations using natural voice prompts in their dialect.
+- **Voice Check-In & Triage**: Hands-free symptom intake for incoming patients.
+- **Doctor Voice Consultation Notes**: Automated ambient clinical dictation converting doctor speech into structured SOAP notes.
+- **VoiceCare Benchmark Lab**: Integrated speech evaluation laboratory measuring **WER (Word Error Rate)**, **CER (Character Error Rate)**, **Slot F1 Accuracy**, latency, and acoustic noise robustness across audio datasets with downloadable PDF/JSON reports.
+
+---
+
+### 3. ⏱️ Front Desk, Queues & Public Hospital Portals
+- **Multi-Channel Registration**: Walk-ins, self-service patient onboarding, and QR check-ins.
+- **Live Queue Orchestration**: Dynamic queueing categorized by emergency priority, department, and doctor availability.
+- **Branded Hospital Landing Pages (`/hospitals/:slug`)**: Dedicated public booking micro-sites for each hospital with doctor directories and instant appointment booking.
+
+---
+
+### 4. 🩺 Triage & NEWS2 Clinical Safety Engine
+- **Automated NEWS2 Score Calculation**: Instant early warning score calculation from Respiratory Rate, SpO2, Oxygen Therapy, Systolic BP, Heart Rate, Consciousness (AVPU), and Temperature.
+- **Clinical Risk Stratification**: High-risk, Medium-risk, and Low-risk visual badges with automated protocol escalation triggers.
+- **Offline Vitals Recording & Resilient Sync**: Uninterrupted offline vital sign data entry with background synchronization when network reconnects.
+
+---
+
+### 5. 📋 Consultations & Electronic Medical Records (EMR)
+- **Full SOAP Documentation**: Subjective history, Objective exam findings, Assessment, and Plan documentation.
+- **ICD-10 Diagnostic Catalog**: Standardized clinical disease coding with auto-complete search.
+- **AI Clinical Copilot**: Instant summaries of complex patient history, diagnostic suggestions, and treatment outline assistance.
+- **Real-Time Drug Interaction Alerts**: Automated checks for severe drug-drug contraindications and patient allergy conflicts prior to prescription dispatch.
+- **Clinical Amendments & Audit Trails**: Tamper-evident addendums with doctor timestamps for medico-legal integrity.
+
+---
+
+### 6. 🛏️ Inpatient Admissions, Wards & Bed Matrix
+- **Visual Bed Grid**: Real-time bed occupancy status across **General, Semi-Private, Private, ICU, Maternity, and Isolation** wards.
+- **Admission Lifecycle**: Bed allocation, daily clinical ward rounds logging, vitals charting, medication administration, and discharge summaries.
+- **Inter-Ward & Inter-Facility Transfers**: Clinical handover documentation, transfer approvals, and ambulance dispatch status.
+
+---
+
+### 7. 👶 Maternity & Antenatal Care (ANC)
+- **ANC Tracking**: Gravidity, parity, estimated date of delivery (EDD), and gestational age calculators.
+- **Labor & Delivery Documentation**: Maternal vitals monitoring, fetal heart rate logging, APGAR scoring, and newborn birth registration.
+- **Immunization Schedule**: Childhood vaccine tracker mapped to national health schedules.
+
+---
+
+### 8. 🔬 Laboratory Information Management System (LIMS)
+- **Electronic Lab Orders**: Direct requisition routing from consultations to laboratory benches.
+- **Sample Collection & Tracking**: Specimen logging with barcode/accession IDs.
+- **Result Validation & Reference Ranges**: Normal range boundaries with automatic abnormal/critical value flags.
+- **Printable Lab Reports**: Laboratory reports with tamper-evident QR verification.
+
+---
+
+### 9. 🩻 Radiology & Medical Imaging (PACS)
+- **Imaging Requisitions**: X-Ray, Ultrasound, CT, MRI, and Mammography workflows.
+- **Medical Image Viewer**: Built-in DICOM and high-resolution imaging viewer with zoom, pan, contrast, and inversion controls.
+- **Radiologist Reporting**: Structured findings, impressions, and digital sign-offs.
+
+---
+
+### 10. 💊 Pharmacy Dispensary & Inventory Engine
+- **Digital Prescription Dispensing**: Direct fulfillment queue from doctor consultations.
+- **Batch & Expiry Date Management**: Expiry alerts, FIFO batch tracking, and spoilage prevention.
+- **Real-Time Stock Depletion**: Automatic stock level deduction upon dispensing with minimum reorder thresholds and low-stock alerts.
+
+---
+
+### 11. 💳 Billing, Invoicing & HMO Claims
+- **Automated Bill Aggregation**: Automatic billing for consultations, lab tests, medications, bed days, and procedures.
+- **Insurance & HMO Management**: Pre-authorization tracking, policy copays, and claim adjudication workflows.
+- **Payment Processing & Receipts**: Cash, POS, transfer, and card payment logging with official QR-verified PDF receipts.
+
+---
+
+### 12. 📱 Patient Self-Service Portal (`/portal`)
+- **Complete Health Dashboard**: Access medical history, doctor notes, lab results, radiology reports, and active prescriptions.
+- **Online Appointment Booking**: Book, reschedule, and manage upcoming hospital visits.
+- **Financial Statements**: View invoices, track payments, and download official receipts.
+
+---
+
+### 13. 📄 Clinical Documents & Tamper-Evident QR Suite
+- **Official Medical Documents**:
+  - Medical Fitness Certificates
+  - Sick Leave & Duty Exemption Letters
+  - Medical Referral Letters
+  - Inpatient Discharge Summaries
+  - Payment & Billing Receipts
+  - Diagnostic & Radiology Reports
+- **Universal QR Verification**: Encrypted QR verification badges on all printed documents allowing third parties (employers, insurers, referral hospitals) to authenticate documents instantly.
+
+---
+
+### 14. 🛡️ Super Admin Global Command Center (`/superadmin`)
+- **Multi-Tenant Network Telemetry**: Global hospital registry, verification approvals, subscription tiers, and resource utilization.
+- **Global Financial Analytics**: Platform revenue streams, active hospital subscriptions, and transaction volumes.
+- **System Audit Ledger**: Immutable audit log of all clinical record accesses, modifications, logins, and permission changes for strict regulatory compliance.
+
+---
+
+## 👥 Role-Based Access Control (RBAC)
+
+| Role | Core Capabilities |
+| :--- | :--- |
+| **Super Admin** | Multi-tenant hospital approvals, platform analytics, global settings, VoiceCare lab configuration, audit oversight. |
+| **Hospital Admin** | Hospital setup, staff roster & shift management, departmental configuration, billing rates, financial reports. |
+| **Doctor** | EMR consultations, SOAP notes, ICD-10 coding, prescription writing, lab/radiology orders, ward rounds, VoiceCare notes. |
+| **Nurse** | NEWS2 triage & vitals recording, bed management, medication administration, inpatient care, ANC monitoring. |
+| **Lab Technician** | Specimen accessioning, diagnostic test execution, result verification, lab report publication. |
+| **Pharmacist** | Prescription verification, drug dispensing, inventory restocking, batch tracking, expiry monitoring. |
+| **Patient** | Health portal access, booking appointments, viewing lab results, downloading prescriptions & QR receipts. |
+
+---
+
+## 💻 Technology Stack & Architecture
+
+- **Frontend**: React 19, TanStack Start (SSR/Fullstack), TanStack Router, TanStack Query
+- **Styling & UI**: Tailwind CSS v4, shadcn/ui, Lucide React, Motion (Framer Motion), Recharts
+- **Backend & Database**: Supabase PostgreSQL, Row Level Security (RLS), Server Functions (`@tanstack/react-start`)
+- **Speech & AI Engine**: Intron Sahara African Dialect Speech-to-Intent API, Web Speech API, OpenAI Whisper Fallback
+- **Safety & Verification**: NEWS2 clinical scoring engine, drug-drug contraindication validator, QR verification cryptographic engine
+- **Type Safety**: TypeScript 5.8+, Zod validation schemas
+
+---
+
+## 🛠️ Local Development & Setup
+
+### Prerequisites
+- Node.js (v20+ recommended)
+- Bun or npm
+
+### Installation
+```bash
+# 1. Clone repository
+git clone <repository-url>
+cd hospnest
+
+# 2. Install dependencies
+bun install
+# or: npm install
+
+# 3. Configure environment variables
+cp .env.example .env
+# Fill in your Supabase URL, Anon Key, and Intron AI API Key
+
+# 4. Run development server
+bun dev
+# or: npm run dev
+```
+
+---
+
+## 🔒 Security, Privacy & Compliance
+- **Data Isolation**: Strict multi-tenant Row Level Security (RLS) guaranteeing zero cross-tenant data leakage.
+- **Full Audit Trails**: Every clinical record view, edit, and export is timestamped and logged with user ID, role, and hospital ID.
+- **Role Scoping**: Granular, role-enforced access gates preventing unauthorized exposure of clinical, financial, or administrative data.
+
+---
+
+Built with ❤️ for resilient, intelligent, and inclusive healthcare systems.
